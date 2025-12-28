@@ -18,7 +18,7 @@
         
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; font-weight: 600; color: #4b4f56; font-size: 14px; text-transform: uppercase; }
-        input[type="text"], select { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
+        input[type="text"] { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
         input:focus { border-color: var(--discord-blue); outline: none; }
         
         .toggle-group { display: flex; gap: 10px; margin-bottom: 20px; }
@@ -26,7 +26,6 @@
         .toggle-btn.active { background: var(--discord-blue); color: white; border-color: var(--discord-blue); }
 
         .file-upload { position: relative; display: block; background: #f8f9fa; border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; }
-        .file-upload:active { background: #e9ecef; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
         #submitBtn { background-color: var(--discord-blue); color: white; border: none; padding: 18px; border-radius: 12px; width: 100%; font-size: 18px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
@@ -42,13 +41,13 @@
     <h2>🚚 Fleet Check</h2>
     
     <div class="form-group">
-        <label>Full Name</label>
-        <input type="text" id="driverName" placeholder="Enter your name" autocomplete="name">
+        <label>Driver Full Name</label>
+        <input type="text" id="driverName" placeholder="Enter your name">
     </div>
 
     <div class="form-group">
         <label>Last 4 of VIN</label>
-        <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4" pattern="\d*">
+        <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4">
     </div>
 
     <label>Inspection Type</label>
@@ -71,13 +70,12 @@
     <div style="text-align: center;">
         <h1 style="font-size: 50px; margin: 0;">✅</h1>
         <h2>Report Sent!</h2>
-        <p style="color: #666;">Your inspection has been uploaded to Discord. You can now close this app.</p>
-        <button id="resetBtn" onclick="location.reload()" style="background: #eee; color: #333; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Submit Another</button>
+        <p>Your inspection has been uploaded. You can now close this app.</p>
+        <button onclick="location.reload()" style="background: #eee; border: none; padding: 10px; border-radius: 8px;">Submit Another</button>
     </div>
 </div>
 
 <script>
-    // --- DISCORD WEBHOOK URL ---
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = 'Precheck';
@@ -93,7 +91,7 @@
 
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
-            fileLabel.innerText = "📹 Video Loaded: " + videoInput.files[0].name.substring(0, 15) + "...";
+            fileLabel.innerText = "📹 Video Selected";
             fileLabel.style.color = "green";
         }
     };
@@ -104,7 +102,7 @@
         const file = videoInput.files[0];
 
         if (!name || !vin || !file) {
-            alert("Please provide your name, VIN, and record a video.");
+            alert("Please provide Name, VIN, and a Video.");
             return;
         }
 
@@ -112,7 +110,7 @@
         document.getElementById('status').innerHTML = "⏳ <b>Uploading...</b><br>Do not close the app.";
 
         const formData = new FormData();
-        const messageContent = `**NEW ${inspectionType.toUpperCase()}**\n**Driver:** ${name}\n**Vehicle VIN:** ${vin}\n**Method:** Web App Submission`;
+        const messageContent = `**${inspectionType.toUpperCase()} REPORT**\n**Driver:** ${name}\n**VIN:** ${vin}`;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
@@ -121,20 +119,13 @@
         formData.append('file', file);
 
         try {
-            const response = await fetch(DISCORD_WEBHOOK_URL, {
-                method: 'POST',
-                body: formData
-            });
-
+            const response = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
             if (response.ok) {
                 document.getElementById('mainCard').classList.add('hidden');
                 document.getElementById('successCard').classList.remove('hidden');
-            } else {
-                throw new Error();
-            }
+            } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ <b>Upload Failed.</b><br>Check your signal and try again.";
-            document.getElementById('status').style.color = "red";
+            document.getElementById('status').innerHTML = "❌ Upload Failed. Try again.";
             submitBtn.disabled = false;
         }
     };
