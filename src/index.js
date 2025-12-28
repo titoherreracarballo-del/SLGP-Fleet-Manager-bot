@@ -1,38 +1,18 @@
-// src/index.js
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import cron from "node-cron";
 import { DateTime } from "luxon";
-import {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  Events,
-  AttachmentBuilder,
-} from "discord.js";
+import { Client, GatewayIntentBits, Partials, Events, AttachmentBuilder } from "discord.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function safeReadJSON(p) {
-  try {
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch {}
-  return null;
+  try { if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8")); } catch {}
+  return {};
 }
-const ENV_FROM_FILE = safeReadJSON(path.join(__dirname, "env.json")) || safeReadJSON(path.join(__dirname, "..", "env.json")) || {};
-
-function getEnv(key, fallback) {
-  if (process.env[key] !== undefined) return process.env[key];
-  if (ENV_FROM_FILE && ENV_FROM_FILE[key] !== undefined) return ENV_FROM_FILE[key];
-  return fallback;
-}
-
-const DISCORD_TOKEN = getEnv("DISCORD_TOKEN", "");
-const REMINDER_CHANNEL_ID = getEnv("REMINDER_CHANNEL_ID", "");
-const TZ = getEnv("TZ", "America/New_York");
-const PORTAL_URL = getEnv("PORTAL_URL", "https://yourusername.github.io/your-repo/");
+const ENV = safeReadJSON(path.join(__dirname, "env.json")) || safeReadJSON(path.join(__dirname, "..", "env.json"));
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -40,67 +20,34 @@ const client = new Client({
 });
 
 function MORNING_TEXT() {
-  return (
-`**Good Morning Team!** ☀️
-
-Please complete your **Morning Precheck Video** using the app link below.
-
-📲 **App Link:** ${PORTAL_URL}
-*(Note: Tap 'Share' then 'Add to Home Screen' to install this as a permanent app)*
-
-Let’s start the day strong 💪🚐`
-  );
+  return `**Good Morning Team!** ☀️\n\nPlease complete your **Morning Precheck Video** using the app link below.\n\n📲 **App Link:** ${ENV.PORTAL_URL}\n*(Pro Tip: Tap 'Share' then 'Add to Home Screen' to install as an app)*`;
 }
 
 function EVENING_TEXT() {
-  return (
-`**Good Evening Team!** 🌙
-
-Please complete your **Evening Postcheck Video** using the app link below.
-
-📲 **App Link:** ${PORTAL_URL}
-
-Let’s finish the day strong 💪🚐`
-  );
+  return `**Good Evening Team!** 🌙\n\nPlease complete your **Evening Postcheck Video** before clocking out.\n\n📲 **App Link:** ${ENV.PORTAL_URL}`;
 }
-
-const sentSlots = { am: "", pm: "" };
 
 async function sendReminder(kind) {
   try {
-    const ch = await client.channels.fetch(REMINDER_CHANNEL_ID);
+    const ch = await client.channels.fetch(ENV.REMINDER_CHANNEL_ID);
     if (!ch) return;
     const text = kind === "am" ? MORNING_TEXT() : EVENING_TEXT();
     await ch.send({ content: text });
-    console.log(`📢 Sent ${kind.toUpperCase()} reminder`);
-  } catch (e) {
-    console.error("Reminder error:", e);
-  }
+  } catch (e) { console.error("Reminder error:", e); }
 }
 
 client.once(Events.ClientReady, () => {
-  console.log("✅ Logged in as", client.user.tag);
-  
+  console.log("✅ Bot is online");
   cron.schedule("*/30 * * * *", async () => {
-    const now = DateTime.now().setZone(TZ);
-    const key = now.toFormat(`yyyy-LL-dd HH:'${now.minute < 30 ? "00" : "30"}'`);
-    
-    // Check morning window (example: 10:00 - 11:00)
-    if (now.hour === 10 && sentSlots.am !== key) {
-      sentSlots.am = key;
-      await sendReminder("am");
-    }
-    // Check evening window (example: 18:00 - 23:00)
-    if (now.hour >= 18 && now.hour <= 23 && sentSlots.pm !== key) {
-      sentSlots.pm = key;
-      await sendReminder("pm");
-    }
-  }, { timezone: TZ });
+    const now = DateTime.now().setZone(ENV.TZ);
+    if (now.hour === 10 && now.minute === 0) await sendReminder("am");
+    if (now.hour === 18 && now.minute === 0) await sendReminder("pm");
+  });
 });
 
-// Important: This allows Webhook uploads to stay in the channel
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return; // Ignore messages from our new Web App/Webhook
+  // IGNORE Portal uploads (webhook) so they stay in the channel
+  if (message.author.bot || message.webhookId) return;
 });
 
-client.login(DISCORD_TOKEN);
+client.login(ENV.DISCORD_TOKEN);
