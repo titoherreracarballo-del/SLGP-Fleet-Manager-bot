@@ -2,71 +2,121 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fleet Inspection Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fleet Inspection</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Fleet Check">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/725/725301.png">
+    
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; justify-content: center; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h2 { margin-top: 0; color: #1c1e21; text-align: center; }
-        label { display: block; margin: 15px 0 5px; font-weight: 600; color: #4b4f56; }
-        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        button { background-color: #5865F2; color: white; border: none; padding: 15px; border-radius: 8px; width: 100%; font-size: 18px; font-weight: bold; margin-top: 20px; cursor: pointer; }
-        button:disabled { background-color: #aeb3ff; }
-        #status { margin-top: 15px; text-align: center; font-weight: 500; color: #606770; }
+        :root { --discord-blue: #5865F2; --bg-color: #f0f2f5; }
+        body { font-family: -apple-system, system-ui, sans-serif; background-color: var(--bg-color); margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
+        h2 { margin: 0 0 20px; color: #1c1e21; text-align: center; font-size: 24px; }
+        
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #4b4f56; font-size: 14px; text-transform: uppercase; }
+        input[type="text"], select { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
+        input:focus { border-color: var(--discord-blue); outline: none; }
+        
+        .toggle-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .toggle-btn { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 10px; background: white; cursor: pointer; font-weight: bold; text-align: center; color: #555; transition: 0.2s; }
+        .toggle-btn.active { background: var(--discord-blue); color: white; border-color: var(--discord-blue); }
+
+        .file-upload { position: relative; display: block; background: #f8f9fa; border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; }
+        .file-upload:active { background: #e9ecef; }
+        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+
+        #submitBtn { background-color: var(--discord-blue); color: white; border: none; padding: 18px; border-radius: 12px; width: 100%; font-size: 18px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        #submitBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        #status { margin-top: 20px; text-align: center; font-weight: 500; color: #606770; line-height: 1.4; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>🚚 Fleet Inspection</h2>
+<div class="card" id="mainCard">
+    <h2>🚚 Fleet Check</h2>
     
-    <label>Driver Full Name</label>
-    <input type="text" id="driverName" placeholder="e.g. John Doe">
+    <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="driverName" placeholder="Enter your name" autocomplete="name">
+    </div>
 
-    <label>Van # (or Last 4 of VIN)</label>
-    <input type="text" id="vanId" placeholder="e.g. 1234">
+    <div class="form-group">
+        <label>Last 4 of VIN</label>
+        <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4" pattern="\d*">
+    </div>
 
     <label>Inspection Type</label>
-    <select id="type">
-        <option value="Precheck">Morning Precheck</option>
-        <option value="Postcheck">Evening Postcheck</option>
-    </select>
+    <div class="toggle-group">
+        <div class="toggle-btn active" id="btnPre" onclick="setType('Precheck')">Precheck</div>
+        <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+    </div>
 
-    <label>Record Walkaround Video</label>
-    <input type="file" id="videoFile" accept="video/*" capture="environment">
+    <label>Record Video (Max 35s)</label>
+    <div class="file-upload" id="uploadBox">
+        <span id="fileLabel">📸 Tap to Record/Upload</span>
+        <input type="file" id="videoFile" accept="video/*" capture="environment">
+    </div>
 
-    <button id="submitBtn">Submit Inspection</button>
+    <button id="submitBtn">Submit Report</button>
     <div id="status">Ready</div>
 </div>
 
+<div class="card hidden" id="successCard">
+    <div style="text-align: center;">
+        <h1 style="font-size: 50px; margin: 0;">✅</h1>
+        <h2>Report Sent!</h2>
+        <p style="color: #666;">Your inspection has been uploaded to Discord. You can now close this app.</p>
+        <button id="resetBtn" onclick="location.reload()" style="background: #eee; color: #333; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold;">Submit Another</button>
+    </div>
+</div>
+
 <script>
-    // --- SETUP: Replace with your Webhook URL ---
+    // --- SETUP: Replace with your actual Discord Webhook URL ---
     const DISCORD_WEBHOOK_URL = 'PASTE_YOUR_WEBHOOK_URL_HERE';
 
+    let inspectionType = 'Precheck';
     const submitBtn = document.getElementById('submitBtn');
-    const status = document.getElementById('status');
+    const videoInput = document.getElementById('videoFile');
+    const fileLabel = document.getElementById('fileLabel');
+
+    function setType(type) {
+        inspectionType = type;
+        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
+        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
+    }
+
+    videoInput.onchange = () => {
+        if (videoInput.files.length > 0) {
+            fileLabel.innerText = "📹 Video Loaded: " + videoInput.files[0].name.substring(0, 15) + "...";
+            fileLabel.style.color = "green";
+        }
+    };
 
     submitBtn.onclick = async () => {
         const name = document.getElementById('driverName').value;
-        const van = document.getElementById('vanId').value;
-        const type = document.getElementById('type').value;
-        const file = document.getElementById('videoFile').files[0];
+        const vin = document.getElementById('vin').value;
+        const file = videoInput.files[0];
 
-        if (!name || !van || !file) {
-            alert("Please fill out all fields and record a video.");
+        if (!name || !vin || !file) {
+            alert("Please provide your name, VIN, and record a video.");
             return;
         }
 
         submitBtn.disabled = true;
-        status.innerText = "⏳ Uploading... Please stay on this page.";
+        document.getElementById('status').innerHTML = "⏳ <b>Uploading...</b><br>Do not close the app.";
 
         const formData = new FormData();
-        // This formats the message exactly how your bot expects to see it
-        const messageContent = `**New Inspection Submitted**\n**Driver:** ${name}\n**Vehicle:** ${van}\n**Type:** ${type}`;
+        const messageContent = `**NEW ${inspectionType.toUpperCase()}**\n**Driver:** ${name}\n**Vehicle VIN:** ${vin}\n**Method:** Web App Submission`;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
-            username: "Web Portal"
+            username: "Fleet Inspection App"
         }));
         formData.append('file', file);
 
@@ -77,18 +127,17 @@
             });
 
             if (response.ok) {
-                status.innerHTML = "✅ **Success!** Video sent to Discord.";
-                status.style.color = "green";
+                document.getElementById('mainCard').classList.add('hidden');
+                document.getElementById('successCard').classList.remove('hidden');
             } else {
                 throw new Error();
             }
         } catch (err) {
-            status.innerHTML = "❌ **Upload Failed.** Check your signal and try again.";
-            status.style.color = "red";
+            document.getElementById('status').innerHTML = "❌ <b>Upload Failed.</b><br>Check your signal and try again.";
+            document.getElementById('status').style.color = "red";
             submitBtn.disabled = false;
         }
     };
 </script>
-
 </body>
 </html>
