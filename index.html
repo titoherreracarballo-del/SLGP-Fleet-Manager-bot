@@ -25,28 +25,16 @@
             background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
             color: var(--text-main);
             margin: 0;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             justify-content: center;
             min-height: 100vh;
         }
 
-        .container {
-            width: 100%;
-            max-width: 420px;
-            margin-top: 20px;
-        }
+        .container { width: 100%; max-width: 420px; margin-top: 10px; }
 
-        .logo-container {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .logo-container img {
-            width: 100%;
-            max-width: 300px;
-            filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4));
-        }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
 
         .card {
             background: var(--card-bg);
@@ -54,143 +42,106 @@
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 28px;
-            padding: 35px;
+            padding: 25px;
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
 
         h2 {
-            font-size: 22px;
+            font-size: 18px;
             font-weight: 800;
             text-align: center;
-            margin: 0 0 30px 0;
+            margin: 0 0 20px 0;
             letter-spacing: 1px;
             color: var(--brand-blue);
             text-transform: uppercase;
         }
 
-        .form-group { margin-bottom: 25px; }
+        .form-group { margin-bottom: 20px; }
         
         label {
             display: block;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             color: var(--brand-blue);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.2px;
         }
 
-        input[type="text"] {
+        input[type="text"], input[type="tel"] {
             width: 100%;
-            padding: 18px;
+            padding: 16px;
             background: rgba(0, 0, 0, 0.4);
             border: 1.5px solid rgba(255, 255, 255, 0.1);
-            border-radius: 14px;
+            border-radius: 12px;
             color: white;
             font-size: 16px;
             box-sizing: border-box;
             transition: all 0.3s ease;
         }
 
-        input:focus {
-            border-color: var(--brand-blue);
-            outline: none;
-            background: rgba(0, 0, 0, 0.6);
-            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3);
-        }
+        input:focus { border-color: var(--brand-blue); outline: none; background: rgba(0, 0, 0, 0.6); }
 
-        .toggle-group {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 30px;
-        }
+        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 
         .toggle-btn {
-            flex: 1;
-            padding: 16px;
+            flex: 1 1 calc(50% - 8px);
+            padding: 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 14px;
+            border-radius: 12px;
             color: var(--text-dim);
             font-weight: 700;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
             text-transform: uppercase;
-            font-size: 13px;
+            font-size: 11px;
         }
 
         .toggle-btn.active {
             background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white;
             border-color: var(--brand-blue);
-            box-shadow: 0 6px 20px rgba(0, 102, 255, 0.4);
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
         }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02);
             border: 2px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 18px;
-            padding: 40px 20px;
+            border-radius: 14px;
+            padding: 25px 15px;
             text-align: center;
             cursor: pointer;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
             position: relative;
-            transition: 0.3s;
         }
 
-        .upload-area:active { 
-            background: rgba(255, 255, 255, 0.07);
-            border-color: var(--brand-blue);
-        }
+        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); display: flex; flex-direction: column; gap: 5px; }
 
-        #fileLabel { 
-            font-size: 15px; 
-            font-weight: 600; 
-            color: var(--text-dim); 
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        input[type="file"] {
-            position: absolute;
-            width: 100%; height: 100%;
-            top: 0; left: 0;
-            opacity: 0; cursor: pointer;
-        }
+        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
         #submitBtn {
             background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white;
             border: none;
-            padding: 20px;
-            border-radius: 16px;
+            padding: 18px;
+            border-radius: 14px;
             width: 100%;
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.2px;
             cursor: pointer;
-            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.3);
-            transition: 0.3s;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
         }
 
-        #submitBtn:active { transform: scale(0.98); }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
 
-        #status {
-            margin-top: 25px;
-            text-align: center;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-dim);
-            letter-spacing: 0.5px;
-        }
+        #status { margin-top: 15px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); }
 
-        .success-screen { text-align: center; display: none; padding: 50px 30px; }
-        .success-icon { font-size: 70px; margin-bottom: 25px; filter: drop-shadow(0 0 15px #4ade80); }
-        
+        .success-screen { text-align: center; display: none; padding: 40px 20px; }
+        .success-icon { font-size: 60px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -210,76 +161,107 @@
 
         <div class="form-group">
             <label>Last 4 of VIN</label>
-            <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4">
+            <input type="tel" id="vin" placeholder="e.g. 1234" maxlength="4" pattern="\d*">
+        </div>
+
+        <label>Vehicle Type</label>
+        <div class="toggle-group" id="groupVehicle">
+            <div class="toggle-btn active" onclick="setVehicle('CDV')">CDV</div>
+            <div class="toggle-btn" onclick="setVehicle('Cargo')">Cargo</div>
+            <div class="toggle-btn" onclick="setVehicle('EDV')">EDV</div>
+            <div class="toggle-btn" onclick="setVehicle('Rental')">Rental</div>
         </div>
 
         <label>Inspection Type</label>
-        <div class="toggle-group">
-            <div class="toggle-btn active" id="btnPre" onclick="setType('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+        <div class="toggle-group" id="groupType">
+            <div class="toggle-btn active" onclick="setType('Precheck')">Precheck</div>
+            <div class="toggle-btn" onclick="setType('Postcheck')">Postcheck</div>
         </div>
 
         <label>Walkaround Video</label>
         <div class="upload-area">
             <div id="fileLabel">
                 <span>📸 Tap to Record Video</span>
-                <span style="font-size: 10px; color: #666;">(Max 35 Seconds • HD Only)</span>
+                <span style="font-size: 9px; color: #666;">(Max 35 Seconds • HD Only)</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">📡 ENCRYPTED DISPATCH LINK ACTIVE</div>
+        <div id="status">📡 SECURE FLEET LINK ACTIVE</div>
     </div>
 
     <div class="card success-screen" id="successCard">
         <div class="success-icon">✅</div>
-        <h2 style="color: white; margin-bottom: 12px; font-size: 24px;">REPORT SENT</h2>
-        <p style="color: var(--text-dim); margin-bottom: 30px; line-height: 1.6;">Your vehicle inspection has been successfully transmitted to Dispatch.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 15px 30px; border-radius: 12px; font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 12px;">New Submission</button>
+        <h2 style="color: white; margin-bottom: 12px;">REPORT SENT</h2>
+        <p style="color: var(--text-dim); margin-bottom: 30px; line-height: 1.5; font-size: 14px;">Your inspection has been transmitted to Discord.</p>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; font-weight: 700; text-transform: uppercase; font-size: 11px;">New Submission</button>
     </div>
 </div>
 
 <script>
+    // --- STEP 1: ADD YOUR ACTIVE VINS HERE ---
+    // Example: const ACTIVE_VINS = ['1234', '5678', '9012'];
+    const ACTIVE_VINS = ['1234', '5678']; 
+
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = 'Precheck';
+    let vehicleType = 'CDV';
+    
     const submitBtn = document.getElementById('submitBtn');
     const videoInput = document.getElementById('videoFile');
     const fileLabel = document.getElementById('fileLabel');
 
     function setType(type) {
         inspectionType = type;
-        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
-        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
+        const btns = document.querySelectorAll('#groupType .toggle-btn');
+        btns.forEach(b => b.classList.toggle('active', b.innerText.toLowerCase() === type.toLowerCase()));
+    }
+
+    function setVehicle(v) {
+        vehicleType = v;
+        const btns = document.querySelectorAll('#groupVehicle .toggle-btn');
+        btns.forEach(b => b.classList.toggle('active', b.innerText.toUpperCase() === v.toUpperCase()));
     }
 
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
-            const size = Math.round(videoInput.files[0].size/1024/1024);
-            fileLabel.innerHTML = `<span style="color: #4ade80;">📹 VIDEO READY</span><span style="font-size: 12px;">File Size: ${size}MB</span>`;
+            fileLabel.innerHTML = `<span style="color: #4ade80;">📹 VIDEO READY</span>`;
         }
     };
 
     submitBtn.onclick = async () => {
-        const name = document.getElementById('driverName').value;
-        const vin = document.getElementById('vin').value;
+        const name = document.getElementById('driverName').value.trim();
+        const vin = document.getElementById('vin').value.trim();
         const file = videoInput.files[0];
 
+        // Validation logic
         if (!name || !vin || !file) {
-            alert("Please complete all fields and record a video.");
+            alert("All fields are required.");
+            return;
+        }
+
+        if (vin.length !== 4) {
+            alert("VIN must be exactly the last 4 digits.");
+            return;
+        }
+
+        // --- VIN LIST CHECK ---
+        if (!ACTIVE_VINS.includes(vin)) {
+            alert("This VIN is not recognized as an active vehicle. Please check the number or contact dispatch.");
             return;
         }
 
         submitBtn.disabled = true;
-        document.getElementById('status').innerHTML = "<span style='color: #0066ff;'>⏳ TRANSMITTING DATA...</span>";
+        document.getElementById('status').innerHTML = "<span style='color: #0066ff;'>⏳ UPLOADING...</span>";
 
         const formData = new FormData();
-        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**VIN:** \`${vin}\`\n**Time:** ${new Date().toLocaleString()}`;
+        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Time:** ${new Date().toLocaleString()}`;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
-            username: "SLGP Dispatch Portal"
+            username: "SLGP Fleet Portal"
         }));
         formData.append('file', file);
 
