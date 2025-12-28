@@ -44,48 +44,48 @@
 
         .logo-container img {
             width: 100%;
-            max-width: 280px;
-            filter: drop-shadow(0 0 10px rgba(0, 102, 255, 0.3));
+            max-width: 300px;
+            filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4));
         }
 
         .card {
             background: var(--card-bg);
-            backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 24px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border-radius: 28px;
+            padding: 35px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
 
         h2 {
-            font-size: 20px;
-            font-weight: 700;
+            font-size: 22px;
+            font-weight: 800;
             text-align: center;
-            margin: 0 0 25px 0;
-            letter-spacing: 0.5px;
+            margin: 0 0 30px 0;
+            letter-spacing: 1px;
             color: var(--brand-blue);
             text-transform: uppercase;
         }
 
-        .form-group { margin-bottom: 20px; }
+        .form-group { margin-bottom: 25px; }
         
         label {
             display: block;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-dim);
-            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--brand-blue);
+            margin-bottom: 10px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
         }
 
         input[type="text"] {
             width: 100%;
-            padding: 16px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
             color: white;
             font-size: 16px;
             box-sizing: border-box;
@@ -95,50 +95,63 @@
         input:focus {
             border-color: var(--brand-blue);
             outline: none;
-            background: rgba(0, 0, 0, 0.5);
-            box-shadow: 0 0 15px rgba(0, 102, 255, 0.2);
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3);
         }
 
         .toggle-group {
             display: flex;
             gap: 12px;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
         }
 
         .toggle-btn {
             flex: 1;
-            padding: 14px;
+            padding: 16px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
+            border-radius: 14px;
             color: var(--text-dim);
             font-weight: 700;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
+            text-transform: uppercase;
+            font-size: 13px;
         }
 
         .toggle-btn.active {
-            background: var(--brand-blue);
+            background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white;
             border-color: var(--brand-blue);
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 102, 255, 0.4);
         }
 
         .upload-area {
-            background: rgba(255, 255, 255, 0.03);
-            border: 2px dashed rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 30px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 18px;
+            padding: 40px 20px;
             text-align: center;
             cursor: pointer;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
             position: relative;
+            transition: 0.3s;
         }
 
-        .upload-area:active { background: rgba(255, 255, 255, 0.08); }
+        .upload-area:active { 
+            background: rgba(255, 255, 255, 0.07);
+            border-color: var(--brand-blue);
+        }
 
-        #fileLabel { font-size: 14px; font-weight: 500; color: var(--text-dim); }
+        #fileLabel { 
+            font-size: 15px; 
+            font-weight: 600; 
+            color: var(--text-dim); 
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
 
         input[type="file"] {
             position: absolute;
@@ -151,28 +164,32 @@
             background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white;
             border: none;
-            padding: 18px;
-            border-radius: 14px;
+            padding: 20px;
+            border-radius: 16px;
             width: 100%;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             cursor: pointer;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.3);
+            transition: 0.3s;
         }
 
-        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+        #submitBtn:active { transform: scale(0.98); }
+        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
 
         #status {
-            margin-top: 20px;
+            margin-top: 25px;
             text-align: center;
-            font-size: 14px;
+            font-size: 13px;
+            font-weight: 600;
             color: var(--text-dim);
+            letter-spacing: 0.5px;
         }
 
-        .success-screen { text-align: center; display: none; }
-        .success-icon { font-size: 60px; margin-bottom: 20px; }
+        .success-screen { text-align: center; display: none; padding: 50px 30px; }
+        .success-icon { font-size: 70px; margin-bottom: 25px; filter: drop-shadow(0 0 15px #4ade80); }
         
     </style>
 </head>
@@ -188,7 +205,7 @@
         
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Enter Name">
+            <input type="text" id="driverName" placeholder="Full Name">
         </div>
 
         <div class="form-group">
@@ -204,19 +221,22 @@
 
         <label>Walkaround Video</label>
         <div class="upload-area">
-            <span id="fileLabel">📸 Tap to Record Video</span>
+            <div id="fileLabel">
+                <span>📸 Tap to Record Video</span>
+                <span style="font-size: 10px; color: #666;">(Max 35 Seconds • HD Only)</span>
+            </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
-        <button id="submitBtn">Submit to Dispatch</button>
-        <div id="status">Secure Connection Active</div>
+        <button id="submitBtn">SUBMIT TO DISCORD</button>
+        <div id="status">📡 ENCRYPTED DISPATCH LINK ACTIVE</div>
     </div>
 
     <div class="card success-screen" id="successCard">
         <div class="success-icon">✅</div>
-        <h2 style="color: white; margin-bottom: 10px;">Submission Successful</h2>
-        <p style="color: var(--text-dim); margin-bottom: 25px;">Your vehicle report has been sent to the Discord Fleet Channel.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: 600;">Submit Another</button>
+        <h2 style="color: white; margin-bottom: 12px; font-size: 24px;">REPORT SENT</h2>
+        <p style="color: var(--text-dim); margin-bottom: 30px; line-height: 1.6;">Your vehicle inspection has been successfully transmitted to Dispatch.</p>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 15px 30px; border-radius: 12px; font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 12px;">New Submission</button>
     </div>
 </div>
 
@@ -236,8 +256,8 @@
 
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
-            fileLabel.innerText = "📹 Video Attached: " + Math.round(videoInput.files[0].size/1024/1024) + "MB";
-            fileLabel.style.color = "#0066ff";
+            const size = Math.round(videoInput.files[0].size/1024/1024);
+            fileLabel.innerHTML = `<span style="color: #4ade80;">📹 VIDEO READY</span><span style="font-size: 12px;">File Size: ${size}MB</span>`;
         }
     };
 
@@ -247,19 +267,19 @@
         const file = videoInput.files[0];
 
         if (!name || !vin || !file) {
-            alert("All fields are required.");
+            alert("Please complete all fields and record a video.");
             return;
         }
 
         submitBtn.disabled = true;
-        document.getElementById('status').innerHTML = "⏳ <b>Uploading Report...</b>";
+        document.getElementById('status').innerHTML = "<span style='color: #0066ff;'>⏳ TRANSMITTING DATA...</span>";
 
         const formData = new FormData();
-        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**VIN (Last 4):** \`${vin}\`\n**Timestamp:** ${new Date().toLocaleString()}`;
+        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**VIN:** \`${vin}\`\n**Time:** ${new Date().toLocaleString()}`;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
-            username: "SLGP Fleet Portal"
+            username: "SLGP Dispatch Portal"
         }));
         formData.append('file', file);
 
@@ -270,7 +290,7 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ Upload Failed. Check signal.";
+            document.getElementById('status').innerHTML = "<span style='color: #ff4d4d;'>❌ UPLOAD FAILED. CHECK SIGNAL.</span>";
             submitBtn.disabled = false;
         }
     };
