@@ -3,75 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fleet Inspection</title>
+    <title>SLGP Fleet Portal</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Fleet Check">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/725/725301.png">
+    <meta name="apple-mobile-web-app-title" content="SLGP Fleet">
+    <link rel="apple-touch-icon" href="https://titoherreracarballo-del.github.io/slgp-discord-bot/Final-01.jpg">
     
     <style>
-        :root { --discord-blue: #5865F2; --bg-color: #f0f2f5; }
-        body { font-family: -apple-system, system-ui, sans-serif; background-color: var(--bg-color); margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
-        .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
-        h2 { margin: 0 0 20px; color: #1c1e21; text-align: center; font-size: 24px; }
-        
+        :root {
+            --brand-blue: #0066ff;
+            --brand-dark: #0a0e17;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --text-main: #ffffff;
+            --text-dim: #a0a0a0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--brand-dark);
+            background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            margin-top: 20px;
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-container img {
+            width: 100%;
+            max-width: 280px;
+            filter: drop-shadow(0 0 10px rgba(0, 102, 255, 0.3));
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            text-align: center;
+            margin: 0 0 25px 0;
+            letter-spacing: 0.5px;
+            color: var(--brand-blue);
+            text-transform: uppercase;
+        }
+
         .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: 600; color: #4b4f56; font-size: 14px; text-transform: uppercase; }
-        input[type="text"] { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
-        input:focus { border-color: var(--discord-blue); outline: none; }
         
-        .toggle-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        .toggle-btn { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 10px; background: white; cursor: pointer; font-weight: bold; text-align: center; color: #555; transition: 0.2s; }
-        .toggle-btn.active { background: var(--discord-blue); color: white; border-color: var(--discord-blue); }
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
 
-        .file-upload { position: relative; display: block; background: #f8f9fa; border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 20px; }
-        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+        input[type="text"] {
+            width: 100%;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
 
-        #submitBtn { background-color: var(--discord-blue); color: white; border: none; padding: 18px; border-radius: 12px; width: 100%; font-size: 18px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
-        #submitBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+        input:focus {
+            border-color: var(--brand-blue);
+            outline: none;
+            background: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 15px rgba(0, 102, 255, 0.2);
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: var(--text-dim);
+            font-weight: 700;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .toggle-btn.active {
+            background: var(--brand-blue);
+            color: white;
+            border-color: var(--brand-blue);
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.4);
+        }
+
+        .upload-area {
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 30px 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .upload-area:active { background: rgba(255, 255, 255, 0.08); }
+
+        #fileLabel { font-size: 14px; font-weight: 500; color: var(--text-dim); }
+
+        input[type="file"] {
+            position: absolute;
+            width: 100%; height: 100%;
+            top: 0; left: 0;
+            opacity: 0; cursor: pointer;
+        }
+
+        #submitBtn {
+            background: linear-gradient(135deg, #0066ff, #0044cc);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 14px;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+
+        #status {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-dim);
+        }
+
+        .success-screen { text-align: center; display: none; }
+        .success-icon { font-size: 60px; margin-bottom: 20px; }
         
-        #status { margin-top: 20px; text-align: center; font-weight: 500; color: #606770; line-height: 1.4; }
-        .hidden { display: none; }
     </style>
 </head>
 <body>
 
-<div class="card" id="mainCard">
-    <h2>🚚 Fleet Check</h2>
-    
-    <div class="form-group">
-        <label>Driver Full Name</label>
-        <input type="text" id="driverName" placeholder="Enter your name">
+<div class="container">
+    <div class="logo-container">
+        <img src="https://titoherreracarballo-del.github.io/slgp-discord-bot/Final-01.jpg" alt="Strategic Logistics">
     </div>
 
-    <div class="form-group">
-        <label>Last 4 of VIN</label>
-        <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4">
+    <div class="card" id="mainCard">
+        <h2>Fleet Inspection</h2>
+        
+        <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" id="driverName" placeholder="Enter Name">
+        </div>
+
+        <div class="form-group">
+            <label>Last 4 of VIN</label>
+            <input type="text" id="vin" placeholder="e.g. 1234" maxlength="4">
+        </div>
+
+        <label>Inspection Type</label>
+        <div class="toggle-group">
+            <div class="toggle-btn active" id="btnPre" onclick="setType('Precheck')">Precheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+        </div>
+
+        <label>Walkaround Video</label>
+        <div class="upload-area">
+            <span id="fileLabel">📸 Tap to Record Video</span>
+            <input type="file" id="videoFile" accept="video/*" capture="environment">
+        </div>
+
+        <button id="submitBtn">Submit to Dispatch</button>
+        <div id="status">Secure Connection Active</div>
     </div>
 
-    <label>Inspection Type</label>
-    <div class="toggle-group">
-        <div class="toggle-btn active" id="btnPre" onclick="setType('Precheck')">Precheck</div>
-        <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
-    </div>
-
-    <label>Record Video (Max 35s)</label>
-    <div class="file-upload" id="uploadBox">
-        <span id="fileLabel">📸 Tap to Record/Upload</span>
-        <input type="file" id="videoFile" accept="video/*" capture="environment">
-    </div>
-
-    <button id="submitBtn">Submit Report</button>
-    <div id="status">Ready</div>
-</div>
-
-<div class="card hidden" id="successCard">
-    <div style="text-align: center;">
-        <h1 style="font-size: 50px; margin: 0;">✅</h1>
-        <h2>Report Sent!</h2>
-        <p>Your inspection has been uploaded. You can now close this app.</p>
-        <button onclick="location.reload()" style="background: #eee; border: none; padding: 10px; border-radius: 8px;">Submit Another</button>
+    <div class="card success-screen" id="successCard">
+        <div class="success-icon">✅</div>
+        <h2 style="color: white; margin-bottom: 10px;">Submission Successful</h2>
+        <p style="color: var(--text-dim); margin-bottom: 25px;">Your vehicle report has been sent to the Discord Fleet Channel.</p>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: 600;">Submit Another</button>
     </div>
 </div>
 
@@ -91,8 +236,8 @@
 
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
-            fileLabel.innerText = "📹 Video Selected";
-            fileLabel.style.color = "green";
+            fileLabel.innerText = "📹 Video Attached: " + Math.round(videoInput.files[0].size/1024/1024) + "MB";
+            fileLabel.style.color = "#0066ff";
         }
     };
 
@@ -102,33 +247,34 @@
         const file = videoInput.files[0];
 
         if (!name || !vin || !file) {
-            alert("Please provide Name, VIN, and a Video.");
+            alert("All fields are required.");
             return;
         }
 
         submitBtn.disabled = true;
-        document.getElementById('status').innerHTML = "⏳ <b>Uploading...</b><br>Do not close the app.";
+        document.getElementById('status').innerHTML = "⏳ <b>Uploading Report...</b>";
 
         const formData = new FormData();
-        const messageContent = `**${inspectionType.toUpperCase()} REPORT**\n**Driver:** ${name}\n**VIN:** ${vin}`;
+        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**VIN (Last 4):** \`${vin}\`\n**Timestamp:** ${new Date().toLocaleString()}`;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
-            username: "Fleet Inspection App"
+            username: "SLGP Fleet Portal"
         }));
         formData.append('file', file);
 
         try {
             const response = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
             if (response.ok) {
-                document.getElementById('mainCard').classList.add('hidden');
-                document.getElementById('successCard').classList.remove('hidden');
+                document.getElementById('mainCard').style.display = 'none';
+                document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ Upload Failed. Try again.";
+            document.getElementById('status').innerHTML = "❌ Upload Failed. Check signal.";
             submitBtn.disabled = false;
         }
     };
 </script>
+
 </body>
 </html>
