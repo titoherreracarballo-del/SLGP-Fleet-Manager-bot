@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Inspection Portal</title>
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; justify-content: center; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h2 { margin-top: 0; color: #1c1e21; text-align: center; }
+        label { display: block; margin: 15px 0 5px; font-weight: 600; color: #4b4f56; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { background-color: #5865F2; color: white; border: none; padding: 15px; border-radius: 8px; width: 100%; font-size: 18px; font-weight: bold; margin-top: 20px; cursor: pointer; }
+        button:disabled { background-color: #aeb3ff; }
+        #status { margin-top: 15px; text-align: center; font-weight: 500; color: #606770; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🚚 Fleet Inspection</h2>
+    
+    <label>Driver Full Name</label>
+    <input type="text" id="driverName" placeholder="e.g. John Doe">
+
+    <label>Van # (or Last 4 of VIN)</label>
+    <input type="text" id="vanId" placeholder="e.g. 1234">
+
+    <label>Inspection Type</label>
+    <select id="type">
+        <option value="Precheck">Morning Precheck</option>
+        <option value="Postcheck">Evening Postcheck</option>
+    </select>
+
+    <label>Record Walkaround Video</label>
+    <input type="file" id="videoFile" accept="video/*" capture="environment">
+
+    <button id="submitBtn">Submit Inspection</button>
+    <div id="status">Ready</div>
+</div>
+
+<script>
+    // --- SETUP: Replace with your Webhook URL ---
+    const DISCORD_WEBHOOK_URL = 'PASTE_YOUR_WEBHOOK_URL_HERE';
+
+    const submitBtn = document.getElementById('submitBtn');
+    const status = document.getElementById('status');
+
+    submitBtn.onclick = async () => {
+        const name = document.getElementById('driverName').value;
+        const van = document.getElementById('vanId').value;
+        const type = document.getElementById('type').value;
+        const file = document.getElementById('videoFile').files[0];
+
+        if (!name || !van || !file) {
+            alert("Please fill out all fields and record a video.");
+            return;
+        }
+
+        submitBtn.disabled = true;
+        status.innerText = "⏳ Uploading... Please stay on this page.";
+
+        const formData = new FormData();
+        // This formats the message exactly how your bot expects to see it
+        const messageContent = `**New Inspection Submitted**\n**Driver:** ${name}\n**Vehicle:** ${van}\n**Type:** ${type}`;
+        
+        formData.append('payload_json', JSON.stringify({
+            content: messageContent,
+            username: "Web Portal"
+        }));
+        formData.append('file', file);
+
+        try {
+            const response = await fetch(DISCORD_WEBHOOK_URL, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                status.innerHTML = "✅ **Success!** Video sent to Discord.";
+                status.style.color = "green";
+            } else {
+                throw new Error();
+            }
+        } catch (err) {
+            status.innerHTML = "❌ **Upload Failed.** Check your signal and try again.";
+            status.style.color = "red";
+            submitBtn.disabled = false;
+        }
+    };
+</script>
+
+</body>
+</html>
