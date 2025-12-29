@@ -1,33 +1,13 @@
 {
-<<<<<<< HEAD
-  "name": "slgp-mesh-test",
+  "name": "slgp-fleet-manager-bot",
   "version": "1.0.0",
+  "description": "Fleet Management Bot with SMTP and Web Status",
+  "main": "index.js",
   "scripts": {
-  "start": "node index.js"
-},
-  "dependencies": {
-    "nodemailer": "^6.9.0"
-  }
-}
-=======
-  "name": "slgp-discord-bot",
-  "version": "1.1.0",
-  "private": true,
-  "type": "module",
-  "main": "src/index.js",
-  "scripts": {
-    "start": "node src/index.js",
-    "start:dev": "node --watch src/index.js"
-  },
-  "engines": {
-    "node": ">=20"
+    "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.16.3",
-    "googleapis": "^144.0.0",
-    "luxon": "^3.5.0",
-    "node-cron": "^3.0.3"
+    "nodemailer": "^6.9.0",
+    "express": "^4.18.2"
   }
 }
-
->>>>>>> 304aab6342a94a540d4278a134c8343a7078c49d
