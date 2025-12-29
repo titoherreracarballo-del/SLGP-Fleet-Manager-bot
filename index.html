@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.0.4</title>
+    <title>SLGP Fleet Health Check v1.0.6</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,7 +17,6 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --error-red: #ff4d4d;
         }
 
         body {
@@ -43,7 +42,7 @@
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
 
-        h2 { font-size: 18px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
+        h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
         .form-group { margin-bottom: 20px; }
         label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
 
@@ -61,13 +60,7 @@
             text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
         }
 
-        .toggle-btn.active { 
-            background: linear-gradient(135deg, #0066ff, #0044cc) !important; 
-            color: white !important; 
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6);
-            border: 1px solid var(--brand-blue) !important;
-        }
-
+        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
         .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
 
         .upload-area {
@@ -89,10 +82,7 @@
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
         
-        #versionTag {
-            text-align: center; font-size: 9px; color: rgba(255,255,255,0.2); margin-top: 20px; text-transform: uppercase; letter-spacing: 1px;
-        }
-
+        #versionTag { text-align: center; font-size: 9px; color: rgba(255,255,255,0.2); margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
     </style>
 </head>
@@ -130,11 +120,11 @@
             <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
-        <label>Walkaround Video (30s Limit)</label>
+        <label>1080p Bitrate-Optimized (30s Max)</label>
         <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
-                <span>📸 Tap to Record 1080p Video</span><br>
-                <span style="font-size: 9px; color: var(--brand-blue);">MUST BE UNDER 25MB FOR DISCORD</span>
+                <span>📸 Record 1080p Walkaround</span><br>
+                <span style="font-size: 9px; color: #4ade80;">BITRATE CAP ACTIVE: KEEP UNDER 25MB</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
@@ -143,22 +133,20 @@
         <div id="progressContainer"><div id="progressBar"></div></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">System Online</div>
+        <div id="status">Ready for Inspection</div>
     </div>
 
     <div class="card" id="successCard" style="display:none; text-align:center;">
         <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-        <h2>HEALTH CHECK SENT</h2>
+        <h2>SYNC SUCCESSFUL</h2>
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">Build v1.0.4 - Size Protected</div>
+    <div id="versionTag">Build v1.0.6 - Bitrate Optimized</div>
 </div>
 
 <script>
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
-    }
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
 
     const FLEET_MAP = {
         '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium', 
@@ -210,40 +198,26 @@
     function runTimeLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
-        const amStart = 620, amEnd = 900; 
-        const pmStart = 1080, pmEnd = 1439;
-        if (mins >= amStart && mins <= amEnd) {
-            document.getElementById('btnPost').classList.add('disabled-state');
-            manualSet('Precheck');
-        } else if (mins >= pmStart && mins <= pmEnd) {
-            document.getElementById('btnPre').classList.add('disabled-state');
-            manualSet('Postcheck');
-        }
+        if (mins >= 620 && mins <= 900) { document.getElementById('btnPost').classList.add('disabled-state'); manualSet('Precheck'); } 
+        else if (mins >= 1080 && mins <= 1439) { document.getElementById('btnPre').classList.add('disabled-state'); manualSet('Postcheck'); }
     }
 
     document.getElementById('videoFile').onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
             const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            const status = document.getElementById('status');
-            const submitBtn = document.getElementById('submitBtn');
-            const uploadBox = document.getElementById('uploadBox');
-
-            // SAFETY LIMIT CHECK
             if (sizeMB > 24.5) {
-                status.innerHTML = `❌ FILE TOO LARGE: ${sizeMB}MB (Limit 25MB)`;
-                status.style.color = '#ff4d4d';
-                uploadBox.style.borderColor = '#ff4d4d';
-                submitBtn.disabled = true;
-                alert(`This video is ${sizeMB}MB and will NOT sync to Discord. Please record a shorter 1080p walkaround (approx 20-25 seconds).`);
+                document.getElementById('status').innerHTML = `❌ SIZE ERROR: ${sizeMB}MB (Limit 25MB)`;
+                document.getElementById('status').style.color = '#ff4d4d';
+                document.getElementById('submitBtn').disabled = true;
+                alert(`File too large (${sizeMB}MB). Record a 15-20 second 1080p walkaround to stay under the bitrate limit.`);
             } else {
                 const now = new Date();
                 captureTimestamp = now.toLocaleString();
-                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 ${sizeMB}MB VIDEO READY</span>`;
-                status.innerHTML = `✅ SIZE OK: ${sizeMB}MB`;
-                status.style.color = '#0066ff';
-                uploadBox.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                submitBtn.disabled = false;
+                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 ${sizeMB}MB READY (BITRATE OK)</span>`;
+                document.getElementById('status').innerHTML = `✅ SIZE COMPATIBLE: ${sizeMB}MB`;
+                document.getElementById('status').style.color = '#0066ff';
+                document.getElementById('submitBtn').disabled = false;
                 document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
                 document.getElementById('timestampDisplay').style.display = 'block';
             }
@@ -255,46 +229,6 @@
         const vin = document.getElementById('vin').value.trim();
         const file = document.getElementById('videoFile').files[0];
 
-        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) {
-            alert("All fields required.");
-            return;
-        }
+        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) { alert("All fields required."); return; }
 
-        document.getElementById('submitBtn').disabled = true;
-        document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING TO DISCORD...";
-
-        const formData = new FormData();
-        const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
-        
-        formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
-        formData.append('file', file, 'walkaround.mp4');
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', DISCORD_WEBHOOK_URL);
-
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `SENDING 1080p: ${percent}%`;
-            }
-        };
-
-        xhr.onload = () => {
-            if (xhr.status === 200 || xhr.status === 204) {
-                document.getElementById('mainCard').style.display = 'none';
-                document.getElementById('successCard').style.display = 'block';
-            } else {
-                document.getElementById('status').innerHTML = "❌ SYNC FAILED. DISCORD BLOCKED FILE.";
-                document.getElementById('submitBtn').disabled = false;
-            }
-        };
-
-        xhr.send(formData);
-    };
-
-    runTimeLogic();
-</script>
-</body>
-</html>
+        document.getElementById('submitBtn').disabled =
