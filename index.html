@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
+    <title>SLGP Fleet Health Check</title>
     
     <link rel="apple-touch-icon" href="Final-01.jpg">
     
@@ -70,7 +70,7 @@
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
             border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; position: relative;
         }
-        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); line-height: 1.4; }
 
         #timestampDisplay { text-align: center; font-size: 11px; color: #4ade80; font-weight: bold; margin-bottom: 20px; display: none; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
@@ -92,7 +92,7 @@
     </div>
 
     <div class="card" id="mainCard">
-        <h2>Fleet Inspection</h2>
+        <h2>Fleet Health Check</h2>
         
         <div class="form-group">
             <label>Driver Full Name</label>
@@ -104,7 +104,7 @@
             <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
         </div>
 
-        <label>Vehicle Type</label>
+        <label>Service Type (Auto-Detect)</label>
         <div class="toggle-group" id="groupVehicle">
             <div class="toggle-btn" id="v_EDV">EDV</div>
             <div class="toggle-btn" id="v_CDV">CDV</div>
@@ -118,9 +118,12 @@
             <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
-        <label>Walkaround Video</label>
+        <label>Full-Vehicle Walkaround (30s Limit)</label>
         <div class="upload-area">
-            <div id="fileLabel"><span>📸 Tap to Record Video</span></div>
+            <div id="fileLabel">
+                <span>📸 Tap to Record 1080p Video</span><br>
+                <span style="font-size: 9px; color: var(--brand-blue);">STEP BACK 10FT TO CAPTURE TOP TO BOTTOM</span>
+            </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
@@ -132,39 +135,53 @@
 
     <div class="card" id="successCard" style="display:none; text-align:center;">
         <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-        <h2>REPORT SENT</h2>
+        <h2>HEALTH CHECK SENT</h2>
         <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 </div>
 
 <script>
-    const ACTIVE_FLEET = {
-        EDV: ['7867', '7871', '9412', '7866', '7865', '7860', '9418', '7863', '7859', '7857'],
-        CDV: ['4905', '7097', '5311', '1587', '2347', '3880', '6907', '1369', '1295', '6265', '6188', '1288', '6864'],
-        Cargo: ['1051', '9488', '7088', '1664', '6470', '5030', '3344', '1608', '0341', '1853', '7373', '0876', '8786', '2786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
+    // --- UPDATED FLEET DATA ---
+    const FLEET_MAP = {
+        '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium', 
+        '7866': 'Electric RPV Medium', '7865': 'Electric RPV Medium', '7860': 'Electric RPV Medium', 
+        '9418': 'Electric RPV Medium', '7863': 'Electric RPV Medium', '7859': 'Electric RPV Medium', 
+        '7857': 'Electric RPV Medium',
+        '4905': 'CDV 16ft', '7097': 'CDV 12ft', '5311': 'CDV 16ft', '1587': 'CDV 16ft', 
+        '2347': 'CDV 16ft', '3880': 'CDV 16ft', '6907': 'CDV 12ft', '1369': 'CDV 12ft', 
+        '1295': 'CDV 12ft', '6265': 'CDV 16ft', '6188': 'CDV 14ft', '1288': 'CDV 12ft', '6864': 'CDV 12ft',
+        '1051': 'Extra Large Cargo', '9488': 'Extra Large Cargo', '7088': 'Extra Large Cargo', 
+        '1664': 'Extra Large Cargo', '6470': 'Large Cargo', '5030': 'Extra Large Cargo', 
+        '3344': 'Extra Large Cargo', '1608': 'Extra Large Cargo', '0341': 'Standard Cargo', 
+        '1853': 'Extra Large Cargo', '7373': 'Extra Large Cargo', '0876': 'Standard Cargo', 
+        '8786': 'Extra Large Cargo', '2786': 'Extra Large Cargo', '0213': 'Standard Cargo', 
+        '8929': 'Extra Large Cargo', '9651': 'Extra Large Cargo', '3644': 'Extra Large Cargo', 
+        '3292': 'Extra Large Cargo', '3754': 'Extra Large Cargo', '3645': 'Extra Large Cargo', 
+        '5691': 'Extra Large Cargo', '0576': 'Standard Cargo', '1128': 'Standard Cargo', '7403': 'Extra Large Cargo'
     };
 
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = '';
-    let vehicleType = '';
+    let serviceTypeStr = '';
     let captureTimestamp = '';
     
     function autoDetectVehicle() {
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
         btnList.forEach(b => b.classList.remove('active'));
+        
         if (vinInput.length === 4) {
-            for (const [category, vins] of Object.entries(ACTIVE_FLEET)) {
-                if (vins.includes(vinInput)) {
-                    vehicleType = category;
-                    document.getElementById('v_' + category).classList.add('active');
-                    return;
-                }
+            if (FLEET_MAP[vinInput]) {
+                serviceTypeStr = FLEET_MAP[vinInput];
+                if (serviceTypeStr.includes('Electric')) document.getElementById('v_EDV').classList.add('active');
+                else if (serviceTypeStr.includes('CDV')) document.getElementById('v_CDV').classList.add('active');
+                else document.getElementById('v_Cargo').classList.add('active');
+            } else {
+                serviceTypeStr = 'Rental/External';
+                document.getElementById('v_Rental').classList.add('active');
             }
-            vehicleType = 'Rental';
-            document.getElementById('v_Rental').classList.add('active');
         }
     }
 
@@ -190,13 +207,13 @@
     }
 
     document.getElementById('videoFile').onchange = (e) => {
-        if (e.target.files.length > 0) {
+        const file = e.target.files[0];
+        if (file) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
-            const timeDisplay = document.getElementById('timestampDisplay');
-            timeDisplay.innerText = "Timestamp: " + captureTimestamp;
-            timeDisplay.style.display = 'block';
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p VIDEO CAPTURED</span>`;
+            document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
+            document.getElementById('timestampDisplay').style.display = 'block';
         }
     };
 
@@ -205,18 +222,18 @@
         const vin = document.getElementById('vin').value.trim();
         const file = document.getElementById('videoFile').files[0];
 
-        if (!name || !vin || !file || !inspectionType || !vehicleType) {
+        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) {
             alert("All fields required.");
             return;
         }
 
         document.getElementById('submitBtn').disabled = true;
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING...";
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING 1080p DATA...";
 
         const formData = new FormData();
-        const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
+        const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
-        formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Portal" }));
+        formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
         formData.append('file', file);
 
         try {
@@ -226,7 +243,7 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO TOO LARGE.";
+            document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO MAY BE TOO LARGE.";
             document.getElementById('submitBtn').disabled = false;
         }
     };
