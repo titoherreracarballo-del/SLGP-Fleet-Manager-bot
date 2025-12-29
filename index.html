@@ -60,7 +60,6 @@
             text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
         }
 
-        /* Forced Active State */
         .toggle-btn.active { 
             background: linear-gradient(135deg, #0066ff, #0044cc) !important; 
             color: white !important; 
@@ -69,11 +68,7 @@
             opacity: 1 !important;
         }
 
-        /* Greyed out State */
-        .toggle-btn.disabled-state {
-            opacity: 0.15;
-            pointer-events: none;
-        }
+        .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -138,7 +133,7 @@
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">System Online</div>
+        <div id="status">System Syncing...</div>
     </div>
 
     <div class="card success-screen" id="successCard">
@@ -157,6 +152,7 @@
         Cargo: ['1051', '9488', '7088', '1664', '6470', '5030', '3344', '1608', '0341', '1853', '7373', '0876', '8786', '2786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
     };
 
+    // --- SYNCED DISCORD WEBHOOK ---
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = '';
@@ -189,11 +185,8 @@
     function runTimeLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
-
-        // AM Schedule: 10:20 AM - 3:00 PM
-        const amStart = 620, amEnd = 900;
-        // PM Schedule: 6:00 PM - 11:59 PM
-        const pmStart = 1080, pmEnd = 1439;
+        const amStart = 620, amEnd = 900; // 10:20 AM - 3:00 PM
+        const pmStart = 1080, pmEnd = 1439; // 6:00 PM - 11:59 PM
 
         const btnPre = document.getElementById('btnPre');
         const btnPost = document.getElementById('btnPost');
@@ -207,7 +200,7 @@
             manualSet('Postcheck');
             document.getElementById('status').innerText = "SCHEDULE: POSTCHECK ONLY";
         } else {
-            document.getElementById('status').innerText = "SYSTEM ACTIVE - SELECT TYPE";
+            document.getElementById('status').innerText = "SYSTEM ACTIVE";
         }
     }
 
@@ -228,12 +221,12 @@
         const file = document.getElementById('videoFile').files[0];
 
         if (!name || !vin || !file || !inspectionType || !vehicleType) {
-            alert("All fields required: Name, 4-digit VIN, and Walkaround Video.");
+            alert("Please complete Name, VIN, and record a video.");
             return;
         }
 
         document.getElementById('submitBtn').disabled = true;
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING...";
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING TO DISCORD...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
@@ -248,7 +241,7 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ FAILED. CHECK SIGNAL.";
+            document.getElementById('status').innerHTML = "❌ SYNC FAILED. CHECK SIGNAL.";
             document.getElementById('submitBtn').disabled = false;
         }
     };
