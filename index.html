@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SLGP Fleet Portal</title>
     
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SLGP Fleet">
-    <link rel="apple-touch-icon" href="Final-01.jpg">
-    
     <style>
         :root {
             --brand-blue: #0066ff;
@@ -17,143 +12,74 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --disabled: rgba(255, 255, 255, 0.05);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, system-ui, sans-serif;
             background-color: var(--brand-dark);
             background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
             color: var(--text-main);
-            margin: 0;
-            padding: 15px;
-            display: flex;
-            justify-content: center;
-            min-height: 100vh;
+            margin: 0; padding: 15px;
+            display: flex; justify-content: center; min-height: 100vh;
         }
 
-        .container { width: 100%; max-width: 420px; margin-top: 10px; }
-
-        .logo-container { text-align: center; margin-bottom: 20px; }
-        .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+        .container { width: 100%; max-width: 420px; }
+        .logo-container { text-align: center; margin: 20px 0; }
+        .logo-container img { width: 100%; max-width: 250px; }
 
         .card {
             background: var(--card-bg);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 28px;
             padding: 25px;
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
 
-        h2 {
-            font-size: 18px;
-            font-weight: 800;
+        .info-pill {
+            background: rgba(0, 102, 255, 0.2);
+            border: 1px solid var(--brand-blue);
+            padding: 10px;
+            border-radius: 12px;
             text-align: center;
-            margin: 0 0 20px 0;
-            letter-spacing: 1px;
-            color: var(--brand-blue);
-            text-transform: uppercase;
+            margin-bottom: 20px;
+            font-weight: bold;
+            display: none; /* Hidden unless QR is used */
         }
 
         .form-group { margin-bottom: 20px; }
+        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; }
         
-        label {
-            display: block;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--brand-blue);
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
+        input[type="text"] {
+            width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            color: white; font-size: 16px; box-sizing: border-box;
         }
 
-        input[type="text"], input[type="tel"] {
-            width: 100%;
-            padding: 16px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1.5px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-            box-sizing: border-box;
-            transition: all 0.3s ease;
-        }
-
-        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-
+        .toggle-group { display: flex; gap: 8px; margin-bottom: 20px; }
         .toggle-btn {
-            flex: 1 1 calc(50% - 8px);
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: var(--text-dim);
-            font-weight: 700;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            font-size: 11px;
+            flex: 1; padding: 14px; background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            color: var(--text-dim); font-weight: 700; text-align: center; text-transform: uppercase; font-size: 11px;
         }
-
-        .toggle-btn.active {
-            background: linear-gradient(135deg, #0066ff, #0044cc);
-            color: white;
-            border-color: var(--brand-blue);
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
-        }
-
-        .toggle-btn.locked {
-            opacity: 0.2;
-            cursor: not-allowed;
-            background: var(--disabled);
-        }
+        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; }
+        .toggle-btn.locked { opacity: 0.2; cursor: not-allowed; }
 
         .upload-area {
-            background: rgba(255, 255, 255, 0.02);
-            border: 2px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 14px;
-            padding: 25px 15px;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 15px;
-            position: relative;
+            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 14px; padding: 30px; text-align: center; margin-bottom: 15px; position: relative;
         }
+        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; }
 
-        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); }
-
-        #timestampDisplay {
-            text-align: center;
-            font-size: 12px;
-            color: #4ade80;
-            font-weight: bold;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+        #timestampDisplay { text-align: center; font-size: 11px; color: #4ade80; font-weight: bold; margin-bottom: 15px; display: none; }
 
         #submitBtn {
             background: linear-gradient(135deg, #0066ff, #0044cc);
-            color: white;
-            border: none;
-            padding: 18px;
-            border-radius: 14px;
-            width: 100%;
-            font-size: 15px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            cursor: pointer;
+            color: white; border: none; padding: 18px; border-radius: 14px;
+            width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase;
         }
-
-        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
-
+        #submitBtn:disabled { opacity: 0.5; }
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
-
-        .success-screen { text-align: center; display: none; padding: 40px 20px; }
     </style>
 </head>
 <body>
@@ -164,24 +90,16 @@
     </div>
 
     <div class="card" id="mainCard">
-        <h2>Fleet Inspection</h2>
-        
+        <div id="qrInfo" class="info-pill"></div>
+
         <div class="form-group">
             <label>Driver Full Name</label>
             <input type="text" id="driverName" placeholder="Full Name">
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="manualVinGroup">
             <label>Last 4 of VIN</label>
-            <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
-        </div>
-
-        <label>Vehicle Type (Auto-Detect)</label>
-        <div class="toggle-group" id="groupVehicle">
-            <div class="toggle-btn" id="v_EDV">EDV</div>
-            <div class="toggle-btn" id="v_CDV">CDV</div>
-            <div class="toggle-btn" id="v_Cargo">Cargo</div>
-            <div class="toggle-btn" id="v_Rental">Rental</div>
+            <input type="text" id="vin" placeholder="Type 4 digits" maxlength="4">
         </div>
 
         <label>Inspection Type</label>
@@ -192,9 +110,7 @@
 
         <label>Walkaround Video</label>
         <div class="upload-area">
-            <div id="fileLabel">
-                <span>📸 Tap to Record Video</span>
-            </div>
+            <span id="fileLabel">📸 Tap to Record Video</span>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
@@ -203,47 +119,27 @@
         <button id="submitBtn">SUBMIT TO DISCORD</button>
         <div id="status">Checking schedule...</div>
     </div>
-
-    <div class="card success-screen" id="successCard">
-        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-        <h2>REPORT SENT</h2>
-        <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
-    </div>
 </div>
 
 <script>
-    const ACTIVE_FLEET = {
-        EDV: ['7867', '7871', '9412', '7866', '7865', '27860', '29418', '27863', '27859', '27857'],
-        CDV: ['1206', '7097', '5311', '5187', '2347', '3880', '6907', '1295', '6265', '1288', '6864'],
-        Cargo: ['1051', '4905', '9488', '7088', '1664', '3010', '3344', '0890', '0341', '1853', '7373', '0876', '8786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
-    };
-
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = '';
-    let vehicleType = '';
+    let autoVin = '';
+    let autoType = '';
     let captureTimestamp = '';
-    
-    const submitBtn = document.getElementById('submitBtn');
-    const videoInput = document.getElementById('videoFile');
-    const statusMsg = document.getElementById('status');
-    const timeDisplay = document.getElementById('timestampDisplay');
 
-    function autoDetectVehicle() {
-        const vinInput = document.getElementById('vin').value;
-        const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
-        btnList.forEach(b => b.classList.remove('active'));
-        if (vinInput.length === 4) {
-            for (const [category, vins] of Object.entries(ACTIVE_FLEET)) {
-                if (vins.includes(vinInput)) {
-                    vehicleType = category;
-                    document.getElementById('v_' + category).classList.add('active');
-                    return;
-                }
-            }
-            vehicleType = 'Rental';
-            document.getElementById('v_Rental').classList.add('active');
+    // --- AUTO-READ QR PARAMETERS ---
+    function loadFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        autoVin = params.get('vin');
+        autoType = params.get('type');
+
+        if (autoVin && autoType) {
+            document.getElementById('manualVinGroup').style.display = 'none';
+            const info = document.getElementById('qrInfo');
+            info.innerText = `VEHICLE IDENTIFIED: ${autoType} (VIN: ${autoVin})`;
+            info.style.display = 'block';
         }
     }
 
@@ -261,16 +157,14 @@
         if (mins >= amStart && mins <= amEnd) {
             btnPost.classList.add('locked');
             setType('Precheck');
-            statusMsg.innerText = "AM SCHEDULE ACTIVE: PRECHECK ONLY";
+            document.getElementById('status').innerText = "AM SCHEDULE ACTIVE: PRECHECK ONLY";
         } else if (mins >= pmStart && mins <= pmEnd) {
             btnPre.classList.add('locked');
             setType('Postcheck');
-            statusMsg.innerText = "PM SCHEDULE ACTIVE: POSTCHECK ONLY";
+            document.getElementById('status').innerText = "PM SCHEDULE ACTIVE: POSTCHECK ONLY";
         } else {
-            btnPre.classList.add('locked'); btnPost.classList.add('locked');
-            submitBtn.disabled = true;
-            statusMsg.innerText = "OFF-SCHEDULE: PORTAL CLOSED";
-            statusMsg.style.color = "#ff4d4d";
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('status').innerText = "OFF-SCHEDULE: PORTAL CLOSED";
         }
     }
 
@@ -281,55 +175,45 @@
         document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
     }
 
-    // AUTOMATED TIME AND DATE STAMP LOGIC
-    videoInput.onchange = () => {
-        if (videoInput.files.length > 0) {
+    document.getElementById('videoFile').onchange = (e) => {
+        if (e.target.files.length > 0) {
             const now = new Date();
-            captureTimestamp = now.toLocaleString('en-US', { 
-                weekday: 'short', month: 'short', day: 'numeric', 
-                year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
-            });
-            
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
-            timeDisplay.innerText = "Timestamp: " + captureTimestamp;
-            timeDisplay.style.display = 'block';
+            captureTimestamp = now.toLocaleString();
+            document.getElementById('timestampDisplay').innerText = "Recorded: " + captureTimestamp;
+            document.getElementById('timestampDisplay').style.display = 'block';
+            document.getElementById('fileLabel').innerText = "📹 VIDEO READY";
         }
     };
 
-    submitBtn.onclick = async () => {
-        const name = document.getElementById('driverName').value.trim();
-        const vin = document.getElementById('vin').value.trim();
-        const file = videoInput.files[0];
+    document.getElementById('submitBtn').onclick = async () => {
+        const name = document.getElementById('driverName').value;
+        const vin = autoVin || document.getElementById('vin').value;
+        const file = document.getElementById('videoFile').files[0];
 
-        if (!name || !vin || !file || !vehicleType || !inspectionType) {
-            alert("Ensure Name, VIN, and Video are complete.");
+        if (!name || !vin || !file) {
+            alert("Please complete all steps.");
             return;
         }
 
-        submitBtn.disabled = true;
-        statusMsg.innerHTML = "⏳ TRANSMITTING...";
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('status').innerText = "⏳ TRANSMITTING...";
 
         const formData = new FormData();
-        const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
+        const content = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
-        formData.append('payload_json', JSON.stringify({
-            content: messageContent,
-            username: "SLGP Fleet Portal"
-        }));
+        formData.append('payload_json', JSON.stringify({ content: content, username: "SLGP Fleet Portal" }));
         formData.append('file', file);
 
         try {
-            const response = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
-            if (response.ok) {
-                document.getElementById('mainCard').style.display = 'none';
-                document.getElementById('successCard').style.display = 'block';
-            } else { throw new Error(); }
+            const res = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
+            if (res.ok) location.reload();
         } catch (err) {
-            statusMsg.innerHTML = "❌ UPLOAD FAILED.";
-            submitBtn.disabled = false;
+            document.getElementById('status').innerText = "❌ FAILED. TRY AGAIN.";
+            document.getElementById('submitBtn').disabled = false;
         }
     };
 
+    loadFromUrl();
     checkTimeLock();
 </script>
 </body>
