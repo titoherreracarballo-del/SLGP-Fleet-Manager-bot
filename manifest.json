@@ -1,0 +1,15 @@
+{
+  "name": "SLGP Fleet Health Check",
+  "short_name": "SLGP Health",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0a0e17",
+  "theme_color": "#0066ff",
+  "icons": [
+    {
+      "src": "Final-01.jpg",
+      "sizes": "512x512",
+      "type": "image/jpg"
+    }
+  ]
+}
