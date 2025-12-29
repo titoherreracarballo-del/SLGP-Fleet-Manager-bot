@@ -17,6 +17,7 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
+            --disabled: rgba(255, 255, 255, 0.05);
         }
 
         body {
@@ -80,8 +81,6 @@
             transition: all 0.3s ease;
         }
 
-        input:focus { border-color: var(--brand-blue); outline: none; background: rgba(0, 0, 0, 0.6); }
-
         .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 
         .toggle-btn {
@@ -106,6 +105,12 @@
             box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
         }
 
+        .toggle-btn.locked {
+            opacity: 0.2;
+            cursor: not-allowed;
+            background: var(--disabled);
+        }
+
         .upload-area {
             background: rgba(255, 255, 255, 0.02);
             border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -113,11 +118,20 @@
             padding: 25px 15px;
             text-align: center;
             cursor: pointer;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
             position: relative;
         }
 
-        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); display: flex; flex-direction: column; gap: 5px; }
+        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+
+        #timestampDisplay {
+            text-align: center;
+            font-size: 12px;
+            color: #4ade80;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: none;
+        }
 
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
@@ -133,15 +147,13 @@
             text-transform: uppercase;
             letter-spacing: 1.2px;
             cursor: pointer;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
         }
 
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
 
-        #status { margin-top: 15px; text-align: center; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+        #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
 
         .success-screen { text-align: center; display: none; padding: 40px 20px; }
-        .success-icon { font-size: 60px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -161,73 +173,126 @@
 
         <div class="form-group">
             <label>Last 4 of VIN</label>
-            <input type="tel" id="vin" placeholder="e.g. 1234" maxlength="4" pattern="\d*">
+            <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
         </div>
 
-        <label>Vehicle Type</label>
+        <label>Vehicle Type (Auto-Detect)</label>
         <div class="toggle-group" id="groupVehicle">
-            <div class="toggle-btn active" onclick="setVehicle('CDV')">CDV</div>
-            <div class="toggle-btn" onclick="setVehicle('Cargo')">Cargo</div>
-            <div class="toggle-btn" onclick="setVehicle('EDV')">EDV</div>
-            <div class="toggle-btn" onclick="setVehicle('Rental')">Rental</div>
+            <div class="toggle-btn" id="v_EDV">EDV</div>
+            <div class="toggle-btn" id="v_CDV">CDV</div>
+            <div class="toggle-btn" id="v_Cargo">Cargo</div>
+            <div class="toggle-btn" id="v_Rental">Rental</div>
         </div>
 
         <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
-            <div class="toggle-btn active" onclick="setType('Precheck')">Precheck</div>
-            <div class="toggle-btn" onclick="setType('Postcheck')">Postcheck</div>
+            <div class="toggle-btn" id="btnPre" onclick="setType('Precheck')">Precheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
         </div>
 
         <label>Walkaround Video</label>
         <div class="upload-area">
             <div id="fileLabel">
                 <span>📸 Tap to Record Video</span>
-                <span style="font-size: 9px; color: #666;">(Max 35 Seconds • HD Only)</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
+        <div id="timestampDisplay"></div>
+
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">📡 SECURE FLEET LINK ACTIVE</div>
+        <div id="status">Checking schedule...</div>
     </div>
 
     <div class="card success-screen" id="successCard">
-        <div class="success-icon">✅</div>
-        <h2 style="color: white; margin-bottom: 12px;">REPORT SENT</h2>
-        <p style="color: var(--text-dim); margin-bottom: 30px; line-height: 1.5; font-size: 14px;">Your inspection has been transmitted to Discord.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; font-weight: 700; text-transform: uppercase; font-size: 11px;">New Submission</button>
+        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+        <h2>REPORT SENT</h2>
+        <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 </div>
 
 <script>
-    // --- STEP 1: ADD YOUR ACTIVE VINS HERE ---
-    // Example: const ACTIVE_VINS = ['1234', '5678', '9012'];
-    const ACTIVE_VINS = ['1234', '5678']; 
+    const ACTIVE_FLEET = {
+        EDV: ['7867', '7871', '9412', '7866', '7865', '27860', '29418', '27863', '27859', '27857'],
+        CDV: ['1206', '7097', '5311', '5187', '2347', '3880', '6907', '1295', '6265', '1288', '6864'],
+        Cargo: ['1051', '4905', '9488', '7088', '1664', '3010', '3344', '0890', '0341', '1853', '7373', '0876', '8786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
+    };
 
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
-    let inspectionType = 'Precheck';
-    let vehicleType = 'CDV';
+    let inspectionType = '';
+    let vehicleType = '';
+    let captureTimestamp = '';
     
     const submitBtn = document.getElementById('submitBtn');
     const videoInput = document.getElementById('videoFile');
-    const fileLabel = document.getElementById('fileLabel');
+    const statusMsg = document.getElementById('status');
+    const timeDisplay = document.getElementById('timestampDisplay');
+
+    function autoDetectVehicle() {
+        const vinInput = document.getElementById('vin').value;
+        const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
+        btnList.forEach(b => b.classList.remove('active'));
+        if (vinInput.length === 4) {
+            for (const [category, vins] of Object.entries(ACTIVE_FLEET)) {
+                if (vins.includes(vinInput)) {
+                    vehicleType = category;
+                    document.getElementById('v_' + category).classList.add('active');
+                    return;
+                }
+            }
+            vehicleType = 'Rental';
+            document.getElementById('v_Rental').classList.add('active');
+        }
+    }
+
+    function checkTimeLock() {
+        const now = new Date();
+        const mins = (now.getHours() * 60) + now.getMinutes();
+        const amStart = (10 * 60) + 20; // 10:20 AM
+        const amEnd = (15 * 60);        // 3:00 PM
+        const pmStart = (18 * 60);      // 6:00 PM
+        const pmEnd = (23 * 60) + 59;   // 11:59 PM
+
+        const btnPre = document.getElementById('btnPre');
+        const btnPost = document.getElementById('btnPost');
+
+        if (mins >= amStart && mins <= amEnd) {
+            btnPost.classList.add('locked');
+            setType('Precheck');
+            statusMsg.innerText = "AM SCHEDULE ACTIVE: PRECHECK ONLY";
+        } else if (mins >= pmStart && mins <= pmEnd) {
+            btnPre.classList.add('locked');
+            setType('Postcheck');
+            statusMsg.innerText = "PM SCHEDULE ACTIVE: POSTCHECK ONLY";
+        } else {
+            btnPre.classList.add('locked'); btnPost.classList.add('locked');
+            submitBtn.disabled = true;
+            statusMsg.innerText = "OFF-SCHEDULE: PORTAL CLOSED";
+            statusMsg.style.color = "#ff4d4d";
+        }
+    }
 
     function setType(type) {
+        if (document.getElementById('btn' + type).classList.contains('locked')) return;
         inspectionType = type;
-        const btns = document.querySelectorAll('#groupType .toggle-btn');
-        btns.forEach(b => b.classList.toggle('active', b.innerText.toLowerCase() === type.toLowerCase()));
+        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
+        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
     }
 
-    function setVehicle(v) {
-        vehicleType = v;
-        const btns = document.querySelectorAll('#groupVehicle .toggle-btn');
-        btns.forEach(b => b.classList.toggle('active', b.innerText.toUpperCase() === v.toUpperCase()));
-    }
-
+    // AUTOMATED TIME AND DATE STAMP LOGIC
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
-            fileLabel.innerHTML = `<span style="color: #4ade80;">📹 VIDEO READY</span>`;
+            const now = new Date();
+            captureTimestamp = now.toLocaleString('en-US', { 
+                weekday: 'short', month: 'short', day: 'numeric', 
+                year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
+            });
+            
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
+            timeDisplay.innerText = "Timestamp: " + captureTimestamp;
+            timeDisplay.style.display = 'block';
         }
     };
 
@@ -236,28 +301,16 @@
         const vin = document.getElementById('vin').value.trim();
         const file = videoInput.files[0];
 
-        // Validation logic
-        if (!name || !vin || !file) {
-            alert("All fields are required.");
-            return;
-        }
-
-        if (vin.length !== 4) {
-            alert("VIN must be exactly the last 4 digits.");
-            return;
-        }
-
-        // --- VIN LIST CHECK ---
-        if (!ACTIVE_VINS.includes(vin)) {
-            alert("This VIN is not recognized as an active vehicle. Please check the number or contact dispatch.");
+        if (!name || !vin || !file || !vehicleType || !inspectionType) {
+            alert("Ensure Name, VIN, and Video are complete.");
             return;
         }
 
         submitBtn.disabled = true;
-        document.getElementById('status').innerHTML = "<span style='color: #0066ff;'>⏳ UPLOADING...</span>";
+        statusMsg.innerHTML = "⏳ TRANSMITTING...";
 
         const formData = new FormData();
-        const messageContent = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Time:** ${new Date().toLocaleString()}`;
+        const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({
             content: messageContent,
@@ -272,11 +325,12 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "<span style='color: #ff4d4d;'>❌ UPLOAD FAILED. CHECK SIGNAL.</span>";
+            statusMsg.innerHTML = "❌ UPLOAD FAILED.";
             submitBtn.disabled = false;
         }
     };
-</script>
 
+    checkTimeLock();
+</script>
 </body>
 </html>
