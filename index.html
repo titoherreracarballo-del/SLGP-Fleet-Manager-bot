@@ -121,19 +121,21 @@
         <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
             <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
         </div>
 
         <label>Walkaround Video</label>
         <div class="upload-area">
-            <div id="fileLabel"><span>📸 Tap to Record Video</span></div>
-            <input type="file" id="videoFile" accept="video/*" capture="environment">
+            <div id="fileLabel"><span>📸 Tap to Record 720p HD Video</span></div>
+            <input type="file" id="videoFile" accept="video/*" capture="environment" 
+                   style="height: 100%;" 
+                   data-quality="720p">
         </div>
 
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">System Syncing...</div>
+        <div id="status">Syncing schedule...</div>
     </div>
 
     <div class="card success-screen" id="successCard">
@@ -145,14 +147,12 @@
 </div>
 
 <script>
-    // --- FLEET DATA ---
     const ACTIVE_FLEET = {
         EDV: ['7867', '7871', '9412', '7866', '7865', '7860', '9418', '7863', '7859', '7857'],
         CDV: ['4905', '7097', '5311', '1587', '2347', '3880', '6907', '1369', '1295', '6265', '6188', '1288', '6864'],
         Cargo: ['1051', '9488', '7088', '1664', '6470', '5030', '3344', '1608', '0341', '1853', '7373', '0876', '8786', '2786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
     };
 
-    // --- SYNCED DISCORD WEBHOOK ---
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
 
     let inspectionType = '';
@@ -185,8 +185,8 @@
     function runTimeLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
-        const amStart = 620, amEnd = 900; // 10:20 AM - 3:00 PM
-        const pmStart = 1080, pmEnd = 1439; // 6:00 PM - 11:59 PM
+        const amStart = 620, amEnd = 900;
+        const pmStart = 1080, pmEnd = 1439;
 
         const btnPre = document.getElementById('btnPre');
         const btnPost = document.getElementById('btnPost');
@@ -208,7 +208,7 @@
         if (e.target.files.length > 0) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 HD VIDEO CAPTURED</span>`;
             const timeDisplay = document.getElementById('timestampDisplay');
             timeDisplay.innerText = "Timestamp: " + captureTimestamp;
             timeDisplay.style.display = 'block';
@@ -226,7 +226,7 @@
         }
 
         document.getElementById('submitBtn').disabled = true;
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING TO DISCORD...";
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING HD DATA...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
