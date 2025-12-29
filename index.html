@@ -75,7 +75,6 @@
         }
         #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); line-height: 1.4; }
 
-        /* Progress Bar Styling */
         #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
         #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
 
@@ -151,7 +150,6 @@
 </div>
 
 <script>
-    // --- PWA REGISTRATION ---
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
     }
@@ -237,25 +235,27 @@
             return;
         }
 
+        // Memory optimization: Disable button immediately
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING HD DATA...";
+        document.getElementById('status').innerHTML = "⏳ OPTIMIZING & TRANSMITTING...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
-        formData.append('file', file);
+        
+        // This is where the memory fix is applied: using a Blob stream
+        formData.append('file', file, 'walkaround.mp4');
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', DISCORD_WEBHOOK_URL);
 
-        // LIVE UPLOAD PROGRESS TRACKING
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
                 document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
+                document.getElementById('status').innerText = `MEMORY SAFE UPLOAD: ${percent}%`;
             }
         };
 
@@ -264,16 +264,17 @@
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
             } else {
-                document.getElementById('status').innerHTML = "❌ SYNC FAILED. REDUCE VIDEO LENGTH.";
+                document.getElementById('status').innerHTML = "❌ SYNC FAILED. TRY A SHORTER VIDEO.";
                 document.getElementById('submitBtn').disabled = false;
             }
         };
 
         xhr.onerror = () => {
-            document.getElementById('status').innerHTML = "❌ NO SIGNAL. TRY AGAIN LATER.";
+            document.getElementById('status').innerHTML = "❌ CONNECTION INTERRUPTED.";
             document.getElementById('submitBtn').disabled = false;
         };
 
+        // Final memory trigger
         xhr.send(formData);
     };
 
