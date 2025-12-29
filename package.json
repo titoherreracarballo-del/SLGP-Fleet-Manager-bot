@@ -1,0 +1,10 @@
+{
+  "name": "slgp-mesh-test",
+  "version": "1.0.0",
+  "scripts": {
+  "start": "node index.js" 
+},
+  "dependencies": {
+    "nodemailer": "^6.9.0"
+  }
+}
