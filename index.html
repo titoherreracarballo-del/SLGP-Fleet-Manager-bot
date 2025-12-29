@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
+    <title>SLGP Fleet Health Check v1.1.1</title>
     
+    <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SLGP Fleet">
     <link rel="apple-touch-icon" href="Final-01.jpg">
     
     <style>
@@ -17,7 +17,6 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --warning: #ff9d00;
             --error: #ff4d4d;
         }
 
@@ -26,15 +25,11 @@
             background-color: var(--brand-dark);
             background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
             color: var(--text-main);
-            margin: 0;
-            padding: 15px;
-            display: flex;
-            justify-content: center;
-            min-height: 100vh;
+            margin: 0; padding: 15px;
+            display: flex; justify-content: center; min-height: 100vh;
         }
 
-        .container { width: 100%; max-width: 420px; margin-top: 10px; }
-
+        .container { width: 100%; max-width: 420px; margin-top: 10px; position: relative; }
         .logo-container { text-align: center; margin-bottom: 20px; }
         .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
 
@@ -48,103 +43,48 @@
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
 
-        h2 {
-            font-size: 18px;
-            font-weight: 800;
-            text-align: center;
-            margin: 0 0 20px 0;
-            letter-spacing: 1px;
-            color: var(--brand-blue);
-            text-transform: uppercase;
-        }
-
+        h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
         .form-group { margin-bottom: 20px; }
-        
-        label {
-            display: block;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--brand-blue);
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-        }
+        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
 
         input[type="text"], input[type="tel"] {
-            width: 100%;
-            padding: 16px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1.5px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-            box-sizing: border-box;
-            transition: all 0.3s ease;
+            width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            color: white; font-size: 16px; box-sizing: border-box; outline: none;
         }
 
         .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-
         .toggle-btn {
-            flex: 1 1 calc(50% - 8px);
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: var(--text-dim);
-            font-weight: 700;
-            text-align: center;
-            cursor: pointer;
-            text-transform: uppercase;
-            font-size: 11px;
+            flex: 1 1 calc(50% - 8px); padding: 14px;
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px; color: var(--text-dim); font-weight: 700;
+            text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
         }
 
-        .toggle-btn.active {
-            background: linear-gradient(135deg, #0066ff, #0044cc);
-            color: white;
-            border-color: var(--brand-blue);
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
-        }
-
-        .toggle-btn.locked {
-            opacity: 0.2;
-            cursor: not-allowed;
-            background: rgba(255,255,255,0.02);
-        }
+        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
+        .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; border-color: transparent !important; }
 
         .upload-area {
-            background: rgba(255, 255, 255, 0.02);
-            border: 2px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 14px;
-            padding: 25px 15px;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 25px;
-            position: relative;
+            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; position: relative;
         }
+        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); line-height: 1.4; }
 
-        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+        #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
 
+        #timestampDisplay { text-align: center; font-size: 11px; color: #4ade80; font-weight: bold; margin-bottom: 20px; display: none; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
         #submitBtn {
             background: linear-gradient(135deg, #0066ff, #0044cc);
-            color: white;
-            border: none;
-            padding: 18px;
-            border-radius: 14px;
-            width: 100%;
-            font-size: 15px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            cursor: pointer;
+            color: white; border: none; padding: 18px; border-radius: 14px;
+            width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer;
         }
-
-        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
-
+        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+        
+        #versionTag { text-align: center; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.3); margin-top: 25px; text-transform: uppercase; letter-spacing: 1.5px; }
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
-
-        .success-screen { text-align: center; display: none; padding: 40px 20px; }
     </style>
 </head>
 <body>
@@ -155,165 +95,196 @@
     </div>
 
     <div class="card" id="mainCard">
-        <h2>Fleet Inspection</h2>
+        <h2>Fleet Health Check</h2>
         
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Full Name">
+            <input type="text" id="driverName" placeholder="Enter your name">
         </div>
 
         <div class="form-group">
             <label>Last 4 of VIN</label>
-            <input type="tel" id="vin" placeholder="e.g. 1234" maxlength="4" pattern="\d*">
+            <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
         </div>
 
-        <label>Vehicle Type</label>
+        <label>Service Type (Auto-Detect)</label>
         <div class="toggle-group" id="groupVehicle">
-            <div class="toggle-btn active" onclick="setVehicle('CDV')">CDV</div>
-            <div class="toggle-btn" onclick="setVehicle('Cargo')">Cargo</div>
-            <div class="toggle-btn" onclick="setVehicle('EDV')">EDV</div>
-            <div class="toggle-btn" onclick="setVehicle('Rental')">Rental</div>
+            <div class="toggle-btn" id="v_EDV">EDV</div>
+            <div class="toggle-btn" id="v_CDV">CDV</div>
+            <div class="toggle-btn" id="v_Cargo">Cargo</div>
+            <div class="toggle-btn" id="v_Rental">Rental</div>
         </div>
 
         <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
-            <div class="toggle-btn" id="btnPre" onclick="setType('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+            <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
-        <label>Walkaround Video</label>
-        <div class="upload-area">
+        <label>720p HD Sync (35s Max)</label>
+        <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
-                <span>📸 Tap to Record Video</span>
-                <br>
-                <span style="font-size: 10px; color: var(--warning);">(Required: 720p HD Only)</span>
+                <span>📸 Record 720p HD Video</span><br>
+                <span style="font-size: 9px; color: #4ade80;">STABLE UPLOAD SETTINGS: MAX 25MB</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
+        <div id="timestampDisplay"></div>
+        <div id="progressContainer"><div id="progressBar"></div></div>
+
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Verifying Schedule...</div>
+        <div id="status">System Online</div>
     </div>
 
-    <div class="card success-screen" id="successCard">
-        <h1 style="font-size: 60px;">✅</h1>
-        <h2>REPORT SENT</h2>
-        <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px;">New Submission</button>
+    <div class="card" id="successCard" style="display:none; text-align:center; padding: 50px 20px;">
+        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+        <h2>SYNC SUCCESSFUL</h2>
+        <p style="color: var(--text-dim); font-size: 14px;">Vehicle report transmitted to Discord.</p>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 15px 30px; border-radius: 12px; margin-top: 20px; font-weight: bold;">New Submission</button>
     </div>
+
+    <div id="versionTag">BUILD VERSION: v1.1.1 - 720p Stable</div>
 </div>
 
 <script>
+    // Fleet Database
+    const FLEET_MAP = {
+        '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium',
+        '7866': 'Electric RPV Medium', '7865': 'Electric RPV Medium', '7860': 'Electric RPV Medium',
+        '9418': 'Electric RPV Medium', '7863': 'Electric RPV Medium', '7859': 'Electric RPV Medium',
+        '7857': 'Electric RPV Medium',
+        '4905': 'CDV 16ft', '7097': 'CDV 12ft', '5311': 'CDV 16ft', '1587': 'CDV 16ft',
+        '2347': 'CDV 16ft', '3880': 'CDV 16ft', '6907': 'CDV 12ft', '1369': 'CDV 12ft',
+        '1295': 'CDV 12ft', '6265': 'CDV 16ft', '6188': 'CDV 14ft', '1288': 'CDV 12ft', '6864': 'CDV 12ft',
+        '1051': 'Extra Large Cargo', '9488': 'Extra Large Cargo', '7088': 'Extra Large Cargo',
+        '1664': 'Extra Large Cargo', '6470': 'Large Cargo', '5030': 'Extra Large Cargo',
+        '3344': 'Extra Large Cargo', '1608': 'Extra Large Cargo', '0341': 'Standard Cargo',
+        '1853': 'Extra Large Cargo', '7373': 'Extra Large Cargo', '0876': 'Standard Cargo',
+        '8786': 'Extra Large Cargo', '2786': 'Extra Large Cargo', '0213': 'Standard Cargo',
+        '8929': 'Extra Large Cargo', '9651': 'Extra Large Cargo', '3644': 'Extra Large Cargo',
+        '3292': 'Extra Large Cargo', '3754': 'Extra Large Cargo', '3645': 'Extra Large Cargo',
+        '5691': 'Extra Large Cargo', '0576': 'Standard Cargo', '1128': 'Standard Cargo', '7403': 'Extra Large Cargo'
+    };
+
     const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
-    const MAX_FILE_SIZE_MB = 25; // Discord limit
 
     let inspectionType = '';
-    let vehicleType = 'CDV';
+    let serviceTypeStr = '';
+    let captureTimestamp = '';
     
-    const submitBtn = document.getElementById('submitBtn');
-    const videoInput = document.getElementById('videoFile');
-    const statusMsg = document.getElementById('status');
-    const fileLabel = document.getElementById('fileLabel');
-
-    function checkTimeLock() {
-        const now = new Date();
-        const hrs = now.getHours();
-        const mins = now.getMinutes();
-        const total = (hrs * 60) + mins;
-
-        // User requested schedule
-        const amStart = (10 * 60) + 20; // 10:20 AM
-        const amEnd = (15 * 60);        // 3:00 PM
-        const pmStart = (18 * 60);      // 6:00 PM
-        const pmEnd = (23 * 60) + 59;   // 11:59 PM
-
-        const btnPre = document.getElementById('btnPre');
-        const btnPost = document.getElementById('btnPost');
-
-        if (total >= amStart && total <= amEnd) {
-            btnPost.classList.add('locked');
-            btnPost.onclick = null;
-            setType('Precheck');
-            statusMsg.innerText = "AM PRECHECK ACTIVE";
-        } 
-        else if (total >= pmStart && total <= pmEnd) {
-            btnPre.classList.add('locked');
-            btnPre.onclick = null;
-            setType('Postcheck');
-            statusMsg.innerText = "PM POSTCHECK ACTIVE";
-        } 
-        else {
-            btnPre.classList.add('locked'); btnPost.classList.add('locked');
-            btnPre.onclick = null; btnPost.onclick = null;
-            submitBtn.disabled = true;
-            statusMsg.innerText = "OFF-SCHEDULE: PORTAL CLOSED";
-            statusMsg.style.color = "var(--error)";
+    function autoDetectVehicle() {
+        const vinInput = document.getElementById('vin').value;
+        const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
+        btnList.forEach(b => b.classList.remove('active'));
+        
+        if (vinInput.length === 4) {
+            if (FLEET_MAP[vinInput]) {
+                serviceTypeStr = FLEET_MAP[vinInput];
+                if (serviceTypeStr.includes('Electric')) document.getElementById('v_EDV').classList.add('active');
+                else if (serviceTypeStr.includes('CDV')) document.getElementById('v_CDV').classList.add('active');
+                else document.getElementById('v_Cargo').classList.add('active');
+            } else {
+                serviceTypeStr = 'Rental/External';
+                document.getElementById('v_Rental').classList.add('active');
+            }
         }
     }
 
-    function setType(type) {
-        if (document.getElementById('btn' + type).classList.contains('locked')) return;
+    function manualSet(type) {
+        if (document.getElementById('btn' + type).classList.contains('disabled-state')) return;
         inspectionType = type;
         document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
         document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
     }
 
-    function setVehicle(v) {
-        vehicleType = v;
-        const btns = document.querySelectorAll('#groupVehicle .toggle-btn');
-        btns.forEach(b => b.classList.toggle('active', b.innerText.toUpperCase() === v.toUpperCase()));
+    function runTimeLogic() {
+        const now = new Date();
+        const mins = (now.getHours() * 60) + now.getMinutes();
+        
+        // Schedule
+        const preStart = 620;  // 10:20 AM
+        const preEnd = 900;    // 3:00 PM
+        const postStart = 1080; // 6:00 PM
+        const postEnd = 1439;   // 11:59 PM
+
+        if (mins >= preStart && mins <= preEnd) {
+            document.getElementById('btnPost').classList.add('disabled-state');
+            manualSet('Precheck');
+        } 
+        else if (mins >= postStart && mins <= postEnd) {
+            document.getElementById('btnPre').classList.add('disabled-state');
+            manualSet('Postcheck');
+        } else {
+            document.getElementById('status').innerText = "PORTAL CLOSED (Check Schedule)";
+            document.getElementById('status').style.color = "var(--error)";
+            document.getElementById('submitBtn').disabled = true;
+        }
     }
 
-    // --- SIZE CHECK LOGIC ---
-    videoInput.onchange = () => {
-        if (videoInput.files.length > 0) {
-            const file = videoInput.files[0];
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-
-            if (sizeMB > MAX_FILE_SIZE_MB) {
-                alert(`FILE TOO LARGE: ${sizeMB}MB\n\nYour camera is likely set to 1080p or 4K. Please go to Camera Settings, switch to 720p HD, and record again.`);
-                videoInput.value = ""; // Clear file
-                fileLabel.innerHTML = `<span style="color: var(--error);">❌ VIDEO REJECTED: TOO LARGE</span><br><span style="font-size:10px;">Switch Camera to 720p</span>`;
-                submitBtn.disabled = true;
+    document.getElementById('videoFile').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            if (sizeMB > 24.5) {
+                document.getElementById('status').innerText = `REJECTED: ${sizeMB}MB (Limit 25MB)`;
+                document.getElementById('status').style.color = 'var(--error)';
+                document.getElementById('submitBtn').disabled = true;
+                alert("File too large. Set camera to 720p HD and keep video under 35s.");
             } else {
-                fileLabel.innerHTML = `<span style="color: #4ade80;">📹 VIDEO READY (${sizeMB}MB)</span>`;
-                submitBtn.disabled = false;
+                captureTimestamp = new Date().toLocaleString();
+                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">✅ 720p READY (${sizeMB}MB)</span>`;
+                document.getElementById('status').innerText = `SIZE OK: ${sizeMB}MB`;
+                document.getElementById('status').style.color = '#0066ff';
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('timestampDisplay').innerText = "Recorded: " + captureTimestamp;
+                document.getElementById('timestampDisplay').style.display = 'block';
             }
         }
     };
 
-    submitBtn.onclick = async () => {
+    document.getElementById('submitBtn').onclick = async () => {
         const name = document.getElementById('driverName').value.trim();
         const vin = document.getElementById('vin').value.trim();
-        const file = videoInput.files[0];
+        const file = document.getElementById('videoFile').files[0];
 
-        if (!name || !vin || !file || !inspectionType) {
-            alert("Complete all fields."); return;
-        }
+        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) { alert("All fields required."); return; }
 
-        submitBtn.disabled = true;
-        statusMsg.innerHTML = "⏳ UPLOADING...";
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('progressContainer').style.display = 'block';
+        document.getElementById('status').innerHTML = "⏳ SYNCING DATA...";
 
         const formData = new FormData();
-        const content = `**🚨 STRATEGIC LOGISTICS: ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Time:** ${new Date().toLocaleString()}`;
+        const content = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Time:** \`${captureTimestamp}\``;
         
-        formData.append('payload_json', JSON.stringify({ content: content, username: "SLGP Fleet Portal" }));
-        formData.append('file', file);
+        formData.append('payload_json', JSON.stringify({ content: content, username: "SLGP Fleet Health" }));
+        formData.append('file', file, 'walkaround.mp4');
 
-        try {
-            const response = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
-            if (response.ok) {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', DISCORD_WEBHOOK_URL);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progressBar').style.width = percent + '%';
+                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 204) {
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
-            } else { throw new Error(); }
-        } catch (err) {
-            statusMsg.innerHTML = "❌ UPLOAD FAILED.";
-            submitBtn.disabled = false;
-        }
+            } else { 
+                document.getElementById('status').innerText = "SYNC FAILED (Check Signal)"; 
+                document.getElementById('submitBtn').disabled = false; 
+            }
+        };
+
+        xhr.send(formData);
     };
 
-    checkTimeLock();
+    runTimeLogic();
 </script>
-
 </body>
 </html>
