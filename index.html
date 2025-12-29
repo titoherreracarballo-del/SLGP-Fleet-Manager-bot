@@ -17,7 +17,7 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --disabled: rgba(255, 255, 255, 0.1);
+            --btn-disabled: rgba(255, 255, 255, 0.1);
         }
 
         body {
@@ -55,14 +55,23 @@
 
         .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
         .toggle-btn {
-            flex: 1 1 calc(50% - 8px); padding: 12px;
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            flex: 1 1 calc(50% - 8px); padding: 14px;
+            background: var(--btn-disabled); border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 12px; color: var(--text-dim); font-weight: 700;
-            text-align: center; cursor: pointer; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
+            text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
         }
 
-        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3); }
-        .toggle-btn.locked { opacity: 0.3; cursor: not-allowed; background: var(--disabled); border-color: transparent; }
+        /* Active Blue Style */
+        .toggle-btn.active { 
+            background: linear-gradient(135deg, #0066ff, #0044cc) !important; 
+            color: white !important; 
+            opacity: 1 !important;
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.5);
+            border-color: var(--brand-blue);
+        }
+
+        /* Locked Grey Style */
+        .toggle-btn.locked { opacity: 0.2; cursor: not-allowed; }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -127,7 +136,7 @@
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Checking system...</div>
+        <div id="status">Syncing schedule...</div>
     </div>
 
     <div class="card success-screen" id="successCard">
@@ -152,11 +161,6 @@
     let vehicleType = '';
     let captureTimestamp = '';
     
-    const submitBtn = document.getElementById('submitBtn');
-    const videoInput = document.getElementById('videoFile');
-    const statusMsg = document.getElementById('status');
-    const timeDisplay = document.getElementById('timestampDisplay');
-
     function autoDetectVehicle() {
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
@@ -174,64 +178,71 @@
         }
     }
 
-    // --- AUTOMATIC TYPE SELECTION LOGIC ---
+    function setType(type) {
+        // Prevent selecting a locked button
+        if (document.getElementById('btn' + type).classList.contains('locked')) return;
+        
+        inspectionType = type;
+        const btnPre = document.getElementById('btnPre');
+        const btnPost = document.getElementById('btnPost');
+
+        // Visual toggle
+        btnPre.classList.toggle('active', type === 'Precheck');
+        btnPost.classList.toggle('active', type === 'Postcheck');
+    }
+
     function checkTimeLock() {
         const now = new Date();
-        const hrs = now.getHours();
-        const mins = now.getMinutes();
-        const currentTimeMins = (hrs * 60) + mins;
+        const mins = (now.getHours() * 60) + now.getMinutes();
 
-        // Morning Window: 10:20 AM to 3:00 PM
-        const amStart = 620, amEnd = 900;
-        // Evening Window: 6:00 PM to 11:59 PM
-        const pmStart = 1080, pmEnd = 1439;
+        // Standard Schedule
+        const amStart = 620, amEnd = 900; // 10:20 AM - 3:00 PM
+        const pmStart = 1080, pmEnd = 1439; // 6:00 PM - 11:59 PM
 
         const btnPre = document.getElementById('btnPre');
         const btnPost = document.getElementById('btnPost');
 
-        if (currentTimeMins >= amStart && currentTimeMins <= amEnd) {
+        // Reset both first
+        btnPre.classList.remove('locked', 'active');
+        btnPost.classList.remove('locked', 'active');
+
+        if (mins >= amStart && mins <= amEnd) {
             btnPost.classList.add('locked');
-            setType('Precheck'); // AUTO SELECT
-            statusMsg.innerText = "AM SCHEDULE: PRECHECK AUTOMATICALLY SELECTED";
-        } else if (currentTimeMins >= pmStart && currentTimeMins <= pmEnd) {
+            setType('Precheck'); // Force active
+            document.getElementById('status').innerText = "AM WINDOW: PRECHECK SELECTED";
+        } else if (mins >= pmStart && mins <= pmEnd) {
             btnPre.classList.add('locked');
-            setType('Postcheck'); // AUTO SELECT
-            statusMsg.innerText = "PM SCHEDULE: POSTCHECK AUTOMATICALLY SELECTED";
+            setType('Postcheck'); // Force active
+            document.getElementById('status').innerText = "PM WINDOW: POSTCHECK SELECTED";
         } else {
-            // Testing override - allow selection if outside window but alert user
-            statusMsg.innerText = "SYSTEM ACTIVE - SELECT INSPECTION TYPE";
+            document.getElementById('status').innerText = "SYSTEM ACTIVE (OPEN ACCESS)";
         }
     }
 
-    function setType(type) {
-        inspectionType = type;
-        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
-        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
-    }
-
-    videoInput.onchange = () => {
-        if (videoInput.files.length > 0) {
+    document.getElementById('videoFile').onchange = (e) => {
+        if (e.target.files.length > 0) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
             document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
+            const timeDisplay = document.getElementById('timestampDisplay');
             timeDisplay.innerText = "Timestamp: " + captureTimestamp;
             timeDisplay.style.display = 'block';
         }
     };
 
-    submitBtn.onclick = async () => {
+    document.getElementById('submitBtn').onclick = async () => {
         const name = document.getElementById('driverName').value.trim();
         const vin = document.getElementById('vin').value.trim();
-        const file = videoInput.files[0];
+        const file = document.getElementById('videoFile').files[0];
 
-        // VALIDATION
+        // CHECK VALIDATION
         if (!name || !vin || !file || !inspectionType || !vehicleType) {
             alert("Please complete Name, VIN, record a video, and ensure Vehicle Type is detected.");
             return;
         }
 
-        submitBtn.disabled = true;
-        statusMsg.innerHTML = "⏳ TRANSMITTING...";
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
@@ -246,8 +257,8 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            statusMsg.innerHTML = "❌ UPLOAD FAILED.";
-            submitBtn.disabled = false;
+            document.getElementById('status').innerHTML = "❌ UPLOAD FAILED.";
+            document.getElementById('submitBtn').disabled = false;
         }
     };
 
