@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SLGP Fleet Health Check</title>
     
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="Final-01.jpg">
     
     <style>
@@ -72,6 +75,10 @@
         }
         #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); line-height: 1.4; }
 
+        /* Progress Bar Styling */
+        #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
+
         #timestampDisplay { text-align: center; font-size: 11px; color: #4ade80; font-weight: bold; margin-bottom: 20px; display: none; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
@@ -129,8 +136,10 @@
 
         <div id="timestampDisplay"></div>
 
+        <div id="progressContainer"><div id="progressBar"></div></div>
+
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">System Syncing...</div>
+        <div id="status">Ready for Inspection</div>
     </div>
 
     <div class="card" id="successCard" style="display:none; text-align:center;">
@@ -142,7 +151,11 @@
 </div>
 
 <script>
-    // --- UPDATED FLEET DATA ---
+    // --- PWA REGISTRATION ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
     const FLEET_MAP = {
         '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium', 
         '7866': 'Electric RPV Medium', '7865': 'Electric RPV Medium', '7860': 'Electric RPV Medium', 
@@ -171,7 +184,6 @@
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
         btnList.forEach(b => b.classList.remove('active'));
-        
         if (vinInput.length === 4) {
             if (FLEET_MAP[vinInput]) {
                 serviceTypeStr = FLEET_MAP[vinInput];
@@ -196,7 +208,6 @@
         const mins = (now.getHours() * 60) + now.getMinutes();
         const amStart = 620, amEnd = 900; 
         const pmStart = 1080, pmEnd = 1439;
-
         if (mins >= amStart && mins <= amEnd) {
             document.getElementById('btnPost').classList.add('disabled-state');
             manualSet('Precheck');
@@ -207,11 +218,10 @@
     }
 
     document.getElementById('videoFile').onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
+        if (e.target.files[0]) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p VIDEO CAPTURED</span>`;
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p VIDEO READY</span>`;
             document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
             document.getElementById('timestampDisplay').style.display = 'block';
         }
@@ -228,7 +238,8 @@
         }
 
         document.getElementById('submitBtn').disabled = true;
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING 1080p DATA...";
+        document.getElementById('progressContainer').style.display = 'block';
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING HD DATA...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
@@ -236,16 +247,34 @@
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
         formData.append('file', file);
 
-        try {
-            const response = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: formData });
-            if (response.ok) {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', DISCORD_WEBHOOK_URL);
+
+        // LIVE UPLOAD PROGRESS TRACKING
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progressBar').style.width = percent + '%';
+                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 204) {
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
-            } else { throw new Error(); }
-        } catch (err) {
-            document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO MAY BE TOO LARGE.";
+            } else {
+                document.getElementById('status').innerHTML = "❌ SYNC FAILED. REDUCE VIDEO LENGTH.";
+                document.getElementById('submitBtn').disabled = false;
+            }
+        };
+
+        xhr.onerror = () => {
+            document.getElementById('status').innerHTML = "❌ NO SIGNAL. TRY AGAIN LATER.";
             document.getElementById('submitBtn').disabled = false;
-        }
+        };
+
+        xhr.send(formData);
     };
 
     runTimeLogic();
