@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SLGP Fleet Health v1.1.4</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="Final-01.jpg">
+    
+    <style>
+        :root {
+            --brand-blue: #0066ff;
+            --brand-dark: #0a0e17;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --text-main: #ffffff;
+            --text-dim: #a0a0a0;
+            --error: #ff4d4d;
+            --warning: #ff9d00;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--brand-dark);
+            background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
+            color: var(--text-main);
+            margin: 0; padding: 15px;
+            display: flex; justify-content: center; min-height: 100vh;
+        }
+
+        .container { width: 100%; max-width: 420px; margin-top: 10px; position: relative; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            padding: 25px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
+        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
+
+        input[type="text"], input[type="tel"] {
+            width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            color: white; font-size: 16px; box-sizing: border-box; outline: none;
+        }
+
+        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .toggle-btn {
+            flex: 1 1 calc(50% - 8px); padding: 14px;
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px; color: var(--text-dim); font-weight: 700;
+            text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
+        }
+
+        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
+        .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
+
+        .upload-area {
+            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; position: relative;
+        }
+        #fileLabel { font-size: 13px; font-weight: 600; color: var(--text-dim); line-height: 1.4; }
+
+        #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
+
+        #submitBtn {
+            background: linear-gradient(135deg, #0066ff, #0044cc);
+            color: white; border: none; padding: 18px; border-radius: 14px;
+            width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer;
+        }
+        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+        
+        #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
+        .size-info { color: #4ade80; font-size: 10px; margin-top: 5px; font-weight: bold; display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="logo-container">
+        <img src="Final-01.jpg" alt="Strategic Logistics">
+    </div>
+
+    <div class="card" id="mainCard">
+        <h2>Fleet Health Check</h2>
+        
+        <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" id="driverName" placeholder="Enter your name">
+        </div>
+
+        <div class="form-group">
+            <label>Last 4 of VIN</label>
+            <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" oninput="autoDetectVehicle()">
+        </div>
+
+        <label>Vehicle Type</label>
+        <div class="toggle-group" id="groupVehicle">
+            <div class="toggle-btn" id="v_EDV">EDV</div>
+            <div class="toggle-btn" id="v_CDV">CDV</div>
+            <div class="toggle-btn" id="v_Cargo">Cargo</div>
+            <div class="toggle-btn" id="v_Rental">Rental</div>
+        </div>
+
+        <label>Inspection Type</label>
+        <div class="toggle-group" id="groupType">
+            <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
+        </div>
+
+        <label>30s Dispatch Walkaround</label>
+        <div class="upload-area" id="uploadBox">
+            <div id="fileLabel">
+                <span>📸 Record Walkaround Video</span><br>
+                <span class="size-info">Bitrate optimized for 30s clips</span>
+            </div>
+            <input type="file" id="videoFile" accept="video/*" capture="environment">
+        </div>
+
+        <div id="progressContainer"><div id="progressBar"></div></div>
+
+        <button id="submitBtn">SUBMIT TO DISCORD</button>
+        <div id="status">System Online</div>
+    </div>
+
+    <div class="card" id="successCard" style="display:none; text-align:center; padding: 50px 20px;">
+        <div style="font-size: 60px;">✅</div>
+        <h2>SYNC SUCCESSFUL</h2>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 15px 30px; border-radius: 12px; margin-top: 20px; font-weight: bold;">New Submission</button>
+    </div>
+</div>
+
+<script>
+    const FLEET_MAP = {
+        '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium',
+        '7866': 'Electric RPV Medium', '7865': 'Electric RPV Medium', '7860': 'Electric RPV Medium',
+        '9418': 'Electric RPV Medium', '7863': 'Electric RPV Medium', '7859': 'Electric RPV Medium',
+        '7857': 'Electric RPV Medium',
+        '4905': 'CDV 16ft', '7097': 'CDV 12ft', '5311': 'CDV 16ft', '1587': 'CDV 16ft',
+        '2347': 'CDV 16ft', '3880': 'CDV 16ft', '6907': 'CDV 12ft', '1369': 'CDV 12ft',
+        '1295': 'CDV 12ft', '6265': 'CDV 16ft', '6188': 'CDV 14ft', '1288': 'CDV 12ft', '6864': 'CDV 12ft',
+        '1051': 'Extra Large Cargo', '9488': 'Extra Large Cargo', '7088': 'Extra Large Cargo',
+        '1664': 'Extra Large Cargo', '6470': 'Large Cargo', '5030': 'Extra Large Cargo',
+        '3344': 'Extra Large Cargo', '1608': 'Extra Large Cargo', '0341': 'Standard Cargo',
+        '1853': 'Extra Large Cargo', '7373': 'Extra Large Cargo', '0876': 'Standard Cargo',
+        '8786': 'Extra Large Cargo', '2786': 'Extra Large Cargo', '0213': 'Standard Cargo',
+        '8929': 'Extra Large Cargo', '9651': 'Extra Large Cargo', '3644': 'Extra Large Cargo',
+        '3292': 'Extra Large Cargo', '3754': 'Extra Large Cargo', '3645': 'Extra Large Cargo',
+        '5691': 'Extra Large Cargo', '0576': 'Standard Cargo', '1128': 'Standard Cargo', '7403': 'Extra Large Cargo'
+    };
+
+    const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1454676273140858932/06AdTvRi9R2NoPhwOva7f4332Gz69G2Uv7a0QS2nLA3erMEmh_taxyQRlDbpyk1-XxVx';
+    const DISCORD_LIMIT_MB = 24.8; 
+
+    let inspectionType = '';
+    let serviceTypeStr = '';
+    
+    function autoDetectVehicle() {
+        const vinInput = document.getElementById('vin').value;
+        const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
+        btnList.forEach(b => b.classList.remove('active'));
+        if (vinInput.length === 4) {
+            if (FLEET_MAP[vinInput]) {
+                serviceTypeStr = FLEET_MAP[vinInput];
+                if (serviceTypeStr.includes('Electric')) document.getElementById('v_EDV').classList.add('active');
+                else if (serviceTypeStr.includes('CDV')) document.getElementById('v_CDV').classList.add('active');
+                else document.getElementById('v_Cargo').classList.add('active');
+            } else {
+                serviceTypeStr = 'Rental/External';
+                document.getElementById('v_Rental').classList.add('active');
+            }
+        }
+    }
+
+    function manualSet(type) {
+        if (document.getElementById('btn' + type).classList.contains('disabled-state')) return;
+        inspectionType = type;
+        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
+        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
+    }
+
+    function runTimeLogic() {
+        const now = new Date();
+        const mins = (now.getHours() * 60) + now.getMinutes();
+        const preStart = 620; const preEnd = 900; const postStart = 1080;
+        if (mins >= preStart && mins <= preEnd) {
+            document.getElementById('btnPost').classList.add('disabled-state');
+            manualSet('Precheck');
+        } else if (mins >= postStart) {
+            document.getElementById('btnPre').classList.add('disabled-state');
+            manualSet('Postcheck');
+        } else {
+            document.getElementById('status').innerText = "PORTAL CLOSED (Check Schedule)";
+            document.getElementById('status').style.color = "var(--error)";
+            document.getElementById('submitBtn').disabled = true;
+        }
+    }
+
+    document.getElementById('videoFile').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            if (sizeMB > DISCORD_LIMIT_MB) {
+                alert(`STOP: VIDEO TOO LARGE (${sizeMB}MB)\n\nTo record for 30 seconds, your camera MUST be set to "Standard Definition" or "480p".\n\nGo to Settings > Camera > Record Video and choose the lowest option.`);
+                document.getElementById('status').innerText = `REJECTED: ${sizeMB}MB`;
+                document.getElementById('status').style.color = 'var(--error)';
+                document.getElementById('submitBtn').disabled = true;
+            } else {
+                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">✅ VIDEO READY (${sizeMB}MB)</span>`;
+                document.getElementById('status').innerText = `SIZE OK: ${sizeMB}MB`;
+                document.getElementById('status').style.color = '#0066ff';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        }
+    };
+
+    document.getElementById('submitBtn').onclick = async () => {
+        const name = document.getElementById('driverName').value.trim();
+        const vin = document.getElementById('vin').value.trim();
+        const file = document.getElementById('videoFile').files[0];
+
+        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) { alert("Complete all fields."); return; }
+
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('progressContainer').style.display = 'block';
+        document.getElementById('status').innerHTML = "⏳ UPLOADING...";
+
+        const formData = new FormData();
+        const content = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Time:** \`${new Date().toLocaleString()}\``;
+        
+        formData.append('payload_json', JSON.stringify({ content: content, username: "SLGP Fleet Health" }));
+        formData.append('file', file, 'walkaround.mp4');
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', DISCORD_WEBHOOK_URL);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progressBar').style.width = percent + '%';
+                document.getElementById('status').innerText = `SYNCING: ${percent}%`;
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 204) {
+                document.getElementById('mainCard').style.display = 'none';
+                document.getElementById('successCard').style.display = 'block';
+            } else { 
+                document.getElementById('status').innerText = "SYNC FAILED (Check Signal)"; 
+                document.getElementById('submitBtn').disabled = false; 
+            }
+        };
+        xhr.send(formData);
+    };
+
+    runTimeLogic();
+</script>
+</body>
+</html>
