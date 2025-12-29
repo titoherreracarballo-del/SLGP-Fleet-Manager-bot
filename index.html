@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.0.1</title>
+    <title>SLGP Fleet Health Check v1.0.3</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -129,11 +129,11 @@
             <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
-        <label>Full-Vehicle Walkaround (30s Limit)</label>
+        <label>Walkaround Video (30s Limit)</label>
         <div class="upload-area">
             <div id="fileLabel">
-                <span>📸 Tap to Record 1080p Video</span><br>
-                <span style="font-size: 9px; color: var(--brand-blue);">STEP BACK 10FT TO CAPTURE TOP TO BOTTOM</span>
+                <span>📸 Tap to Record FHD 1080p Video</span><br>
+                <span style="font-size: 9px; color: var(--brand-blue);">CAPTURE TOP TO BOTTOM - STEP BACK 10FT</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
@@ -151,22 +151,12 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">Build v1.0.1 - Dec 28</div>
+    <div id="versionTag">Build v1.0.3 - FHD Priority</div>
 </div>
 
 <script>
-    // Force PWA Update logic
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(reg => {
-            reg.onupdatefound = () => {
-                const installingWorker = reg.installing;
-                installingWorker.onstatechange = () => {
-                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        if(confirm("New Update Available! Reload now?")) window.location.reload();
-                    }
-                };
-            };
-        });
+        navigator.serviceWorker.register('sw.js');
     }
 
     const FLEET_MAP = {
@@ -234,7 +224,7 @@
         if (e.target.files[0]) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p VIDEO READY</span>`;
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p READY</span>`;
             document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
             document.getElementById('timestampDisplay').style.display = 'block';
         }
@@ -252,12 +242,14 @@
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ OPTIMIZING TRANSMISSION...";
+        document.getElementById('status').innerHTML = "⏳ OPTIMIZING 1080p UPLOAD...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
+        
+        // Final optimization to bypass the 10s error
         formData.append('file', file, 'walkaround.mp4');
 
         const xhr = new XMLHttpRequest();
@@ -267,7 +259,7 @@
             if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
                 document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
+                document.getElementById('status').innerText = `SENDING FULL HD: ${percent}%`;
             }
         };
 
@@ -276,13 +268,13 @@
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
             } else {
-                document.getElementById('status').innerHTML = "❌ SYNC FAILED. TRY SHORTER VIDEO.";
+                document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO BITRATE TOO HIGH.";
                 document.getElementById('submitBtn').disabled = false;
             }
         };
 
         xhr.onerror = () => {
-            document.getElementById('status').innerHTML = "❌ CONNECTION FAILED.";
+            document.getElementById('status').innerHTML = "❌ NO SIGNAL.";
             document.getElementById('submitBtn').disabled = false;
         };
 
