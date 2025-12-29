@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SLGP Fleet Portal</title>
     
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SLGP Fleet">
     <link rel="apple-touch-icon" href="Final-01.jpg">
     
     <style>
@@ -65,7 +62,6 @@
             color: white !important; 
             box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6);
             border: 1px solid var(--brand-blue) !important;
-            opacity: 1 !important;
         }
 
         .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
@@ -86,8 +82,6 @@
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
-
-        .success-screen { text-align: center; display: none; padding: 40px 20px; }
     </style>
 </head>
 <body>
@@ -110,7 +104,7 @@
             <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
         </div>
 
-        <label>Vehicle Type (Auto-Detect)</label>
+        <label>Vehicle Type</label>
         <div class="toggle-group" id="groupVehicle">
             <div class="toggle-btn" id="v_EDV">EDV</div>
             <div class="toggle-btn" id="v_CDV">CDV</div>
@@ -121,24 +115,22 @@
         <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
             <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
         <label>Walkaround Video</label>
         <div class="upload-area">
-            <div id="fileLabel"><span>📸 Tap to Record 720p HD Video</span></div>
-            <input type="file" id="videoFile" accept="video/*" capture="environment" 
-                   style="height: 100%;" 
-                   data-quality="720p">
+            <div id="fileLabel"><span>📸 Tap to Record Video</span></div>
+            <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
 
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Syncing schedule...</div>
+        <div id="status">System Syncing...</div>
     </div>
 
-    <div class="card success-screen" id="successCard">
+    <div class="card" id="successCard" style="display:none; text-align:center;">
         <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
         <h2>REPORT SENT</h2>
         <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
@@ -185,22 +177,15 @@
     function runTimeLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
-        const amStart = 620, amEnd = 900;
+        const amStart = 620, amEnd = 900; 
         const pmStart = 1080, pmEnd = 1439;
 
-        const btnPre = document.getElementById('btnPre');
-        const btnPost = document.getElementById('btnPost');
-
         if (mins >= amStart && mins <= amEnd) {
-            btnPost.classList.add('disabled-state');
+            document.getElementById('btnPost').classList.add('disabled-state');
             manualSet('Precheck');
-            document.getElementById('status').innerText = "SCHEDULE: PRECHECK ONLY";
         } else if (mins >= pmStart && mins <= pmEnd) {
-            btnPre.classList.add('disabled-state');
+            document.getElementById('btnPre').classList.add('disabled-state');
             manualSet('Postcheck');
-            document.getElementById('status').innerText = "SCHEDULE: POSTCHECK ONLY";
-        } else {
-            document.getElementById('status').innerText = "SYSTEM ACTIVE";
         }
     }
 
@@ -208,7 +193,7 @@
         if (e.target.files.length > 0) {
             const now = new Date();
             captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 HD VIDEO CAPTURED</span>`;
+            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 VIDEO CAPTURED</span>`;
             const timeDisplay = document.getElementById('timestampDisplay');
             timeDisplay.innerText = "Timestamp: " + captureTimestamp;
             timeDisplay.style.display = 'block';
@@ -221,12 +206,12 @@
         const file = document.getElementById('videoFile').files[0];
 
         if (!name || !vin || !file || !inspectionType || !vehicleType) {
-            alert("Please complete Name, VIN, and record a video.");
+            alert("All fields required.");
             return;
         }
 
         document.getElementById('submitBtn').disabled = true;
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING HD DATA...";
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Vehicle:** \`${vehicleType}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
@@ -241,7 +226,7 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ SYNC FAILED. CHECK SIGNAL.";
+            document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO TOO LARGE.";
             document.getElementById('submitBtn').disabled = false;
         }
     };
