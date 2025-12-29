@@ -17,7 +17,6 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --btn-disabled: rgba(255, 255, 255, 0.1);
         }
 
         body {
@@ -56,22 +55,25 @@
         .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
         .toggle-btn {
             flex: 1 1 calc(50% - 8px); padding: 14px;
-            background: var(--btn-disabled); border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 12px; color: var(--text-dim); font-weight: 700;
             text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px;
         }
 
-        /* Active Blue Style */
+        /* Forced Active State */
         .toggle-btn.active { 
             background: linear-gradient(135deg, #0066ff, #0044cc) !important; 
             color: white !important; 
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6);
+            border: 1px solid var(--brand-blue) !important;
             opacity: 1 !important;
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.5);
-            border-color: var(--brand-blue);
         }
 
-        /* Locked Grey Style */
-        .toggle-btn.locked { opacity: 0.2; cursor: not-allowed; }
+        /* Greyed out State */
+        .toggle-btn.disabled-state {
+            opacity: 0.15;
+            pointer-events: none;
+        }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -123,8 +125,8 @@
 
         <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
-            <div class="toggle-btn" id="btnPre" onclick="setType('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="setType('Postcheck')">Postcheck</div>
+            <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
+            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
         <label>Walkaround Video</label>
@@ -136,7 +138,7 @@
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Syncing schedule...</div>
+        <div id="status">System Online</div>
     </div>
 
     <div class="card success-screen" id="successCard">
@@ -178,44 +180,34 @@
         }
     }
 
-    function setType(type) {
-        // Prevent selecting a locked button
-        if (document.getElementById('btn' + type).classList.contains('locked')) return;
-        
+    function manualSet(type) {
         inspectionType = type;
-        const btnPre = document.getElementById('btnPre');
-        const btnPost = document.getElementById('btnPost');
-
-        // Visual toggle
-        btnPre.classList.toggle('active', type === 'Precheck');
-        btnPost.classList.toggle('active', type === 'Postcheck');
+        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
+        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
     }
 
-    function checkTimeLock() {
+    function runTimeLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
 
-        // Standard Schedule
-        const amStart = 620, amEnd = 900; // 10:20 AM - 3:00 PM
-        const pmStart = 1080, pmEnd = 1439; // 6:00 PM - 11:59 PM
+        // AM Schedule: 10:20 AM - 3:00 PM
+        const amStart = 620, amEnd = 900;
+        // PM Schedule: 6:00 PM - 11:59 PM
+        const pmStart = 1080, pmEnd = 1439;
 
         const btnPre = document.getElementById('btnPre');
         const btnPost = document.getElementById('btnPost');
 
-        // Reset both first
-        btnPre.classList.remove('locked', 'active');
-        btnPost.classList.remove('locked', 'active');
-
         if (mins >= amStart && mins <= amEnd) {
-            btnPost.classList.add('locked');
-            setType('Precheck'); // Force active
-            document.getElementById('status').innerText = "AM WINDOW: PRECHECK SELECTED";
+            btnPost.classList.add('disabled-state');
+            manualSet('Precheck');
+            document.getElementById('status').innerText = "SCHEDULE: PRECHECK ONLY";
         } else if (mins >= pmStart && mins <= pmEnd) {
-            btnPre.classList.add('locked');
-            setType('Postcheck'); // Force active
-            document.getElementById('status').innerText = "PM WINDOW: POSTCHECK SELECTED";
+            btnPre.classList.add('disabled-state');
+            manualSet('Postcheck');
+            document.getElementById('status').innerText = "SCHEDULE: POSTCHECK ONLY";
         } else {
-            document.getElementById('status').innerText = "SYSTEM ACTIVE (OPEN ACCESS)";
+            document.getElementById('status').innerText = "SYSTEM ACTIVE - SELECT TYPE";
         }
     }
 
@@ -235,9 +227,8 @@
         const vin = document.getElementById('vin').value.trim();
         const file = document.getElementById('videoFile').files[0];
 
-        // CHECK VALIDATION
         if (!name || !vin || !file || !inspectionType || !vehicleType) {
-            alert("Please complete Name, VIN, record a video, and ensure Vehicle Type is detected.");
+            alert("All fields required: Name, 4-digit VIN, and Walkaround Video.");
             return;
         }
 
@@ -257,12 +248,12 @@
                 document.getElementById('successCard').style.display = 'block';
             } else { throw new Error(); }
         } catch (err) {
-            document.getElementById('status').innerHTML = "❌ UPLOAD FAILED.";
+            document.getElementById('status').innerHTML = "❌ FAILED. CHECK SIGNAL.";
             document.getElementById('submitBtn').disabled = false;
         }
     };
 
-    checkTimeLock();
+    runTimeLogic();
 </script>
 </body>
 </html>
