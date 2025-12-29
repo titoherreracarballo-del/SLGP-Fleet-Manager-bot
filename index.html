@@ -96,7 +96,7 @@
         
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Full Name">
+            <input type="text" id="driverName" placeholder="Enter your name">
         </div>
 
         <div class="form-group">
@@ -139,10 +139,10 @@
 </div>
 
 <script>
-    // --- UPDATED FLEET: Mapped to Last 4 Digits ---
+    // --- UPDATED FLEET DATA: MAPPED STRICTLY TO LAST 4 DIGITS ---
     const ACTIVE_FLEET = {
         EDV: ['7867', '7871', '9412', '7866', '7865', '7860', '9418', '7863', '7859', '7857'],
-        CDV: ['4905', '7097', '5311', '1587', '2347', '3880', '6907', '6907', '1369', '1295', '6265', '6188', '1288', '6864'],
+        CDV: ['4905', '7097', '5311', '1587', '2347', '3880', '6907', '1369', '1295', '6265', '6188', '1288', '6864'],
         Cargo: ['1051', '9488', '7088', '1664', '6470', '5030', '3344', '1608', '0341', '1853', '7373', '0876', '8786', '2786', '0213', '8929', '9651', '3644', '6188', '3292', '3754', '3645', '5691', '0576', '1128', '7403']
     };
 
@@ -208,7 +208,6 @@
         document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
     }
 
-    // Capture Timestamp upon video selection
     videoInput.onchange = () => {
         if (videoInput.files.length > 0) {
             const now = new Date();
@@ -224,6 +223,7 @@
         const vin = document.getElementById('vin').value.trim();
         const file = videoInput.files[0];
 
+        // ALL FIELDS MANDATORY AGAIN
         if (!name || !vin || !file || !vehicleType || !inspectionType) {
             alert("Please complete Name, VIN, and record a video.");
             return;
