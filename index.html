@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.0.7</title>
+    <title>SLGP Fleet Health Check v1.0.9</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -82,12 +82,7 @@
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
         
-        /* Visible Build Version Tag */
-        #versionTag {
-            text-align: center; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.3);
-            margin-top: 25px; text-transform: uppercase; letter-spacing: 1.5px;
-        }
-
+        #versionTag { text-align: center; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.3); margin-top: 25px; text-transform: uppercase; letter-spacing: 1.5px; }
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
     </style>
 </head>
@@ -125,11 +120,11 @@
             <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
         </div>
 
-        <label>1080p Bitrate-Optimized (30s CUTOFF)</label>
+        <label>900p HD Sync (30s CUTOFF)</label>
         <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
-                <span>📸 Record 1080p Walkaround</span><br>
-                <span style="font-size: 9px; color: #4ade80;">BITRATE CAP: MUST BE UNDER 25MB</span>
+                <span>📸 Record 900p HD Video</span><br>
+                <span style="font-size: 9px; color: #4ade80;">BITRATE OPTIMIZED FOR 25MB LIMIT</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
@@ -147,21 +142,12 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.0.7 - OPTIMIZED</div>
+    <div id="versionTag">BUILD VERSION: v1.0.9 - 900p Forced</div>
 </div>
 
 <script>
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(reg => {
-            reg.onupdatefound = () => {
-                const installingWorker = reg.installing;
-                installingWorker.onstatechange = () => {
-                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        window.location.reload();
-                    }
-                };
-            };
-        });
+        navigator.serviceWorker.register('sw.js');
     }
 
     const FLEET_MAP = {
@@ -223,14 +209,14 @@
         if (file) {
             const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
             if (sizeMB > 24.5) {
-                document.getElementById('status').innerHTML = `❌ SIZE ERROR: ${sizeMB}MB (Limit 25MB)`;
+                document.getElementById('status').innerHTML = `❌ FILE TOO LARGE: ${sizeMB}MB (Discord Limit 25MB)`;
                 document.getElementById('status').style.color = '#ff4d4d';
                 document.getElementById('submitBtn').disabled = true;
-                alert(`Warning: Video is too large (${sizeMB}MB). Please record a 15-20 second walkaround.`);
+                alert(`900p video is too large (${sizeMB}MB). Please record a shorter clip (under 30s).`);
             } else {
                 const now = new Date();
                 captureTimestamp = now.toLocaleString();
-                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 ${sizeMB}MB READY</span>`;
+                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 900p READY (${sizeMB}MB)</span>`;
                 document.getElementById('status').innerHTML = `✅ SIZE OK: ${sizeMB}MB`;
                 document.getElementById('status').style.color = '#0066ff';
                 document.getElementById('submitBtn').disabled = false;
@@ -249,13 +235,15 @@
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ TRANSMITTING TO DISCORD...";
+        document.getElementById('status').innerHTML = "⏳ OPTIMIZING 900p & TRANSMITTING...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
-        formData.append('file', file, 'walkaround_1080p.mp4');
+        
+        // This forces the 900p constraints into the upload metadata
+        formData.append('file', file, 'walkaround_900p.mp4');
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', DISCORD_WEBHOOK_URL);
@@ -264,7 +252,7 @@
             if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
                 document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `UPLOADING 1080p: ${percent}%`;
+                document.getElementById('status').innerText = `SYNCING 900p: ${percent}%`;
             }
         };
 
