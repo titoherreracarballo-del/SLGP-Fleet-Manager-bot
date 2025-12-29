@@ -17,7 +17,7 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
-            --disabled: rgba(255, 255, 255, 0.05);
+            --disabled: rgba(255, 255, 255, 0.1);
         }
 
         body {
@@ -62,7 +62,7 @@
         }
 
         .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3); }
-        .toggle-btn.locked { opacity: 0.2; cursor: not-allowed; background: var(--disabled); }
+        .toggle-btn.locked { opacity: 0.3; cursor: not-allowed; background: var(--disabled); border-color: transparent; }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -127,7 +127,7 @@
         <div id="timestampDisplay"></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Checking schedule...</div>
+        <div id="status">Checking system...</div>
     </div>
 
     <div class="card success-screen" id="successCard">
@@ -139,7 +139,7 @@
 </div>
 
 <script>
-    // --- UPDATED FLEET DATA: MAPPED STRICTLY TO LAST 4 DIGITS ---
+    // --- UPDATED FLEET DATA ---
     const ACTIVE_FLEET = {
         EDV: ['7867', '7871', '9412', '7866', '7865', '7860', '9418', '7863', '7859', '7857'],
         CDV: ['4905', '7097', '5311', '1587', '2347', '3880', '6907', '1369', '1295', '6265', '6188', '1288', '6864'],
@@ -176,28 +176,32 @@
 
     function checkTimeLock() {
         const now = new Date();
-        const mins = (now.getHours() * 60) + now.getMinutes();
-        const amStart = (10 * 60) + 20; // 10:20 AM
-        const amEnd = (15 * 60);        // 3:00 PM
-        const pmStart = (18 * 60);      // 6:00 PM
-        const pmEnd = (23 * 60) + 59;   // 11:59 PM
+        const hrs = now.getHours();
+        const mins = now.getMinutes();
+        const currentTimeMins = (hrs * 60) + mins;
+
+        // Morning: 10:20 AM (620 mins) to 3:00 PM (900 mins)
+        // Evening: 6:00 PM (1080 mins) to 11:59 PM (1439 mins)
+        const amStart = 620, amEnd = 900, pmStart = 1080, pmEnd = 1439;
 
         const btnPre = document.getElementById('btnPre');
         const btnPost = document.getElementById('btnPost');
 
-        if (mins >= amStart && mins <= amEnd) {
+        // Reset locking
+        btnPre.classList.remove('locked');
+        btnPost.classList.remove('locked');
+
+        if (currentTimeMins >= amStart && currentTimeMins <= amEnd) {
             btnPost.classList.add('locked');
             setType('Precheck');
-            statusMsg.innerText = "AM SCHEDULE: PRECHECK ONLY";
-        } else if (mins >= pmStart && mins <= pmEnd) {
+            statusMsg.innerText = "AM WINDOW: PRECHECK ACTIVE";
+        } else if (currentTimeMins >= pmStart && currentTimeMins <= pmEnd) {
             btnPre.classList.add('locked');
             setType('Postcheck');
-            statusMsg.innerText = "PM SCHEDULE: POSTCHECK ONLY";
+            statusMsg.innerText = "PM WINDOW: POSTCHECK ACTIVE";
         } else {
-            btnPre.classList.add('locked'); btnPost.classList.add('locked');
-            submitBtn.disabled = true;
-            statusMsg.innerText = "OFF-SCHEDULE: PORTAL CLOSED";
-            statusMsg.style.color = "#ff4d4d";
+            // REMOVED TOTAL LOCK FOR TESTING PURPOSES
+            statusMsg.innerText = "SYSTEM ACTIVE (OUTSIDE SCHEDULE)";
         }
     }
 
@@ -223,9 +227,9 @@
         const vin = document.getElementById('vin').value.trim();
         const file = videoInput.files[0];
 
-        // ALL FIELDS MANDATORY AGAIN
-        if (!name || !vin || !file || !vehicleType || !inspectionType) {
-            alert("Please complete Name, VIN, and record a video.");
+        // CHECK VALIDATION
+        if (!name || !vin || !file || !inspectionType || !vehicleType) {
+            alert("Please complete Name, VIN, record a video, and ensure a Vehicle Type is detected.");
             return;
         }
 
