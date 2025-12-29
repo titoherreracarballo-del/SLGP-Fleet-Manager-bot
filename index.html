@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.0.3</title>
+    <title>SLGP Fleet Health Check v1.0.4</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,6 +17,7 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
+            --error-red: #ff4d4d;
         }
 
         body {
@@ -130,10 +131,10 @@
         </div>
 
         <label>Walkaround Video (30s Limit)</label>
-        <div class="upload-area">
+        <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
-                <span>📸 Tap to Record FHD 1080p Video</span><br>
-                <span style="font-size: 9px; color: var(--brand-blue);">CAPTURE TOP TO BOTTOM - STEP BACK 10FT</span>
+                <span>📸 Tap to Record 1080p Video</span><br>
+                <span style="font-size: 9px; color: var(--brand-blue);">MUST BE UNDER 25MB FOR DISCORD</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
         </div>
@@ -151,7 +152,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">Build v1.0.3 - FHD Priority</div>
+    <div id="versionTag">Build v1.0.4 - Size Protected</div>
 </div>
 
 <script>
@@ -221,12 +222,31 @@
     }
 
     document.getElementById('videoFile').onchange = (e) => {
-        if (e.target.files[0]) {
-            const now = new Date();
-            captureTimestamp = now.toLocaleString();
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 1080p READY</span>`;
-            document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
-            document.getElementById('timestampDisplay').style.display = 'block';
+        const file = e.target.files[0];
+        if (file) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            const status = document.getElementById('status');
+            const submitBtn = document.getElementById('submitBtn');
+            const uploadBox = document.getElementById('uploadBox');
+
+            // SAFETY LIMIT CHECK
+            if (sizeMB > 24.5) {
+                status.innerHTML = `❌ FILE TOO LARGE: ${sizeMB}MB (Limit 25MB)`;
+                status.style.color = '#ff4d4d';
+                uploadBox.style.borderColor = '#ff4d4d';
+                submitBtn.disabled = true;
+                alert(`This video is ${sizeMB}MB and will NOT sync to Discord. Please record a shorter 1080p walkaround (approx 20-25 seconds).`);
+            } else {
+                const now = new Date();
+                captureTimestamp = now.toLocaleString();
+                document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">📹 ${sizeMB}MB VIDEO READY</span>`;
+                status.innerHTML = `✅ SIZE OK: ${sizeMB}MB`;
+                status.style.color = '#0066ff';
+                uploadBox.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                submitBtn.disabled = false;
+                document.getElementById('timestampDisplay').innerText = "Timestamp: " + captureTimestamp;
+                document.getElementById('timestampDisplay').style.display = 'block';
+            }
         }
     };
 
@@ -242,14 +262,12 @@
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ OPTIMIZING 1080p UPLOAD...";
+        document.getElementById('status').innerHTML = "⏳ TRANSMITTING TO DISCORD...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
-        
-        // Final optimization to bypass the 10s error
         formData.append('file', file, 'walkaround.mp4');
 
         const xhr = new XMLHttpRequest();
@@ -259,7 +277,7 @@
             if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
                 document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `SENDING FULL HD: ${percent}%`;
+                document.getElementById('status').innerText = `SENDING 1080p: ${percent}%`;
             }
         };
 
@@ -268,14 +286,9 @@
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
             } else {
-                document.getElementById('status').innerHTML = "❌ SYNC FAILED. VIDEO BITRATE TOO HIGH.";
+                document.getElementById('status').innerHTML = "❌ SYNC FAILED. DISCORD BLOCKED FILE.";
                 document.getElementById('submitBtn').disabled = false;
             }
-        };
-
-        xhr.onerror = () => {
-            document.getElementById('status').innerHTML = "❌ NO SIGNAL.";
-            document.getElementById('submitBtn').disabled = false;
         };
 
         xhr.send(formData);
