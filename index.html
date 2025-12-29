@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check</title>
+    <title>SLGP Fleet Health Check v1.0.1</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,7 +28,7 @@
             display: flex; justify-content: center; min-height: 100vh;
         }
 
-        .container { width: 100%; max-width: 420px; margin-top: 10px; }
+        .container { width: 100%; max-width: 420px; margin-top: 10px; position: relative; }
         .logo-container { text-align: center; margin-bottom: 20px; }
         .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
 
@@ -87,6 +87,11 @@
             width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer;
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+        
+        #versionTag {
+            text-align: center; font-size: 9px; color: rgba(255,255,255,0.2); margin-top: 20px; text-transform: uppercase; letter-spacing: 1px;
+        }
+
         #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
     </style>
 </head>
@@ -134,24 +139,34 @@
         </div>
 
         <div id="timestampDisplay"></div>
-
         <div id="progressContainer"><div id="progressBar"></div></div>
 
         <button id="submitBtn">SUBMIT TO DISCORD</button>
-        <div id="status">Ready for Inspection</div>
+        <div id="status">System Online</div>
     </div>
 
     <div class="card" id="successCard" style="display:none; text-align:center;">
         <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
         <h2>HEALTH CHECK SENT</h2>
-        <p style="color: var(--text-dim);">Inspection transmitted successfully.</p>
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
+
+    <div id="versionTag">Build v1.0.1 - Dec 28</div>
 </div>
 
 <script>
+    // Force PWA Update logic
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
+        navigator.serviceWorker.register('sw.js').then(reg => {
+            reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        if(confirm("New Update Available! Reload now?")) window.location.reload();
+                    }
+                };
+            };
+        });
     }
 
     const FLEET_MAP = {
@@ -235,17 +250,14 @@
             return;
         }
 
-        // Memory optimization: Disable button immediately
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerHTML = "⏳ OPTIMIZING & TRANSMITTING...";
+        document.getElementById('status').innerHTML = "⏳ OPTIMIZING TRANSMISSION...";
 
         const formData = new FormData();
         const messageContent = `**🚨 SLGP ${inspectionType.toUpperCase()}**\n**Driver:** \`${name}\`\n**Service Type:** \`${serviceTypeStr}\`\n**VIN:** \`${vin}\`\n**Recorded:** \`${captureTimestamp}\``;
         
         formData.append('payload_json', JSON.stringify({ content: messageContent, username: "SLGP Fleet Health" }));
-        
-        // This is where the memory fix is applied: using a Blob stream
         formData.append('file', file, 'walkaround.mp4');
 
         const xhr = new XMLHttpRequest();
@@ -255,7 +267,7 @@
             if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
                 document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `MEMORY SAFE UPLOAD: ${percent}%`;
+                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
             }
         };
 
@@ -264,17 +276,16 @@
                 document.getElementById('mainCard').style.display = 'none';
                 document.getElementById('successCard').style.display = 'block';
             } else {
-                document.getElementById('status').innerHTML = "❌ SYNC FAILED. TRY A SHORTER VIDEO.";
+                document.getElementById('status').innerHTML = "❌ SYNC FAILED. TRY SHORTER VIDEO.";
                 document.getElementById('submitBtn').disabled = false;
             }
         };
 
         xhr.onerror = () => {
-            document.getElementById('status').innerHTML = "❌ CONNECTION INTERRUPTED.";
+            document.getElementById('status').innerHTML = "❌ CONNECTION FAILED.";
             document.getElementById('submitBtn').disabled = false;
         };
 
-        // Final memory trigger
         xhr.send(formData);
     };
 
