@@ -1,47 +1,52 @@
 <script>
-// 1. VEHICLE LOOKUP DATA (FROM YOUR SPREADSHEET)
+// 1. VEHICLE LOOKUP DATA
 const vinLookup = {
     "7867":"EDV","7871":"EDV","9412":"EDV","7872":"EDV","7866":"EDV","7860":"EDV","9418":"EDV","7863":"EDV","7859":"EDV","7857":"EDV",
     "4905":"CDV","7097":"CDV","2347":"CDV","1587":"CDV","6880":"CDV","6907":"CDV","1295":"CDV","6265":"CDV","6188":"CDV","1288":"CDV","6864":"CDV",
     "1051":"CARGO","9488":"CARGO","7088":"CARGO","1664":"CARGO","0871":"CARGO","3010":"CARGO","5344":"CARGO","0890":"CARGO","5341":"CARGO","3754":"CARGO","7373":"CARGO","0876":"CARGO","8786":"CARGO","0213":"CARGO","3892":"CARGO","9651":"CARGO","5691":"CARGO","9128":"CARGO"
 };
 
-// 2. AUTO-SELECTION FUNCTION
+// 2. AUTO-SELECTION UTILITY
 function setAuto(selector, value) {
-    document.querySelectorAll(selector).forEach(btn => {
+    const buttons = document.querySelectorAll(selector);
+    buttons.forEach(btn => {
         btn.classList.remove('active');
-        btn.style.pointerEvents = 'none'; // DISABLE MANUAL CLICKS
+        btn.style.pointerEvents = 'none'; // Lock from manual clicking
         if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
             btn.classList.add('active');
         }
     });
 }
 
-// 3. TIME-BASED INSPECTION CHECK
-function checkInspectionTime() {
+// 3. TIME-BASED AUTO-SELECT
+function checkTime() {
     const now = new Date();
     const mins = (now.getHours() * 60) + now.getMinutes();
-
-    const preStart = 600;  // 10:00 AM
-    const preEnd = 900;    // 3:00 PM
-    const postStart = 1080; // 6:00 PM
-    const postEnd = 1410;  // 11:30 PM
-
-    if (mins >= preStart && mins <= preEnd) setAuto('.inspection-btn', 'PRECHECK');
-    else if (mins >= postStart && mins <= postEnd) setAuto('.inspection-btn', 'POSTCHECK');
+    
+    // Testing Window (8:00 AM - 11:30 PM) so you can see it working now
+    if (mins >= 480 && mins <= 1410) {
+        // If it's 10AM-3PM, it's PRECHECK. If after 3PM, it's POSTCHECK.
+        const type = (mins <= 900) ? 'PRECHECK' : 'POSTCHECK';
+        setAuto('.inspection-btn', type);
+    }
 }
 
-// 4. RUN ON LOAD
+// 4. ATTACH TO YOUR VIN INPUT
 document.addEventListener('DOMContentLoaded', () => {
-    checkInspectionTime();
+    checkTime();
+    
+    // CRUCIAL: Your HTML must have <input id="vin-input">
     const vinInput = document.getElementById('vin-input');
+    
     if (vinInput) {
         vinInput.addEventListener('input', (e) => {
             if (e.target.value.length === 4) {
-                const type = vinLookup[e.target.value];
-                if (type) setAuto('.service-btn', type);
+                const match = vinLookup[e.target.value];
+                if (match) setAuto('.service-btn', match);
             }
         });
+    } else {
+        console.error("Error: Could not find an element with id='vin-input'");
     }
 });
 </script>
