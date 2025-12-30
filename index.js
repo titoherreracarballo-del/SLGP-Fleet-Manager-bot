@@ -2,20 +2,18 @@ const express = require('express');
 const path = require('path');
 const app = express();
 
-// Use the dynamic port provided by Railway
+// Use Railway's dynamic port
 const PORT = process.env.PORT || 8080;
 
-// Tell the server where to find your files
+// Serve files from the root directory
 app.use(express.static(__dirname));
 
-// Route to serve your website
+// Ensure the root path sends your HTML file
 app.get('/', function(req, res) {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Start the server and bind to 0.0.0.0
+// Bind to 0.0.0.0 for external access
 app.listen(PORT, '0.0.0.0', function() {
-    console.log('-----------------------------------');
-    console.log('SERVER IS RUNNING ON PORT: ' + PORT);
-    console.log('-----------------------------------');
+    console.log('FLEET HEALTH CHECK SERVER RUNNING ON PORT: ' + PORT);
 });
