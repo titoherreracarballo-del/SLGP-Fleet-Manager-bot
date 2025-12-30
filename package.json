@@ -1,7 +1,7 @@
 {
   "name": "slgp-fleet-health-check",
-  "version": "1.1.2",
-  "description": "1080p Fleet Inspection with Google Drive Sync",
+  "version": "1.1.3",
+  "description": "1080p Fleet Check with Google Drive Sync",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
