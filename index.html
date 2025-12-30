@@ -1,261 +1,52 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="robots" content="noindex, nofollow">
-    <title>SLGP Fleet Health Check v1.2</title>
-    <link rel="manifest" href="manifest.json">
-    <style>
-        :root {
-            --brand-blue: #0066ff;
-            --brand-dark: #0a0e17;
-            --card-bg: rgba(255, 255, 255, 0.05);
-            --text-main: #ffffff;
-            --text-dim: #a0a0a0;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--brand-dark);
-            background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
-            color: var(--text-main);
-            margin: 0; padding: 15px; display: flex; justify-content: center; min-height: 100vh;
-        }
-        .container { width: 100%; max-width: 420px; margin-top: 10px; }
-        .card {
-            background: var(--card-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 28px; padding: 25px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-        }
-        h2 { color: var(--brand-blue); text-align: center; text-transform: uppercase; margin-bottom: 20px; font-size: 16px; letter-spacing: 1px; }
-        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
-        input[type="text"], input[type="tel"] {
-            width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
-            border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
-            color: white; font-size: 16px; box-sizing: border-box; margin-bottom: 20px;
-        }
-        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-        .toggle-btn {
-            flex: 1 1 calc(50% - 8px); padding: 14px;
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px; color: var(--text-dim); font-weight: 700;
-            text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px; cursor: pointer;
-        }
-        .toggle-btn.active { 
-            background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border-color: var(--brand-blue); 
-            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6);
-        }
-        .upload-area {
-            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; position: relative;
-        }
-        #submitBtn {
-            background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border: none; padding: 18px; 
-            border-radius: 14px; width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; cursor: pointer;
-        }
-        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
-        #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
-        
-        #liveClock {
-            text-align: center; font-family: monospace; font-size: 14px; color: #4ade80; 
-            margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px;
-            border: 1px solid rgba(74, 222, 128, 0.3);
-        }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <div class="logo-container" style="text-align:center; margin-bottom:20px;">
-        <img src="Final-01.jpg" style="max-width:280px; filter: drop-shadow(0 0 15px rgba(0,102,255,0.4));" alt="Logo">
-    </div>
-
-    <div class="card" id="mainCard">
-        <h2>Fleet Health Check</h2>
-
-        <div id="liveClock">Loading Date/Time...</div>
-
-        <div class="form-group">
-            <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Enter your name">
-        </div>
-
-        <div class="form-group">
-            <label>Last 4 of VIN</label>
-            <input type="tel" id="vin" placeholder="Type 4 digits" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
-        </div>
-
-        <label>Service Type</label>
-        <div class="toggle-group" id="groupVehicle">
-            <div class="toggle-btn" id="v_EDV">EDV</div>
-            <div class="toggle-btn" id="v_CDV">CDV</div>
-            <div class="toggle-btn" id="v_Cargo">Cargo</div>
-            <div class="toggle-btn" id="v_Rental">Rental</div>
-        </div>
-
-        <label>Inspection Type (Auto-Selected)</label>
-        <div class="toggle-group" id="groupType">
-            <div class="toggle-btn" id="btnPre" onclick="manualSet('Precheck')">Precheck</div>
-            <div class="toggle-btn" id="btnPost" onclick="manualSet('Postcheck')">Postcheck</div>
-        </div>
-
-        <label>1080p HD Video (Max 200MB)</label>
-        <div class="upload-area">
-            <div id="fileLabel">
-                <span>Tap to Record Video</span><br>
-                <span style="font-size: 9px; color: #4ade80;">1080p SUPPORTED</span>
-            </div>
-            <input type="file" id="videoFile" accept="video/*" capture="environment" style="position:absolute; width:100%; height:100%; top:0; left:0; opacity:0; cursor:pointer;">
-        </div>
-
-        <div id="progressContainer"><div id="progressBar"></div></div>
-        <div id="status" style="text-align:center; font-size:11px; margin-top:10px; color:#0066ff;">System Online</div>
-        
-        <button id="submitBtn">UPLOAD TO GOOGLE DRIVE</button>
-    </div>
-
-    <div class="card" id="successCard" style="display:none; text-align:center;">
-        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-        <h2>UPLOAD SUCCESSFUL</h2>
-        <p style="color:#a0a0a0; font-size:12px;">The video has been securely archived.</p>
-        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
-    </div>
-</div>
-
 <script>
-    // --- CONNECTED BACKEND URL ---
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxRUfifOU5O0QdofMa65eI2xV4fb-PzCNMtCFNXy6FSlRNeHIxc8P3rDvTOla-Azpbv/exec"; 
-    // -----------------------------
+// --- 1. VEHICLE DATA LOOKUP ---
+const vinLookupTable = {
+    "7867": "EDV", "7871": "EDV", "9412": "EDV", "7872": "EDV", "7866": "EDV", "7860": "EDV", "9418": "EDV", "7863": "EDV", "7859": "EDV", "7857": "EDV",
+    "4905": "CDV", "7097": "CDV", "2347": "CDV", "1587": "CDV", "6880": "CDV", "6907": "CDV", "1295": "CDV", "6265": "CDV", "6188": "CDV", "1288": "CDV", "6864": "CDV",
+    "1051": "CARGO", "9488": "CARGO", "7088": "CARGO", "1664": "CARGO", "0871": "CARGO", "3010": "CARGO", "5344": "CARGO", "0890": "CARGO", "5341": "CARGO", "3754": "CARGO", "7373": "CARGO", "0876": "CARGO", "8786": "CARGO", "0213": "CARGO", "3892": "CARGO", "9651": "CARGO", "5691": "CARGO", "9128": "CARGO"
+};
 
-    const FLEET_MAP = {
-        '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium'
-    };
+// --- 2. AUTO-SELECTION FUNCTIONS ---
+function applySelection(selector, value) {
+    document.querySelectorAll(selector).forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.pointerEvents = 'none'; // Lock manual clicking
+        if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
+            btn.classList.add('active');
+        }
+    });
+}
 
-    let inspectionType = '';
-    let serviceTypeStr = '';
-    
-    function updateTimeLogic() {
-        const now = new Date();
-        document.getElementById('liveClock').innerText = now.toLocaleString();
-        const hour = now.getHours();
-        
-        document.getElementById('btnPre').classList.remove('active');
-        document.getElementById('btnPost').classList.remove('active');
+function runTimeCheck() {
+    const now = new Date();
+    const totalMinutes = (now.getHours() * 60) + now.getMinutes();
 
-        // Logic: 10am-3pm = Precheck, 6pm+ = Postcheck
-        if (hour >= 10 && hour < 15) { manualSet('Precheck'); } 
-        else if (hour >= 18) { manualSet('Postcheck'); }
+    // WIDENED TESTING WINDOWS:
+    // Precheck: 8:00 AM - 5:00 PM (480 - 1020 mins)
+    // Postcheck: 5:01 PM - 11:59 PM (1021 - 1439 mins)
+    if (totalMinutes >= 480 && totalMinutes <= 1020) {
+        applySelection('.inspection-btn', 'PRECHECK');
+    } else {
+        applySelection('.inspection-btn', 'POSTCHECK');
     }
+}
 
-    setInterval(updateTimeLogic, 1000);
-    updateTimeLogic();
+// --- 3. INITIALIZATION ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Run time check immediately
+    runTimeCheck();
 
-    function manualSet(type) {
-        inspectionType = type;
-        document.getElementById('btnPre').classList.toggle('active', type === 'Precheck');
-        document.getElementById('btnPost').classList.toggle('active', type === 'Postcheck');
-    }
-
-    function autoDetectVehicle() {
-        const vin = document.getElementById('vin').value;
-        document.querySelectorAll('#groupVehicle .toggle-btn').forEach(b => b.classList.remove('active'));
-        
-        if (vin.length === 4) {
-            if (FLEET_MAP[vin]) {
-                serviceTypeStr = FLEET_MAP[vin];
-                if (serviceTypeStr.includes('Electric')) document.getElementById('v_EDV').classList.add('active');
-                else if (serviceTypeStr.includes('CDV')) document.getElementById('v_CDV').classList.add('active');
-                else document.getElementById('v_Cargo').classList.add('active');
-            } else {
-                serviceTypeStr = 'Rental/External';
-                document.getElementById('v_Rental').classList.add('active');
+    // Watch VIN Input (Assuming your ID is 'vin-input')
+    const vinInput = document.getElementById('vin-input');
+    if (vinInput) {
+        vinInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (val.length === 4) {
+                const type = vinLookupTable[val];
+                if (type) applySelection('.service-btn', type);
             }
-        }
+        });
     }
-
-    document.getElementById('videoFile').onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            // Limit set to ~200MB for Google Apps Script stability
-            if (sizeMB > 199) {
-                alert(`File too large (${sizeMB}MB). Limit is 200MB.`);
-                document.getElementById('submitBtn').disabled = true;
-            } else {
-                document.getElementById('submitBtn').disabled = false;
-                document.getElementById('fileLabel').innerHTML = `<span style="color:#4ade80">READY: ${sizeMB}MB</span>`;
-                document.getElementById('status').innerText = `SIZE OK: ${sizeMB}MB`;
-            }
-        }
-    };
-
-    document.getElementById('submitBtn').onclick = () => {
-        const name = document.getElementById('driverName').value;
-        const vin = document.getElementById('vin').value;
-        const file = document.getElementById('videoFile').files[0];
-
-        if (!name || !vin || !file || !inspectionType || !serviceTypeStr) {
-            alert("Please fill in all fields."); return;
-        }
-
-        document.getElementById('submitBtn').disabled = true;
-        document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('progressBar').style.width = '20%';
-        document.getElementById('status').innerText = "ENCODING VIDEO...";
-
-        // Convert Video to Base64 String
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        
-        reader.onload = function(e) {
-            // Remove the "data:video/mp4;base64," header
-            const rawLog = reader.result.split(',')[1]; 
-
-            document.getElementById('progressBar').style.width = '50%';
-            document.getElementById('status').innerText = "SENDING TO DRIVE...";
-
-            const payload = {
-                driver: name,
-                vin: vin,
-                type: inspectionType,
-                service: serviceTypeStr,
-                file: rawLog,
-                mime: file.type
-            };
-
-            // Use 'no-cors' mode isn't ideal for error handling, but standard POST requires text/plain for Simple Requests
-            // We use standard fetch here. If CORS is an issue, we can switch to Content-Type: text/plain
-            fetch(SCRIPT_URL, {
-                method: "POST",
-                body: JSON.stringify(payload)
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('progressBar').style.width = '100%';
-                if(data.result === 'success'){
-                    document.getElementById('mainCard').style.display = 'none';
-                    document.getElementById('successCard').style.display = 'block';
-                } else {
-                    throw new Error(data.error || "Unknown Error");
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                // Even if fetch fails (sometimes CORS gives false negatives), check Drive
-                // But generally, we want to warn the user:
-                alert("Upload Failed or Network Error: " + error);
-                document.getElementById('submitBtn').disabled = false;
-                document.getElementById('progressBar').style.width = '0%';
-                document.getElementById('status').innerText = "ERROR - TRY AGAIN";
-            });
-        };
-        
-        reader.onerror = function(error) {
-            console.log('Error: ', error);
-            alert('Error reading file');
-        };
-    };
+});
 </script>
 </body>
-</html>
