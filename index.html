@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="robots" content="noindex, nofollow">
     <title>SLGP Fleet Health Check v1.2</title>
     <link rel="manifest" href="manifest.json">
     <style>
@@ -117,11 +118,16 @@
     <div class="card" id="successCard" style="display:none; text-align:center;">
         <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
         <h2>UPLOAD SUCCESSFUL</h2>
+        <p style="color:#a0a0a0; font-size:12px;">The video has been securely archived.</p>
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 </div>
 
 <script>
+    // --- CONNECTED BACKEND URL ---
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxRUfifOU5O0QdofMa65eI2xV4fb-PzCNMtCFNXy6FSlRNeHIxc8P3rDvTOla-Azpbv/exec"; 
+    // -----------------------------
+
     const FLEET_MAP = {
         '7867': 'Electric RPV Medium', '7871': 'Electric RPV Medium', '9412': 'Electric RPV Medium'
     };
@@ -137,6 +143,7 @@
         document.getElementById('btnPre').classList.remove('active');
         document.getElementById('btnPost').classList.remove('active');
 
+        // Logic: 10am-3pm = Precheck, 6pm+ = Postcheck
         if (hour >= 10 && hour < 15) { manualSet('Precheck'); } 
         else if (hour >= 18) { manualSet('Postcheck'); }
     }
@@ -171,6 +178,7 @@
         const file = e.target.files[0];
         if (file) {
             const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            // Limit set to ~200MB for Google Apps Script stability
             if (sizeMB > 199) {
                 alert(`File too large (${sizeMB}MB). Limit is 200MB.`);
                 document.getElementById('submitBtn').disabled = true;
@@ -193,35 +201,60 @@
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerText = "UPLOADING 1080p VIDEO...";
+        document.getElementById('progressBar').style.width = '20%';
+        document.getElementById('status').innerText = "ENCODING VIDEO...";
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('driver', name);
-        formData.append('vin', vin);
+        // Convert Video to Base64 String
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        
+        reader.onload = function(e) {
+            // Remove the "data:video/mp4;base64," header
+            const rawLog = reader.result.split(',')[1]; 
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/upload');
+            document.getElementById('progressBar').style.width = '50%';
+            document.getElementById('status').innerText = "SENDING TO DRIVE...";
 
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                document.getElementById('progressBar').style.width = percent + '%';
-                document.getElementById('status').innerText = `UPLOADING: ${percent}%`;
-            }
-        };
+            const payload = {
+                driver: name,
+                vin: vin,
+                type: inspectionType,
+                service: serviceTypeStr,
+                file: rawLog,
+                mime: file.type
+            };
 
-        xhr.onload = () => {
-            if (xhr.status === 200) {
-                document.getElementById('mainCard').style.display = 'none';
-                document.getElementById('successCard').style.display = 'block';
-            } else {
-                alert("Upload failed.");
+            // Use 'no-cors' mode isn't ideal for error handling, but standard POST requires text/plain for Simple Requests
+            // We use standard fetch here. If CORS is an issue, we can switch to Content-Type: text/plain
+            fetch(SCRIPT_URL, {
+                method: "POST",
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('progressBar').style.width = '100%';
+                if(data.result === 'success'){
+                    document.getElementById('mainCard').style.display = 'none';
+                    document.getElementById('successCard').style.display = 'block';
+                } else {
+                    throw new Error(data.error || "Unknown Error");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Even if fetch fails (sometimes CORS gives false negatives), check Drive
+                // But generally, we want to warn the user:
+                alert("Upload Failed or Network Error: " + error);
                 document.getElementById('submitBtn').disabled = false;
-            }
+                document.getElementById('progressBar').style.width = '0%';
+                document.getElementById('status').innerText = "ERROR - TRY AGAIN";
+            });
         };
-
-        xhr.send(formData);
+        
+        reader.onerror = function(error) {
+            console.log('Error: ', error);
+            alert('Error reading file');
+        };
     };
 </script>
 </body>
