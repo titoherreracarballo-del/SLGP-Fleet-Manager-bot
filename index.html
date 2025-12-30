@@ -52,11 +52,11 @@
             flex: 1 1 calc(50% - 8px); padding: 14px;
             background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 12px; color: var(--text-dim); font-weight: 700;
-            text-align: center; text-transform: uppercase; font-size: 11px; transition: 0.3s;
+            text-align: center; text-transform: uppercase; font-size: 11px;
         }
 
         .active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
-        .disabled-state { opacity: 0.2; pointer-events: none; }
+        .disabled-state { opacity: 0.15; pointer-events: none; }
 
         .upload-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
@@ -116,7 +116,7 @@
 </div>
 
 <script>
-    // VIN Mapping
+    // VIN Mapping Data
     const FLEET_MAP = {
         '7867':'EDV','7871':'EDV','9412':'EDV','7872':'EDV','7866':'EDV','7860':'EDV','9418':'EDV','7863':'EDV','7859':'EDV','7857':'EDV',
         '4905':'CDV','7097':'CDV','2347':'CDV','1587':'CDV','6880':'CDV','6907':'CDV','1295':'CDV','6265':'CDV','6188':'CDV','1288':'CDV','6864':'CDV',
@@ -142,21 +142,28 @@
         }
     }
 
-    function checkTime() {
+    // Fixed Inspection Auto-Selection Logic
+    function checkShiftTime() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
-        const pre = document.getElementById('btnPre');
-        const post = document.getElementById('btnPost');
+        const btnPre = document.getElementById('btnPre');
+        const btnPost = document.getElementById('btnPost');
 
-        pre.classList.remove('active', 'disabled-state');
-        post.classList.remove('active', 'disabled-state');
-        pre.style.pointerEvents = 'none';
-        post.style.pointerEvents = 'none';
+        btnPre.classList.remove('active', 'disabled-state');
+        btnPost.classList.remove('active', 'disabled-state');
+        btnPre.style.pointerEvents = 'none';
+        btnPost.style.pointerEvents = 'none';
 
-        // Precheck: 10:00 AM - 3:00 PM
-        if (mins >= 600 && mins <= 900) { pre.classList.add('active'); post.classList.add('disabled-state'); }
-        // Postcheck: 6:00 PM - 11:30 PM
-        else if (mins >= 1080 && mins <= 1410) { post.classList.add('active'); pre.classList.add('disabled-state'); }
+        // Precheck: 10:00 AM (600) to 3:00 PM (900)
+        if (mins >= 600 && mins <= 900) {
+            btnPre.classList.add('active');
+            btnPost.classList.add('disabled-state');
+        } 
+        // Postcheck: 6:00 PM (1080) to 11:30 PM (1410)
+        else if (mins >= 1080 && mins <= 1410) {
+            btnPost.classList.add('active');
+            btnPre.classList.add('disabled-state');
+        }
     }
 
     document.getElementById('videoFile').onchange = (e) => {
@@ -171,7 +178,7 @@
         const file = document.getElementById('videoFile').files[0];
         const inspection = document.querySelector('#groupType .active');
 
-        if (!name || !vin || !file || !inspection) return alert("All fields and video required.");
+        if (!name || !vin || !file || !inspection) return alert("Missing fields!");
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
@@ -190,14 +197,15 @@
             document.getElementById('progressBar').style.width = pct + '%';
         };
         xhr.onload = () => {
-            if (xhr.status === 200) alert("VIDEO SYNCED TO DRIVE!");
+            if (xhr.status === 200) alert("SUCCESSFULLY SYNCED TO DRIVE!");
             else alert("SYNC FAILED");
             location.reload();
         };
         xhr.send(formData);
     };
 
-    checkTime();
+    // Run immediately on load
+    window.onload = checkShiftTime;
 </script>
 </body>
 </html>
