@@ -1,15 +1,12 @@
 {
-  "name": "slgp-fleet-manager-bot",
+  "name": "fleet-health-check",
   "version": "1.0.0",
-  "description": "Fleet Management Bot with SMTP and Web Status",
+  "description": "Fleet Health Check Application",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.22.1",
-    "express-fileupload": "^1.5.2",
-    "googleapis": "^169.0.0",
-    "nodemailer": "^6.9.0"
+    "express": "^4.18.2"
   }
 }
