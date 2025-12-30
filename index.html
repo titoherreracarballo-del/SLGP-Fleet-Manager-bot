@@ -1,52 +1,124 @@
-<script>
-// 1. VEHICLE LOOKUP DATA
-const vinLookup = {
-    "7867":"EDV","7871":"EDV","9412":"EDV","7872":"EDV","7866":"EDV","7860":"EDV","9418":"EDV","7863":"EDV","7859":"EDV","7857":"EDV",
-    "4905":"CDV","7097":"CDV","2347":"CDV","1587":"CDV","6880":"CDV","6907":"CDV","1295":"CDV","6265":"CDV","6188":"CDV","1288":"CDV","6864":"CDV",
-    "1051":"CARGO","9488":"CARGO","7088":"CARGO","1664":"CARGO","0871":"CARGO","3010":"CARGO","5344":"CARGO","0890":"CARGO","5341":"CARGO","3754":"CARGO","7373":"CARGO","0876":"CARGO","8786":"CARGO","0213":"CARGO","3892":"CARGO","9651":"CARGO","5691":"CARGO","9128":"CARGO"
-};
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Health Check</title>
+    <style>
+        .active { background-color: #0056b3 !important; color: white !important; box-shadow: 0 0 15px rgba(0, 86, 179, 0.7); }
+        .btn { padding: 15px; margin: 5px; cursor: pointer; border-radius: 8px; border: 1px solid #333; transition: 0.3s; }
+        /* Add more of your existing styles below */
+    </style>
+</head>
+<body>
 
-// 2. AUTO-SELECTION UTILITY
-function setAuto(selector, value) {
-    const buttons = document.querySelectorAll(selector);
-    buttons.forEach(btn => {
-        btn.classList.remove('active');
-        btn.style.pointerEvents = 'none'; // Lock from manual clicking
-        if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
-            btn.classList.add('active');
+    <div id="form-container">
+        <h1>FLEET HEALTH CHECK</h1>
+        
+        <label>DRIVER FULL NAME</label>
+        <input type="text" id="driver-name" placeholder="Enter Name">
+
+        <label>LAST 4 OF VIN</label>
+        <input type="text" id="vin-input" maxlength="4" placeholder="e.g. 3754">
+
+        <label>SERVICE TYPE</label>
+        <div class="button-group">
+            <div class="service-btn btn">EDV</div>
+            <div class="service-btn btn">CDV</div>
+            <div class="service-btn btn">CARGO</div>
+            <div class="service-btn btn">RENTAL</div>
+        </div>
+
+        <label>INSPECTION TYPE (AUTO-SELECTED)</label>
+        <div class="button-group">
+            <div class="inspection-btn btn">PRECHECK</div>
+            <div class="inspection-btn btn">POSTCHECK</div>
+        </div>
+
+        <button id="upload-btn">UPLOAD TO GOOGLE DRIVE</button>
+    </div>
+
+    <script>
+        // 1. DATA MAPPING (All VINs from your Spreadsheet)
+        const vehicleLookupMap = {
+            "7867": "EDV", "7871": "EDV", "9412": "EDV", "7872": "EDV", "7866": "EDV", "7860": "EDV", "9418": "EDV", "7863": "EDV", "7859": "EDV", "7857": "EDV",
+            "4905": "CDV", "7097": "CDV", "2347": "CDV", "1587": "CDV", "6880": "CDV", "6907": "CDV", "1295": "CDV", "6265": "CDV", "6188": "CDV", "1288": "CDV", "6864": "CDV",
+            "1051": "CARGO", "9488": "CARGO", "7088": "CARGO", "1664": "CARGO", "0871": "CARGO", "3010": "CARGO", "5344": "CARGO", "0890": "CARGO", "5341": "CARGO", "3754": "CARGO", "7373": "CARGO", "0876": "CARGO", "8786": "CARGO", "0213": "CARGO", "3892": "CARGO", "9651": "CARGO", "5691": "CARGO", "9128": "CARGO"
+        };
+
+        // 2. THE HIGHLIGHTING ENGINE
+        // This function handles both Service and Inspection types
+        function applyFormSelection(buttonClass, targetValue) {
+            const allButtons = document.querySelectorAll(buttonClass);
+            
+            allButtons.forEach(function(button) {
+                // Remove existing active states
+                button.classList.remove('active');
+                
+                // Disable manual clicking to prevent override
+                button.style.pointerEvents = 'none';
+                button.style.opacity = '0.7';
+
+                // If the button text matches the result, highlight it
+                if (button.innerText.trim().toUpperCase() === targetValue.toUpperCase()) {
+                    button.classList.add('active');
+                    button.style.opacity = '1';
+                }
+            });
         }
-    });
-}
 
-// 3. TIME-BASED AUTO-SELECT
-function checkTime() {
-    const now = new Date();
-    const mins = (now.getHours() * 60) + now.getMinutes();
-    
-    // Testing Window (8:00 AM - 11:30 PM) so you can see it working now
-    if (mins >= 480 && mins <= 1410) {
-        // If it's 10AM-3PM, it's PRECHECK. If after 3PM, it's POSTCHECK.
-        const type = (mins <= 900) ? 'PRECHECK' : 'POSTCHECK';
-        setAuto('.inspection-btn', type);
-    }
-}
+        // 3. TIME-BASED AUTO SELECTION LOGIC
+        function runShiftTimeCheck() {
+            const currentTime = new Date();
+            const hour = currentTime.getHours();
+            const minute = currentTime.getMinutes();
+            const totalMinutes = (hour * 60) + minute;
 
-// 4. ATTACH TO YOUR VIN INPUT
-document.addEventListener('DOMContentLoaded', () => {
-    checkTime();
-    
-    // CRUCIAL: Your HTML must have <input id="vin-input">
-    const vinInput = document.getElementById('vin-input');
-    
-    if (vinInput) {
-        vinInput.addEventListener('input', (e) => {
-            if (e.target.value.length === 4) {
-                const match = vinLookup[e.target.value];
-                if (match) setAuto('.service-btn', match);
+            console.log("Current System Time in Minutes: " + totalMinutes);
+
+            // PRECHECK WINDOW: 10:00 AM (600) to 3:00 PM (900)
+            const preStart = 600;
+            const preEnd = 900;
+
+            // POSTCHECK WINDOW: 6:00 PM (1080) to 11:30 PM (1410)
+            const postStart = 1080;
+            const postEnd = 1410;
+
+            if (totalMinutes >= preStart && totalMinutes <= preEnd) {
+                applyFormSelection('.inspection-btn', 'PRECHECK');
+            } else if (totalMinutes >= postStart && totalMinutes <= postEnd) {
+                applyFormSelection('.inspection-btn', 'POSTCHECK');
+            } else {
+                console.log("Outside of standard inspection windows.");
+            }
+        }
+
+        // 4. EVENT LISTENERS AND INITIALIZATION
+        window.addEventListener('DOMContentLoaded', function() {
+            // Check the time as soon as the page loads
+            runShiftTimeCheck();
+
+            // Setup the VIN input listener
+            const vinInputField = document.getElementById('vin-input');
+            
+            if (vinInputField) {
+                vinInputField.addEventListener('input', function(event) {
+                    const currentInput = event.target.value;
+                    
+                    // Trigger the lookup once we have 4 digits
+                    if (currentInput.length === 4) {
+                        const detectedType = vehicleLookupMap[currentInput];
+                        if (detectedType) {
+                            applyFormSelection('.service-btn', detectedType);
+                        } else {
+                            console.log("VIN not found in system list.");
+                        }
+                    }
+                });
+            } else {
+                console.error("CRITICAL ERROR: Input with ID 'vin-input' was not found in the HTML.");
             }
         });
-    } else {
-        console.error("Error: Could not find an element with id='vin-input'");
-    }
-});
-</script>
+    </script>
+</body>
+</html>
