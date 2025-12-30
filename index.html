@@ -5,24 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fleet Health Check</title>
     <style>
-        .active { background-color: #0056b3 !important; color: white !important; box-shadow: 0 0 15px rgba(0, 86, 179, 0.7); }
-        .btn { padding: 15px; margin: 5px; cursor: pointer; border-radius: 8px; border: 1px solid #333; transition: 0.3s; }
-        /* Add more of your existing styles below */
+        body { background-color: #0f172a; color: #38bdf8; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .form-card { background: #1e293b; padding: 30px; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); border: 1px solid #334155; }
+        h1 { text-align: center; color: #3b82f6; font-size: 1.4rem; letter-spacing: 1px; margin-bottom: 25px; }
+        .clock { background: rgba(0,0,0,0.25); padding: 12px; border-radius: 10px; text-align: center; margin-bottom: 25px; color: #10b981; font-family: monospace; border: 1px solid #064e3b; }
+        label { display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 8px; color: #60a5fa; text-transform: uppercase; }
+        input { width: 100%; padding: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; color: white; margin-bottom: 25px; box-sizing: border-box; font-size: 1rem; }
+        .group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; }
+        .btn { background: #334155; padding: 16px; border-radius: 12px; text-align: center; cursor: pointer; border: 1px solid #475569; font-weight: bold; transition: 0.3s; color: #94a3b8; }
+        /* Highlighting the correct selection */
+        .active { background: #2563eb !important; color: white !important; border-color: #3b82f6; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
+        .upload { border: 2px dashed #334155; padding: 35px; text-align: center; border-radius: 15px; margin-bottom: 25px; }
+        .submit { width: 100%; background: #2563eb; color: white; padding: 20px; border-radius: 15px; border: none; font-weight: bold; font-size: 1.1rem; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div id="form-container">
+    <div class="form-card">
         <h1>FLEET HEALTH CHECK</h1>
+        <div id="live-clock" class="clock">SYSTEM INITIALIZING...</div>
         
         <label>DRIVER FULL NAME</label>
-        <input type="text" id="driver-name" placeholder="Enter Name">
+        <input type="text" id="driver-input" placeholder="Full Name">
 
         <label>LAST 4 OF VIN</label>
         <input type="text" id="vin-input" maxlength="4" placeholder="e.g. 3754">
 
         <label>SERVICE TYPE</label>
-        <div class="button-group">
+        <div class="group">
             <div class="service-btn btn">EDV</div>
             <div class="service-btn btn">CDV</div>
             <div class="service-btn btn">CARGO</div>
@@ -30,93 +40,79 @@
         </div>
 
         <label>INSPECTION TYPE (AUTO-SELECTED)</label>
-        <div class="button-group">
+        <div class="group">
             <div class="inspection-btn btn">PRECHECK</div>
             <div class="inspection-btn btn">POSTCHECK</div>
         </div>
 
-        <button id="upload-btn">UPLOAD TO GOOGLE DRIVE</button>
+        <div class="upload">
+            <div style="font-size: 1.1rem; margin-bottom: 4px;">Tap to Record Video</div>
+            <div style="font-size: 0.7rem; color: #10b981;">1080p SUPPORTED</div>
+        </div>
+
+        <button class="submit">UPLOAD TO GOOGLE DRIVE</button>
     </div>
 
     <script>
-        // 1. DATA MAPPING (All VINs from your Spreadsheet)
-        const vehicleLookupMap = {
-            "7867": "EDV", "7871": "EDV", "9412": "EDV", "7872": "EDV", "7866": "EDV", "7860": "EDV", "9418": "EDV", "7863": "EDV", "7859": "EDV", "7857": "EDV",
-            "4905": "CDV", "7097": "CDV", "2347": "CDV", "1587": "CDV", "6880": "CDV", "6907": "CDV", "1295": "CDV", "6265": "CDV", "6188": "CDV", "1288": "CDV", "6864": "CDV",
-            "1051": "CARGO", "9488": "CARGO", "7088": "CARGO", "1664": "CARGO", "0871": "CARGO", "3010": "CARGO", "5344": "CARGO", "0890": "CARGO", "5341": "CARGO", "3754": "CARGO", "7373": "CARGO", "0876": "CARGO", "8786": "CARGO", "0213": "CARGO", "3892": "CARGO", "9651": "CARGO", "5691": "CARGO", "9128": "CARGO"
+        // 1. DATA LOOKUP (Mapped from your Spreadsheet)
+        const fleetDatabase = {
+            "7867":"EDV","7871":"EDV","9412":"EDV","7872":"EDV","7866":"EDV","7860":"EDV","9418":"EDV","7863":"EDV","7859":"EDV","7857":"EDV",
+            "4905":"CDV","7097":"CDV","2347":"CDV","1587":"CDV","6880":"CDV","6907":"CDV","1295":"CDV","6265":"CDV","6188":"CDV","1288":"CDV","6864":"CDV",
+            "1051":"CARGO","9488":"CARGO","7088":"CARGO","1664":"CARGO","0871":"CARGO","3010":"CARGO","5344":"CARGO","0890":"CARGO","5341":"CARGO","3754":"CARGO","7373":"CARGO","0876":"CARGO","8786":"CARGO","0213":"CARGO","3892":"CARGO","9651":"CARGO","5691":"CARGO","9128":"CARGO"
         };
 
-        // 2. THE HIGHLIGHTING ENGINE
-        // This function handles both Service and Inspection types
-        function applyFormSelection(buttonClass, targetValue) {
-            const allButtons = document.querySelectorAll(buttonClass);
-            
-            allButtons.forEach(function(button) {
-                // Remove existing active states
-                button.classList.remove('active');
-                
-                // Disable manual clicking to prevent override
-                button.style.pointerEvents = 'none';
-                button.style.opacity = '0.7';
-
-                // If the button text matches the result, highlight it
-                if (button.innerText.trim().toUpperCase() === targetValue.toUpperCase()) {
-                    button.classList.add('active');
-                    button.style.opacity = '1';
+        // 2. AUTO-SELECT FUNCTION
+        function applyAutoSelection(className, value) {
+            const btns = document.querySelectorAll(className);
+            btns.forEach(function(btn) {
+                btn.classList.remove('active');
+                // Lock manual click
+                btn.style.pointerEvents = 'none'; 
+                if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
+                    btn.classList.add('active');
                 }
             });
         }
 
-        // 3. TIME-BASED AUTO SELECTION LOGIC
-        function runShiftTimeCheck() {
-            const currentTime = new Date();
-            const hour = currentTime.getHours();
-            const minute = currentTime.getMinutes();
-            const totalMinutes = (hour * 60) + minute;
+        // 3. TIME AND SHIFT CHECK
+        function updateShift() {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toLocaleString();
 
-            console.log("Current System Time in Minutes: " + totalMinutes);
+            const hour = now.getHours();
+            const min = now.getMinutes();
+            const totalMins = (hour * 60) + min;
 
-            // PRECHECK WINDOW: 10:00 AM (600) to 3:00 PM (900)
-            const preStart = 600;
-            const preEnd = 900;
-
-            // POSTCHECK WINDOW: 6:00 PM (1080) to 11:30 PM (1410)
-            const postStart = 1080;
-            const postEnd = 1410;
-
-            if (totalMinutes >= preStart && totalMinutes <= preEnd) {
-                applyFormSelection('.inspection-btn', 'PRECHECK');
-            } else if (totalMinutes >= postStart && totalMinutes <= postEnd) {
-                applyFormSelection('.inspection-btn', 'POSTCHECK');
+            // Precheck: 10:00 AM (600) to 3:00 PM (900)
+            if (totalMins >= 600 && totalMins <= 900) {
+                applyAutoSelection('.inspection-btn', 'PRECHECK');
+            } 
+            // Postcheck: 6:00 PM (1080) to 11:30 PM (1410)
+            else if (totalMins >= 1080 && totalMins <= 1410) {
+                applyAutoSelection('.inspection-btn', 'POSTCHECK');
             } else {
-                console.log("Outside of standard inspection windows.");
+                // Outside hours
+                document.querySelectorAll('.inspection-btn').forEach(b => b.classList.remove('active'));
             }
         }
 
-        // 4. EVENT LISTENERS AND INITIALIZATION
-        window.addEventListener('DOMContentLoaded', function() {
-            // Check the time as soon as the page loads
-            runShiftTimeCheck();
+        // 4. STARTUP
+        window.addEventListener('load', function() {
+            updateShift();
+            setInterval(updateShift, 1000); // Live clock update
 
-            // Setup the VIN input listener
-            const vinInputField = document.getElementById('vin-input');
-            
-            if (vinInputField) {
-                vinInputField.addEventListener('input', function(event) {
-                    const currentInput = event.target.value;
-                    
-                    // Trigger the lookup once we have 4 digits
-                    if (currentInput.length === 4) {
-                        const detectedType = vehicleLookupMap[currentInput];
-                        if (detectedType) {
-                            applyFormSelection('.service-btn', detectedType);
-                        } else {
-                            console.log("VIN not found in system list.");
+            const vinBox = document.getElementById('vin-input');
+            if (vinBox) {
+                vinBox.addEventListener('input', function(e) {
+                    const input = e.target.value;
+                    // Trigger selection when 4 digits are entered
+                    if (input.length === 4) {
+                        const serviceType = fleetDatabase[input];
+                        if (serviceType) {
+                            applyAutoSelection('.service-btn', serviceType);
                         }
                     }
                 });
-            } else {
-                console.error("CRITICAL ERROR: Input with ID 'vin-input' was not found in the HTML.");
             }
         });
     </script>
