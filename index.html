@@ -5,31 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fleet Health Check</title>
     <style>
-        body { background-color: #0f172a; color: #38bdf8; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; }
-        .form-card { background: #1e293b; padding: 30px; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); border: 1px solid #334155; }
-        h1 { text-align: center; color: #3b82f6; font-size: 1.4rem; letter-spacing: 1px; margin-bottom: 25px; }
-        .clock { background: rgba(0,0,0,0.25); padding: 12px; border-radius: 10px; text-align: center; margin-bottom: 25px; color: #10b981; font-family: monospace; border: 1px solid #064e3b; }
-        label { display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 8px; color: #60a5fa; text-transform: uppercase; }
-        input { width: 100%; padding: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; color: white; margin-bottom: 25px; box-sizing: border-box; font-size: 1rem; }
+        /* --- CORRECTED DEEP BLUE COLOR SCHEME --- */
+        body { background-color: #0b1121; color: #3b82f6; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .form-card { background: #161e31; padding: 30px; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 15px 45px rgba(0,0,0,0.7); border: 1px solid #1e293b; }
+        
+        .logo-area { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #1e293b; padding-bottom: 15px; }
+        h1 { text-align: center; color: #3b82f6; font-size: 1.3rem; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase; }
+        
+        .clock { background: rgba(0,0,0,0.3); padding: 12px; border-radius: 10px; text-align: center; margin-bottom: 25px; color: #10b981; font-family: monospace; border: 1px solid #064e3b; }
+        
+        label { display: block; font-size: 0.7rem; font-weight: bold; margin-bottom: 8px; color: #3b82f6; text-transform: uppercase; }
+        input[type="text"] { width: 100%; padding: 14px; background: #0b1121; border: 1px solid #1e293b; border-radius: 10px; color: white; margin-bottom: 25px; box-sizing: border-box; font-size: 1rem; outline: none; }
+        input[type="text"]:focus { border-color: #3b82f6; }
+
         .group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; }
-        .btn { background: #334155; padding: 16px; border-radius: 12px; text-align: center; cursor: pointer; border: 1px solid #475569; font-weight: bold; transition: 0.3s; color: #94a3b8; }
-        /* Highlighting the correct selection */
-        .active { background: #2563eb !important; color: white !important; border-color: #3b82f6; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
-        .upload { border: 2px dashed #334155; padding: 35px; text-align: center; border-radius: 15px; margin-bottom: 25px; }
-        .submit { width: 100%; background: #2563eb; color: white; padding: 20px; border-radius: 15px; border: none; font-weight: bold; font-size: 1.1rem; cursor: pointer; }
+        .btn { background: #1e293b; padding: 16px; border-radius: 12px; text-align: center; border: 1px solid #2d3a4f; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        
+        /* Neon Blue Active State */
+        .active { background: #2563eb !important; color: white !important; border-color: #3b82f6 !important; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
+
+        /* Video Recording Area */
+        .video-box { border: 2px dashed #1e293b; padding: 35px; text-align: center; border-radius: 15px; margin-bottom: 25px; cursor: pointer; transition: 0.3s; }
+        .video-box:hover { background: rgba(59, 130, 246, 0.05); border-color: #3b82f6; }
+        
+        .submit-btn { width: 100%; background: #2563eb; color: white; padding: 20px; border-radius: 15px; border: none; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
+        
+        /* Hide the actual file input */
+        #camera-input { display: none; }
     </style>
 </head>
 <body>
 
     <div class="form-card">
+        <div class="logo-area">
+            <h2 style="margin: 0; color: #3b82f6; font-size: 1rem;">[COMPANY LOGO]</h2>
+        </div>
+
         <h1>FLEET HEALTH CHECK</h1>
-        <div id="live-clock" class="clock">SYSTEM INITIALIZING...</div>
+        <div id="display-clock" class="clock">00/00/0000, 0:00:00 AM</div>
         
         <label>DRIVER FULL NAME</label>
         <input type="text" id="driver-input" placeholder="Full Name">
 
         <label>LAST 4 OF VIN</label>
-        <input type="text" id="vin-input" maxlength="4" placeholder="e.g. 3754">
+        <input type="text" id="vin-input" maxlength="4" placeholder="3754">
 
         <label>SERVICE TYPE</label>
         <div class="group">
@@ -45,76 +64,70 @@
             <div class="inspection-btn btn">POSTCHECK</div>
         </div>
 
-        <div class="upload">
-            <div style="font-size: 1.1rem; margin-bottom: 4px;">Tap to Record Video</div>
+        <div class="video-box" onclick="document.getElementById('camera-input').click();">
+            <div style="font-size: 1.1rem; margin-bottom: 4px; color: white;">Tap to Record Video</div>
             <div style="font-size: 0.7rem; color: #10b981;">1080p SUPPORTED</div>
+            <div id="file-name" style="font-size: 0.7rem; color: #64748b; margin-top: 10px;"></div>
         </div>
+        
+        <input type="file" id="camera-input" accept="video/*" capture="environment">
 
-        <button class="submit">UPLOAD TO GOOGLE DRIVE</button>
+        <button class="submit-btn">UPLOAD TO GOOGLE DRIVE</button>
     </div>
 
     <script>
-        // 1. DATA LOOKUP (Mapped from your Spreadsheet)
-        const fleetDatabase = {
+        // 1. VIN DATABASE
+        const vehicleMap = {
             "7867":"EDV","7871":"EDV","9412":"EDV","7872":"EDV","7866":"EDV","7860":"EDV","9418":"EDV","7863":"EDV","7859":"EDV","7857":"EDV",
             "4905":"CDV","7097":"CDV","2347":"CDV","1587":"CDV","6880":"CDV","6907":"CDV","1295":"CDV","6265":"CDV","6188":"CDV","1288":"CDV","6864":"CDV",
             "1051":"CARGO","9488":"CARGO","7088":"CARGO","1664":"CARGO","0871":"CARGO","3010":"CARGO","5344":"CARGO","0890":"CARGO","5341":"CARGO","3754":"CARGO","7373":"CARGO","0876":"CARGO","8786":"CARGO","0213":"CARGO","3892":"CARGO","9651":"CARGO","5691":"CARGO","9128":"CARGO"
         };
 
-        // 2. AUTO-SELECT FUNCTION
-        function applyAutoSelection(className, value) {
+        function setFormSelection(className, matchValue) {
             const btns = document.querySelectorAll(className);
             btns.forEach(function(btn) {
                 btn.classList.remove('active');
-                // Lock manual click
-                btn.style.pointerEvents = 'none'; 
-                if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
+                btn.style.pointerEvents = 'none'; // Lock manual override
+                if (btn.innerText.trim().toUpperCase() === matchValue.toUpperCase()) {
                     btn.classList.add('active');
                 }
             });
         }
 
-        // 3. TIME AND SHIFT CHECK
-        function updateShift() {
+        function runShiftTimeCheck() {
             const now = new Date();
-            document.getElementById('live-clock').innerText = now.toLocaleString();
+            document.getElementById('display-clock').innerText = now.toLocaleString();
+            const totalMins = (now.getHours() * 60) + now.getMinutes();
 
-            const hour = now.getHours();
-            const min = now.getMinutes();
-            const totalMins = (hour * 60) + min;
-
-            // Precheck: 10:00 AM (600) to 3:00 PM (900)
-            if (totalMins >= 600 && totalMins <= 900) {
-                applyAutoSelection('.inspection-btn', 'PRECHECK');
-            } 
-            // Postcheck: 6:00 PM (1080) to 11:30 PM (1410)
-            else if (totalMins >= 1080 && totalMins <= 1410) {
-                applyAutoSelection('.inspection-btn', 'POSTCHECK');
-            } else {
-                // Outside hours
-                document.querySelectorAll('.inspection-btn').forEach(b => b.classList.remove('active'));
-            }
+            // PRECHECK: 10:00 AM (600) to 3:00 PM (900)
+            if (totalMins >= 600 && totalMins <= 900) setFormSelection('.inspection-btn', 'PRECHECK');
+            // POSTCHECK: 6:00 PM (1080) to 11:30 PM (1410)
+            else if (totalMins >= 1080 && totalMins <= 1410) setFormSelection('.inspection-btn', 'POSTCHECK');
+            else document.querySelectorAll('.inspection-btn').forEach(b => b.classList.remove('active'));
         }
 
-        // 4. STARTUP
-        window.addEventListener('load', function() {
-            updateShift();
-            setInterval(updateShift, 1000); // Live clock update
+        window.onload = function() {
+            runShiftTimeCheck();
+            setInterval(runShiftTimeCheck, 1000);
 
+            // Trigger VIN Selection
             const vinBox = document.getElementById('vin-input');
             if (vinBox) {
                 vinBox.addEventListener('input', function(e) {
-                    const input = e.target.value;
-                    // Trigger selection when 4 digits are entered
-                    if (input.length === 4) {
-                        const serviceType = fleetDatabase[input];
-                        if (serviceType) {
-                            applyAutoSelection('.service-btn', serviceType);
-                        }
+                    if (e.target.value.length === 4) {
+                        const type = vehicleMap[e.target.value];
+                        if (type) setFormSelection('.service-btn', type);
                     }
                 });
             }
-        });
+
+            // Show selected filename after recording
+            document.getElementById('camera-input').onchange = function() {
+                if (this.files.length > 0) {
+                    document.getElementById('file-name').innerText = "Selected: " + this.files[0].name;
+                }
+            };
+        };
     </script>
 </body>
 </html>
