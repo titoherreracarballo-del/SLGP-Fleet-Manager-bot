@@ -1,50 +1,73 @@
-const express = require('express');
-const fileUpload = require('express-fileupload');
-const { google } = require('googleapis');
-const path = require('path');
-const fs = require('fs');
+// --- 1. VEHICLE DATA LOOKUP (Mapped from your Spreadsheet) ---
+const vinLookupTable = {
+    // EDV (Electric Rivian)
+    "7867": "EDV", "7871": "EDV", "9412": "EDV", "7872": "EDV", "7866": "EDV", "7860": "EDV", "9418": "EDV", "7863": "EDV", "7859": "EDV", "7857": "EDV",
+    // CDV (Custom Delivery Vans)
+    "4905": "CDV", "7097": "CDV", "2347": "CDV", "1587": "CDV", "6880": "CDV", "6907": "CDV", "1295": "CDV", "6265": "CDV", "6188": "CDV", "1288": "CDV", "6864": "CDV",
+    // CARGO (Extra Large/Large Vans)
+    "1051": "CARGO", "9488": "CARGO", "7088": "CARGO", "1664": "CARGO", "0871": "CARGO", "3010": "CARGO", "5344": "CARGO", "0890": "CARGO", "5341": "CARGO", "3754": "CARGO", "7373": "CARGO", "0876": "CARGO", "8786": "CARGO", "0213": "CARGO", "3892": "CARGO", "9651": "CARGO", "5691": "CARGO", "9128": "CARGO"
+};
 
-const app = express();
-const port = process.env.PORT || 3000;
+// --- 2. AUTO-SELECTION LOGIC ---
 
-// 1. Authenticate with Google Workspace
-const auth = new google.auth.GoogleAuth({
-    keyFile: path.join(__dirname, 'google-credentials.json'),
-    scopes: ['https://www.googleapis.com/auth/drive.file'],
-});
-const drive = google.drive({ version: 'v3', auth });
-
-app.use(fileUpload({ useTempFiles: true, tempFileDir: '/tmp/' }));
-
-// 2. Main SLGP Dashboard UI (v1.0.9)
-app.get('/', (req, res) => {
-    // [The HTML we built for your Fleet Health Check dashboard]
-    res.send("<h1>SLGP Mesh Live: Ready for 25MB+ Uploads</h1>"); 
-});
-
-// 3. The Automatic Sync Logic
-app.post('/upload', async (req, res) => {
-    if (!req.files || !req.files.meshFile) return res.status(400).send('No file.');
+function handleVinLookup(event) {
+    const vinValue = event.target.value;
     
-    const file = req.files.meshFile;
-    const fileMetadata = {
-        'name': file.name,
-        'parents': ['1ldYUYV0BO2nEJ23GHKK5qN1o2'] // Your confirmed Folder ID
-    };
+    // Only triggers when user reaches exactly 4 digits
+    if (vinValue.length === 4) {
+        const matchedService = vinLookupTable[vinValue];
+        if (matchedService) {
+            applyAutoSelection('.service-btn', matchedService);
+        }
+    }
+}
 
-    try {
-        const response = await drive.files.create({
-            resource: fileMetadata,
-            media: { mimeType: file.mimetype, body: fs.createReadStream(file.tempFilePath) },
-            fields: 'id, webViewLink',
-        });
+function updateInspectionTime() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const totalMinutes = (hours * 60) + minutes;
+
+    // Fixed Time Windows (Minutes from midnight)
+    const preStart = 10 * 60;        // 10:00 AM
+    const preEnd = 15 * 60;          // 3:00 PM
+    const postStart = 18 * 60;       // 6:00 PM
+    const postEnd = (23 * 60) + 30;  // 11:30 PM
+
+    let activeType = null;
+    if (totalMinutes >= preStart && totalMinutes <= preEnd) {
+        activeType = "PRECHECK";
+    } else if (totalMinutes >= postStart && totalMinutes <= postEnd) {
+        activeType = "POSTCHECK";
+    }
+
+    if (activeType) {
+        applyAutoSelection('.inspection-btn', activeType);
+    }
+}
+
+// Utility to highlight the correct button and LOCK manual clicks
+function applyAutoSelection(selector, value) {
+    document.querySelectorAll(selector).forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.pointerEvents = 'none'; // DISABLE MANUAL OVERRIDE
+        btn.style.opacity = '0.6';      // Visual cue that it's locked
         
-        // Success: Link bypasses Discord's 25MB limit
-        res.send({ status: "Sync Successful", link: response.data.webViewLink });
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Upload failed. Verify folder permissions.");
+        if (btn.innerText.trim().toUpperCase() === value.toUpperCase()) {
+            btn.classList.add('active');
+            btn.style.opacity = '1';     // Highlight the active one
+        }
+    });
+}
+
+// --- 3. INITIALIZATION ---
+window.addEventListener('DOMContentLoaded', () => {
+    // 1. Run time check immediately
+    updateInspectionTime();
+    
+    // 2. Watch for VIN entry (assumes your input ID is 'vin-input')
+    const vinInput = document.getElementById('vin-input');
+    if (vinInput) {
+        vinInput.addEventListener('input', handleVinLookup);
     }
 });
-
-app.listen(port, '0.0.0.0', () => console.log(`SLGP Mesh active on port ${port}`));
