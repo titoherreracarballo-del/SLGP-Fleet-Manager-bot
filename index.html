@@ -2,132 +2,202 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fleet Health Check</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SLGP Fleet Health Check v1.1.2</title>
+    
+    <link rel="apple-touch-icon" href="Final-01.jpg">
+    
     <style>
-        /* --- CORRECTED DEEP BLUE COLOR SCHEME --- */
-        body { background-color: #0b1121; color: #3b82f6; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; }
-        .form-card { background: #161e31; padding: 30px; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 15px 45px rgba(0,0,0,0.7); border: 1px solid #1e293b; }
-        
-        .logo-area { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #1e293b; padding-bottom: 15px; }
-        h1 { text-align: center; color: #3b82f6; font-size: 1.3rem; letter-spacing: 2px; margin-bottom: 25px; text-transform: uppercase; }
-        
-        .clock { background: rgba(0,0,0,0.3); padding: 12px; border-radius: 10px; text-align: center; margin-bottom: 25px; color: #10b981; font-family: monospace; border: 1px solid #064e3b; }
-        
-        label { display: block; font-size: 0.7rem; font-weight: bold; margin-bottom: 8px; color: #3b82f6; text-transform: uppercase; }
-        input[type="text"] { width: 100%; padding: 14px; background: #0b1121; border: 1px solid #1e293b; border-radius: 10px; color: white; margin-bottom: 25px; box-sizing: border-box; font-size: 1rem; outline: none; }
-        input[type="text"]:focus { border-color: #3b82f6; }
+        :root {
+            --brand-blue: #0066ff;
+            --brand-dark: #0a0e17;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --text-main: #ffffff;
+            --text-dim: #a0a0a0;
+        }
 
-        .group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; }
-        .btn { background: #1e293b; padding: 16px; border-radius: 12px; text-align: center; border: 1px solid #2d3a4f; font-weight: bold; color: #64748b; text-transform: uppercase; }
-        
-        /* Neon Blue Active State */
-        .active { background: #2563eb !important; color: white !important; border-color: #3b82f6 !important; box-shadow: 0 0 15px rgba(37, 99, 235, 0.6); }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--brand-dark);
+            background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark));
+            color: var(--text-main);
+            margin: 0; padding: 15px;
+            display: flex; justify-content: center; min-height: 100vh;
+        }
 
-        /* Video Recording Area */
-        .video-box { border: 2px dashed #1e293b; padding: 35px; text-align: center; border-radius: 15px; margin-bottom: 25px; cursor: pointer; transition: 0.3s; }
-        .video-box:hover { background: rgba(59, 130, 246, 0.05); border-color: #3b82f6; }
+        .container { width: 100%; max-width: 420px; margin-top: 10px; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            padding: 25px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; color: var(--brand-blue); text-transform: uppercase; }
+        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; }
+
+        input {
+            width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            color: white; font-size: 16px; box-sizing: border-box; margin-bottom: 20px;
+        }
+
+        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .toggle-btn {
+            flex: 1 1 calc(50% - 8px); padding: 14px;
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px; color: var(--text-dim); font-weight: 700;
+            text-align: center; text-transform: uppercase; font-size: 11px; transition: 0.3s;
+        }
+
+        .active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
+        .disabled-state { opacity: 0.2; pointer-events: none; }
+
+        .upload-area {
+            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px;
+        }
+
+        #submitBtn {
+            background: linear-gradient(135deg, #0066ff, #0044cc);
+            color: white; border: none; padding: 18px; border-radius: 14px;
+            width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; cursor: pointer;
+        }
+        #submitBtn:disabled { opacity: 0.5; }
         
-        .submit-btn { width: 100%; background: #2563eb; color: white; padding: 20px; border-radius: 15px; border: none; font-weight: bold; font-size: 1.1rem; cursor: pointer; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); }
-        
-        /* Hide the actual file input */
-        #camera-input { display: none; }
+        #progressBar { width: 0%; height: 8px; background: #4ade80; border-radius: 4px; margin-top: 10px; transition: width 0.3s; }
     </style>
 </head>
 <body>
 
-    <div class="form-card">
-        <div class="logo-area">
-            <h2 style="margin: 0; color: #3b82f6; font-size: 1rem;">[COMPANY LOGO]</h2>
-        </div>
-
-        <h1>FLEET HEALTH CHECK</h1>
-        <div id="display-clock" class="clock">00/00/0000, 0:00:00 AM</div>
-        
-        <label>DRIVER FULL NAME</label>
-        <input type="text" id="driver-input" placeholder="Full Name">
-
-        <label>LAST 4 OF VIN</label>
-        <input type="text" id="vin-input" maxlength="4" placeholder="3754">
-
-        <label>SERVICE TYPE</label>
-        <div class="group">
-            <div class="service-btn btn">EDV</div>
-            <div class="service-btn btn">CDV</div>
-            <div class="service-btn btn">CARGO</div>
-            <div class="service-btn btn">RENTAL</div>
-        </div>
-
-        <label>INSPECTION TYPE (AUTO-SELECTED)</label>
-        <div class="group">
-            <div class="inspection-btn btn">PRECHECK</div>
-            <div class="inspection-btn btn">POSTCHECK</div>
-        </div>
-
-        <div class="video-box" onclick="document.getElementById('camera-input').click();">
-            <div style="font-size: 1.1rem; margin-bottom: 4px; color: white;">Tap to Record Video</div>
-            <div style="font-size: 0.7rem; color: #10b981;">1080p SUPPORTED</div>
-            <div id="file-name" style="font-size: 0.7rem; color: #64748b; margin-top: 10px;"></div>
-        </div>
-        
-        <input type="file" id="camera-input" accept="video/*" capture="environment">
-
-        <button class="submit-btn">UPLOAD TO GOOGLE DRIVE</button>
+<div class="container">
+    <div class="logo-container">
+        <img src="Final-01.jpg" alt="Strategic Logistics">
     </div>
 
-    <script>
-        // 1. VIN DATABASE
-        const vehicleMap = {
-            "7867":"EDV","7871":"EDV","9412":"EDV","7872":"EDV","7866":"EDV","7860":"EDV","9418":"EDV","7863":"EDV","7859":"EDV","7857":"EDV",
-            "4905":"CDV","7097":"CDV","2347":"CDV","1587":"CDV","6880":"CDV","6907":"CDV","1295":"CDV","6265":"CDV","6188":"CDV","1288":"CDV","6864":"CDV",
-            "1051":"CARGO","9488":"CARGO","7088":"CARGO","1664":"CARGO","0871":"CARGO","3010":"CARGO","5344":"CARGO","0890":"CARGO","5341":"CARGO","3754":"CARGO","7373":"CARGO","0876":"CARGO","8786":"CARGO","0213":"CARGO","3892":"CARGO","9651":"CARGO","5691":"CARGO","9128":"CARGO"
-        };
+    <div class="card" id="mainCard">
+        <h2>Fleet Health Check</h2>
+        
+        <label>Driver Full Name</label>
+        <input type="text" id="driverName" placeholder="Tito">
 
-        function setFormSelection(className, matchValue) {
-            const btns = document.querySelectorAll(className);
-            btns.forEach(function(btn) {
-                btn.classList.remove('active');
-                btn.style.pointerEvents = 'none'; // Lock manual override
-                if (btn.innerText.trim().toUpperCase() === matchValue.toUpperCase()) {
-                    btn.classList.add('active');
-                }
-            });
-        }
+        <label>Last 4 of VIN</label>
+        <input type="tel" id="vin" placeholder="3754" maxlength="4" oninput="autoDetect()">
 
-        function runShiftTimeCheck() {
-            const now = new Date();
-            document.getElementById('display-clock').innerText = now.toLocaleString();
-            const totalMins = (now.getHours() * 60) + now.getMinutes();
+        <label>Service Type (Auto-Detect)</label>
+        <div class="toggle-group" id="groupVehicle">
+            <div class="toggle-btn" id="v_EDV">EDV</div>
+            <div class="toggle-btn" id="v_CDV">CDV</div>
+            <div class="toggle-btn" id="v_Cargo">Cargo</div>
+            <div class="toggle-btn" id="v_Rental">Rental</div>
+        </div>
 
-            // PRECHECK: 10:00 AM (600) to 3:00 PM (900)
-            if (totalMins >= 600 && totalMins <= 900) setFormSelection('.inspection-btn', 'PRECHECK');
-            // POSTCHECK: 6:00 PM (1080) to 11:30 PM (1410)
-            else if (totalMins >= 1080 && totalMins <= 1410) setFormSelection('.inspection-btn', 'POSTCHECK');
-            else document.querySelectorAll('.inspection-btn').forEach(b => b.classList.remove('active'));
-        }
+        <label>Inspection Type (Auto-Detect)</label>
+        <div class="toggle-group" id="groupType">
+            <div class="toggle-btn" id="btnPre">Precheck</div>
+            <div class="toggle-btn" id="btnPost">Postcheck</div>
+        </div>
 
-        window.onload = function() {
-            runShiftTimeCheck();
-            setInterval(runShiftTimeCheck, 1000);
+        <label>1080p Video Sync</label>
+        <div class="upload-area" onclick="document.getElementById('videoFile').click();">
+            <span id="fileLabel">Tap to Record 1080p Video</span>
+            <input type="file" id="videoFile" accept="video/*" capture="environment" style="display:none;">
+        </div>
 
-            // Trigger VIN Selection
-            const vinBox = document.getElementById('vin-input');
-            if (vinBox) {
-                vinBox.addEventListener('input', function(e) {
-                    if (e.target.value.length === 4) {
-                        const type = vehicleMap[e.target.value];
-                        if (type) setFormSelection('.service-btn', type);
-                    }
-                });
+        <div id="progressContainer" style="display:none;"><div id="progressBar"></div></div>
+        <button id="submitBtn">UPLOAD TO GOOGLE DRIVE</button>
+        <div id="status" style="text-align:center; font-size:10px; margin-top:10px; color:var(--brand-blue);">System Online</div>
+    </div>
+</div>
+
+<script>
+    // VIN Mapping
+    const FLEET_MAP = {
+        '7867':'EDV','7871':'EDV','9412':'EDV','7872':'EDV','7866':'EDV','7860':'EDV','9418':'EDV','7863':'EDV','7859':'EDV','7857':'EDV',
+        '4905':'CDV','7097':'CDV','2347':'CDV','1587':'CDV','6880':'CDV','6907':'CDV','1295':'CDV','6265':'CDV','6188':'CDV','1288':'CDV','6864':'CDV',
+        '1051':'Cargo','9488':'Cargo','7088':'Cargo','1664':'Cargo','0871':'Cargo','3010':'Cargo','5344':'Cargo','0890':'Cargo','5341':'Cargo','3754':'Cargo'
+    };
+
+    let serviceTypeStr = '';
+
+    function autoDetect() {
+        const vin = document.getElementById('vin').value;
+        const btns = document.querySelectorAll('#groupVehicle .toggle-btn');
+        btns.forEach(b => { b.classList.remove('active'); b.style.pointerEvents = 'none'; });
+
+        if (vin.length === 4) {
+            const type = FLEET_MAP[vin];
+            if (type) {
+                serviceTypeStr = type;
+                document.getElementById('v_' + type).classList.add('active');
+            } else {
+                serviceTypeStr = 'Rental';
+                document.getElementById('v_Rental').classList.add('active');
             }
+        }
+    }
 
-            // Show selected filename after recording
-            document.getElementById('camera-input').onchange = function() {
-                if (this.files.length > 0) {
-                    document.getElementById('file-name').innerText = "Selected: " + this.files[0].name;
-                }
-            };
+    function checkTime() {
+        const now = new Date();
+        const mins = (now.getHours() * 60) + now.getMinutes();
+        const pre = document.getElementById('btnPre');
+        const post = document.getElementById('btnPost');
+
+        pre.classList.remove('active', 'disabled-state');
+        post.classList.remove('active', 'disabled-state');
+        pre.style.pointerEvents = 'none';
+        post.style.pointerEvents = 'none';
+
+        // Precheck: 10:00 AM - 3:00 PM
+        if (mins >= 600 && mins <= 900) { pre.classList.add('active'); post.classList.add('disabled-state'); }
+        // Postcheck: 6:00 PM - 11:30 PM
+        else if (mins >= 1080 && mins <= 1410) { post.classList.add('active'); pre.classList.add('disabled-state'); }
+    }
+
+    document.getElementById('videoFile').onchange = (e) => {
+        if (e.target.files.length > 0) {
+            document.getElementById('fileLabel').innerText = "1080p READY";
+        }
+    };
+
+    document.getElementById('submitBtn').onclick = async () => {
+        const name = document.getElementById('driverName').value;
+        const vin = document.getElementById('vin').value;
+        const file = document.getElementById('videoFile').files[0];
+        const inspection = document.querySelector('#groupType .active');
+
+        if (!name || !vin || !file || !inspection) return alert("All fields and video required.");
+
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('progressContainer').style.display = 'block';
+
+        const formData = new FormData();
+        formData.append('driverName', name);
+        formData.append('vin', vin);
+        formData.append('serviceType', serviceTypeStr);
+        formData.append('inspectionType', inspection.innerText);
+        formData.append('video', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/upload-to-google-drive');
+        xhr.upload.onprogress = (e) => {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            document.getElementById('progressBar').style.width = pct + '%';
         };
-    </script>
+        xhr.onload = () => {
+            if (xhr.status === 200) alert("VIDEO SYNCED TO DRIVE!");
+            else alert("SYNC FAILED");
+            location.reload();
+        };
+        xhr.send(formData);
+    };
+
+    checkTime();
+</script>
 </body>
 </html>
