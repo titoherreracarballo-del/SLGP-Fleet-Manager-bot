@@ -7,7 +7,7 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Google Drive Folder ID
+// Provided Google Drive Folder ID
 const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
@@ -19,7 +19,7 @@ try {
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY is missing or invalid in Railway variables.");
+    console.error("CRITICAL: GCP_SA_KEY missing or invalid in Railway variables.");
 }
 
 app.use(express.static(__dirname));
@@ -55,5 +55,5 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SLGP Server Bookmarked at v1.1.4 - Active on Port ${PORT}`);
+    console.log(`SLGP Server Bookmarked at v1.1.5 - Port ${PORT}`);
 });
