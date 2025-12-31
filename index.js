@@ -12,7 +12,7 @@ const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
 try {
-    // Parse the GCP_SA_KEY from your Railway Environment Variables
+    // Parse credentials from Railway environment variables
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
     auth = new google.auth.GoogleAuth({
         credentials,
@@ -25,7 +25,7 @@ try {
 
 app.use(express.static(__dirname));
 
-// Primary route to serve your index.html
+// Serve the main application page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -48,7 +48,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         };
 
         // --- SHARED DRIVE SUPPORT ACTIVATED ---
-        // These flags allow the service account to write to the Shared Drive
+        // These flags allow the service account to communicate with the Shared Drive
         const response = await drive.files.create({
             resource: fileMetadata,
             media: media,
@@ -59,7 +59,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
         console.log(`SYNC SUCCESS: File ID ${response.data.id}`);
         
-        // Clean up temporary server storage
+        // Remove temporary file from server after successful upload
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         
         res.status(200).send('Upload Successful');
@@ -69,7 +69,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// Port binding for Railway dynamic assignment
+// Priority port binding for Railway deployment
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`-----------------------------------------`);
