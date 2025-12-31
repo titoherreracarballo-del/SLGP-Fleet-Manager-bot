@@ -17,13 +17,14 @@ try {
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
+    console.log("GCP Authentication ready.");
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY error. App will crash if this is missing.");
+    console.error("CRITICAL: GCP_SA_KEY is missing or invalid in Railway variables.");
 }
 
 app.use(express.static(__dirname));
 
-// Serve index.html explicitly to prevent 404s
+// Ensure the root path sends your HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -52,13 +53,19 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         fs.unlinkSync(req.file.path); 
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("Upload Error Detail:", error);
+        console.error("Upload Error:", error);
         res.status(500).send('Upload Failed');
     }
 });
 
-// CRITICAL FIX: Ensure port is correctly read from Railway environment
-const PORT = process.env.PORT || 8080;
+// --- THE FIX: DYNAMIC PORT BINDING ---
+// Railway assigns a port (usually 80) via process.env.PORT. 
+// We must use that first so slgpmeshserver.com can connect.
+const PORT = process.env.PORT || 8080; 
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SLGP Server Active on Port ${PORT}`);
+    console.log(`-----------------------------------------`);
+    console.log(`SLGP SERVER IS LIVE ON PORT: ${PORT}`);
+    console.log(`WEBSITE: slgpmeshserver.com`);
+    console.log(`-----------------------------------------`);
 });
