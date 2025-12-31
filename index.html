@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.1.8</title>
+    <title>SLGP Fleet Health Check v1.1.9</title>
    
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,6 +17,7 @@
             --card-bg: rgba(255, 255, 255, 0.05);
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
+            --success-green: #4ade80;
         }
 
         body {
@@ -43,8 +44,14 @@
         }
 
         h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
-        .form-group { margin-bottom: 20px; }
+        .form-group { margin-bottom: 20px; position: relative; }
         label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
+
+        .success-indicator { 
+            position: absolute; right: 15px; bottom: 16px; 
+            color: var(--success-green); font-weight: bold; font-size: 18px; 
+            display: none; 
+        }
 
         input[type="text"], input[type="tel"] {
             width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4);
@@ -72,7 +79,7 @@
         #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
         #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
 
-        #timestampDisplay { text-align: center; font-size: 11px; color: #4ade80; font-weight: bold; margin-bottom: 20px; }
+        #timestampDisplay { text-align: center; font-size: 11px; color: var(--success-green); font-weight: bold; margin-bottom: 20px; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
 
         #submitBtn {
@@ -99,12 +106,14 @@
         
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Tito">
+            <input type="text" id="driverName" placeholder="Tito" oninput="validateName()">
+            <span id="check_name" class="success-indicator">✓</span>
         </div>
 
         <div class="form-group">
             <label>Last 4 of VIN</label>
             <input type="tel" id="vin" placeholder="3754" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
+            <span id="check_vin" class="success-indicator">✓</span>
         </div>
 
         <label>Service Type (Auto-Detect)</label>
@@ -125,9 +134,10 @@
         <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
                 <span>Tap to Record 1080p Video</span><br>
-                <span style="font-size: 9px; color: #4ade80;">BITRATE OPTIMIZED FOR GOOGLE DRIVE</span>
+                <span style="font-size: 9px; color: var(--success-green);">BITRATE OPTIMIZED FOR GOOGLE DRIVE</span>
             </div>
             <input type="file" id="videoFile" accept="video/*" capture="environment">
+            <span id="check_video" class="success-indicator" style="top: 10px; right: 10px; bottom: auto;">✓</span>
         </div>
 
         <div id="progressContainer"><div id="progressBar"></div></div>
@@ -142,11 +152,10 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.1.8 - Detection Fix</div>
+    <div id="versionTag">BUILD VERSION: v1.1.9 - Confirmation Logic</div>
 </div>
 
 <script>
-    // VIN Mapping
     const FLEET_MAP = {
         '7867':'EDV','7871':'EDV','9412':'EDV','7872':'EDV','7866':'EDV','7860':'EDV','9418':'EDV','7863':'EDV','7859':'EDV','7857':'EDV',
         '4905':'CDV','7097':'CDV','2347':'CDV','1587':'CDV','6880':'CDV','6907':'CDV','1295':'CDV','6265':'CDV','6188':'CDV','1288':'CDV','6864':'CDV',
@@ -154,28 +163,34 @@
     };
 
     let serviceTypeStr = '';
+
+    function validateName() {
+        const name = document.getElementById('driverName').value.trim();
+        document.getElementById('check_name').style.display = (name.length > 2) ? 'block' : 'none';
+    }
    
     function autoDetectVehicle() {
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
+        const checkVin = document.getElementById('check_vin');
         
-        // Reset buttons first
         btnList.forEach(b => { 
             b.classList.remove('active'); 
             b.style.pointerEvents = 'none'; 
         });
 
         if (vinInput.length === 4) {
+            checkVin.style.display = 'block';
             const type = FLEET_MAP[vinInput];
             if (type) {
                 serviceTypeStr = type;
-                // Match the ID format v_Type
-                const targetBtn = document.getElementById('v_' + type);
-                if (targetBtn) targetBtn.classList.add('active');
+                document.getElementById('v_' + type).classList.add('active');
             } else {
                 serviceTypeStr = 'Rental';
                 document.getElementById('v_Rental').classList.add('active');
             }
+        } else {
+            checkVin.style.display = 'none';
         }
     }
 
@@ -192,12 +207,10 @@
         btnPre.style.pointerEvents = 'none';
         btnPost.style.pointerEvents = 'none';
 
-        // Precheck: 10:00 AM (600) to 3:00 PM (900)
         if (mins >= 600 && mins <= 900) {
             btnPre.classList.add('active');
             btnPost.classList.add('disabled-state');
         } 
-        // Postcheck: 6:00 PM (1080) to 11:30 PM (1410)
         else if (mins >= 1080 && mins <= 1410) {
             btnPost.classList.add('active');
             btnPre.classList.add('disabled-state');
@@ -207,7 +220,8 @@
     document.getElementById('videoFile').onchange = (e) => {
         if (e.target.files.length > 0) {
             const sizeMB = (e.target.files[0].size / (1024 * 1024)).toFixed(2);
-            document.getElementById('fileLabel').innerHTML = `<span style="color: #4ade80;">1080p READY (${sizeMB}MB)</span>`;
+            document.getElementById('fileLabel').innerHTML = `<span style="color: var(--success-green);">1080p READY (${sizeMB}MB)</span>`;
+            document.getElementById('check_video').style.display = 'block';
             document.getElementById('status').innerText = `SIZE OK: ${sizeMB}MB`;
         }
     };
