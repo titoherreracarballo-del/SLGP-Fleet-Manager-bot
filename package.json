@@ -1,7 +1,7 @@
 {
   "name": "slgp-fleet-manager-bot",
-  "version": "1.1.4",
-  "description": "SLGP Fleet Health Check with Google Drive Sync",
+  "version": "1.1.5",
+  "description": "1080p Fleet Health Check with Google Drive Sync",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
