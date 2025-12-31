@@ -20,7 +20,7 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY parsing failed. Ensure it is a valid JSON in Railway.");
+    console.error("CRITICAL: GCP_SA_KEY parsing failed.");
 }
 
 app.use(express.static(__dirname));
@@ -31,7 +31,7 @@ app.get('/', (req, res) => {
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) throw new Error("No file received by server.");
+        if (!req.file) throw new Error("No file received.");
 
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType, serviceType } = req.body;
@@ -41,7 +41,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             parents: [FOLDER_ID],
         };
 
-        // --- THE CRITICAL FIX: Explicit mimeType for the Drive API ---
+        // Added mimeType to satisfy Google Drive API requirements
         const media = {
             mimeType: 'video/mp4',
             body: fs.createReadStream(req.file.path),
@@ -58,14 +58,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Successful');
     } catch (error) {
-        // This will print the exact reason for failure in your Railway Logs
         console.error("UPLOAD ERROR:", error.message);
         res.status(500).send(`Upload Failed: ${error.message}`);
     }
 });
 
-// Port binding fix for Railway dynamic assignment
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SLGP SERVER v1.1.11 ACTIVE ON PORT: ${PORT}`);
+    console.log(`SLGP SERVER BOOKMARKED AND LIVE ON PORT: ${PORT}`);
 });
