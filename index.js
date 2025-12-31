@@ -7,7 +7,7 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Provided Google Drive Folder ID
+// Target Folder ID in your new Shared Drive
 const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
@@ -19,7 +19,7 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY is missing or invalid.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY parsing failed.");
 }
 
 app.use(express.static(__dirname));
@@ -30,7 +30,7 @@ app.get('/', (req, res) => {
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('No video file received.');
+        if (!req.file) return res.status(400).send('No file received.');
 
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType, serviceType } = req.body;
@@ -45,13 +45,14 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             body: fs.createReadStream(req.file.path),
         };
 
-        // --- THE FIX: RESUMABLE UPLOAD & SHARED DRIVE FLAGS ---
+        // --- THE FIX: SHARED DRIVE SUPPORT ---
         const response = await drive.files.create({
             resource: fileMetadata,
             media: media,
             fields: 'id',
             // Mandatory for Shared Drives and Service Account storage fixes
             supportsAllDrives: true, 
+            supportsTeamDrives: true
         });
 
         console.log(`SYNC SUCCESS: File ID ${response.data.id}`);
