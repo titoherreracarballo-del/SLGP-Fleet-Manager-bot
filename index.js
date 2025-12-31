@@ -29,6 +29,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType, serviceType } = req.body;
         
+        // Dynamic File Naming: VIN_SHIFT_DRIVER_SERVICE.mp4
         const fileMetadata = {
             name: `${vin}_${inspectionType.toUpperCase()}_${driverName}_${serviceType}.mp4`,
             parents: [DRIVE_FOLDER_ID],
@@ -45,6 +46,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             fields: 'id',
         });
 
+        // Cleanup local storage
         fs.unlinkSync(req.file.path); 
         res.status(200).send('Upload Successful');
     } catch (error) {
@@ -55,5 +57,5 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SLGP Server Bookmarked at v1.1.5 - Port ${PORT}`);
+    console.log(`SLGP LIVE: Bookmarked at v1.1.5 - Port ${PORT}`);
 });
