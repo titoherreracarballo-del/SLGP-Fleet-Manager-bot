@@ -7,6 +7,7 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
+// Provided Google Drive Folder ID
 const FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
@@ -37,6 +38,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             parents: [FOLDER_ID],
         };
 
+        // --- CRITICAL FIX: Added mimeType for Google Drive API ---
         const media = {
             mimeType: 'video/mp4',
             body: fs.createReadStream(req.file.path),
@@ -48,10 +50,14 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             fields: 'id',
         });
 
-        fs.unlinkSync(req.file.path); 
+        // Cleanup local storage
+        if (fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("Upload Error:", error);
+        console.error("Upload Error Detail:", error);
         res.status(500).send('Upload Failed');
     }
 });
@@ -60,7 +66,7 @@ const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`-----------------------------------------`);
-    console.log(`SLGP SERVER BOOKMARKED AND LIVE`);
-    console.log(`Listening on dynamic port: ${PORT}`);
+    console.log(`SLGP SERVER LIVE ON PORT: ${PORT}`);
+    console.log(`Bound to: 0.0.0.0`);
     console.log(`-----------------------------------------`);
 });
