@@ -7,7 +7,7 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Target Folder ID in your new Shared Drive
+// Folder ID for "Daily Fleet Health Checks" now inside the Shared Drive
 const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
@@ -45,7 +45,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             body: fs.createReadStream(req.file.path),
         };
 
-        // --- THE FIX: SHARED DRIVE SUPPORT ---
+        // --- FINAL FIX: ACTIVATE SHARED DRIVE SUPPORT ---
         const response = await drive.files.create({
             resource: fileMetadata,
             media: media,
@@ -64,7 +64,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
+// Priority Railway Port Binding
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SLGP SERVER v1.2.2 LIVE ON PORT: ${PORT}`);
+    console.log(`-----------------------------------------`);
+    console.log(`SLGP SERVER v1.2.3 LIVE ON PORT: ${PORT}`);
+    console.log(`-----------------------------------------`);
 });
