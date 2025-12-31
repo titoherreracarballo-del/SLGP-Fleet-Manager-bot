@@ -7,19 +7,19 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// --- GOOGLE DRIVE CONFIGURATION ---
+// Google Drive Folder ID
 const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
 try {
-    // Parse the GCP_SA_KEY from Railway Environment Variables
+    // Parsing the key from your Railway Environment Variables
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
     auth = new google.auth.GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY error. Check Railway variables.");
+    console.error("CRITICAL: GCP_SA_KEY is missing or invalid in Railway variables.");
 }
 
 app.use(express.static(__dirname));
@@ -45,15 +45,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             fields: 'id',
         });
 
-        fs.unlinkSync(req.file.path); // Cleanup temp file
+        fs.unlinkSync(req.file.path); 
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("Upload Error:", error);
+        console.error("Server Upload Error:", error);
         res.status(500).send('Upload Failed');
     }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server bookmarked and active on port ${PORT}`);
+    console.log(`SLGP Server Bookmarked at v1.1.4 - Active on Port ${PORT}`);
 });
