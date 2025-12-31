@@ -142,7 +142,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.1.7 - Port Fix</div>
+    <div id="versionTag">BUILD VERSION: v1.1.7 - Binding Fix</div>
 </div>
 
 <script>
@@ -184,12 +184,10 @@
         btnPre.style.pointerEvents = 'none';
         btnPost.style.pointerEvents = 'none';
 
-        // Precheck: 10:00 AM (600) to 3:00 PM (900)
         if (mins >= 600 && mins <= 900) {
             btnPre.classList.add('active');
             btnPost.classList.add('disabled-state');
         } 
-        // Postcheck: 6:00 PM (1080) to 11:30 PM (1410)
         else if (mins >= 1080 && mins <= 1410) {
             btnPost.classList.add('active');
             btnPre.classList.add('disabled-state');
