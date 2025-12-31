@@ -206,8 +206,8 @@
         btnPre.style.pointerEvents = 'auto'; 
         btnPost.style.pointerEvents = 'auto';
 
-        // NEW CONTINUOUS SHIFT WINDOWS (No gaps)
-        // Precheck: 6:00 AM (360) to 4:00 PM (960) -> Active at 3:30 PM
+        // CONTINUOUS SHIFT WINDOWS:
+        // Precheck: 6:00 AM (360) to 4:00 PM (960)
         if (mins >= 360 && mins <= 960) {
             btnPre.classList.add('active');
             btnPost.classList.add('disabled-state');
