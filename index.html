@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.2.2</title>
+    <title>SLGP Fleet Health Check v1.2.4</title>
    
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -151,7 +151,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.2.2 - Features Bookmarked</div>
+    <div id="versionTag">BUILD VERSION: v1.2.4 - Shift Logic Fix</div>
 </div>
 
 <script>
@@ -203,18 +203,20 @@
 
         btnPre.classList.remove('active', 'disabled-state');
         btnPost.classList.remove('active', 'disabled-state');
-        btnPre.style.pointerEvents = 'none';
-        btnPost.style.pointerEvents = 'none';
+        btnPre.style.pointerEvents = 'auto'; 
+        btnPost.style.pointerEvents = 'auto';
 
-        // Precheck: 10:00 AM to 3:00 PM
-        if (mins >= 600 && mins <= 900) {
+        // Precheck: 6:00 AM (360) to 4:00 PM (960)
+        if (mins >= 360 && mins <= 960) {
             btnPre.classList.add('active');
             btnPost.classList.add('disabled-state');
+            btnPost.style.pointerEvents = 'none';
         } 
-        // Postcheck: 6:00 PM to 11:30 PM
-        else if (mins >= 1080 && mins <= 1410) {
+        // Postcheck: 4:01 PM (961) to 11:59 PM (1439)
+        else {
             btnPost.classList.add('active');
             btnPre.classList.add('disabled-state');
+            btnPre.style.pointerEvents = 'none';
         }
     }
 
