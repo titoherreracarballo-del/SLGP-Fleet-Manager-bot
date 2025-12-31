@@ -7,8 +7,7 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// --- GOOGLE DRIVE CONFIGURATION ---
-const FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
+const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
 try {
@@ -17,14 +16,12 @@ try {
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
-    console.log("SUCCESS: GCP Auth initialized.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY is invalid. Check Railway variables.");
+    console.error("CRITICAL: GCP_SA_KEY error. Check Railway variables.");
 }
 
 app.use(express.static(__dirname));
 
-// Ensure root path serves the HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -36,7 +33,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         
         const fileMetadata = {
             name: `${vin}_${inspectionType.toUpperCase()}_${driverName}_${serviceType}.mp4`,
-            parents: [FOLDER_ID],
+            parents: [DRIVE_FOLDER_ID],
         };
 
         const media = {
@@ -53,20 +50,18 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         fs.unlinkSync(req.file.path); 
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("Upload Error Detail:", error);
+        console.error("Upload Error:", error);
         res.status(500).send('Upload Failed');
     }
 });
 
-// --- CRITICAL PORT FIX FOR RAILWAY ---
-// 1. MUST use process.env.PORT provided by Railway
-// 2. MUST bind to "0.0.0.0" to accept external traffic
-const PORT = process.env.PORT || 8080;
+// RAILWAY PORT BINDING FIX
+// process.env.PORT allows Railway to assign the port (usually 80 or 3000) automatically.
+const PORT = process.env.PORT || 8080; 
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`-----------------------------------------`);
     console.log(`SLGP SERVER BOOKMARKED AND LIVE`);
     console.log(`Listening on dynamic port: ${PORT}`);
-    console.log(`Bound to: 0.0.0.0`);
     console.log(`-----------------------------------------`);
 });
