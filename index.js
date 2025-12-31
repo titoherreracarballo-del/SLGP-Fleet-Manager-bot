@@ -7,11 +7,12 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Folder ID for "Daily Fleet Health Checks" inside the Shared Drive
+// Folder ID for "Daily Fleet Health Checks" inside your Shared Drive
 const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
 
 let auth;
 try {
+    // Parse the GCP_SA_KEY from your Railway Environment Variables
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
     auth = new google.auth.GoogleAuth({
         credentials,
@@ -19,11 +20,12 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY parsing failed.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY parsing failed. Check Railway variables.");
 }
 
 app.use(express.static(__dirname));
 
+// Primary route to serve your index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -46,17 +48,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         };
 
         // --- SHARED DRIVE SUPPORT ACTIVATED ---
+        // These flags allow the service account to write to the Shared Drive
         const response = await drive.files.create({
             resource: fileMetadata,
             media: media,
             fields: 'id',
-            // Mandatory for Shared Drives and Service Account fixes
             supportsAllDrives: true, 
             supportsTeamDrives: true
         });
 
         console.log(`SYNC SUCCESS: File ID ${response.data.id}`);
+        
+        // Clean up temporary server storage
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        
         res.status(200).send('Upload Successful');
     } catch (error) {
         console.error("UPLOAD ERROR DETAILS:", error.message);
@@ -64,8 +69,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// Port binding for Railway
+// Port binding for Railway dynamic assignment
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
+    console.log(`-----------------------------------------`);
     console.log(`SLGP SERVER v1.2.5 LIVE ON PORT: ${PORT}`);
+    console.log(`-----------------------------------------`);
 });
