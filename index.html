@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.2.4</title>
+    <title>SLGP Fleet Health Check v1.2.5</title>
    
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -151,7 +151,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.2.4 - Shift Logic Fix</div>
+    <div id="versionTag">BUILD VERSION: v1.2.5 - Final Features</div>
 </div>
 
 <script>
@@ -206,7 +206,8 @@
         btnPre.style.pointerEvents = 'auto'; 
         btnPost.style.pointerEvents = 'auto';
 
-        // Precheck: 6:00 AM (360) to 4:00 PM (960)
+        // NEW CONTINUOUS SHIFT WINDOWS (No gaps)
+        // Precheck: 6:00 AM (360) to 4:00 PM (960) -> Active at 3:30 PM
         if (mins >= 360 && mins <= 960) {
             btnPre.classList.add('active');
             btnPost.classList.add('disabled-state');
