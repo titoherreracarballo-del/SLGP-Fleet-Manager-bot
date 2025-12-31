@@ -17,14 +17,14 @@ try {
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
-    console.log("GCP Authentication ready.");
+    console.log("SUCCESS: GCP Auth initialized.");
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY is missing or invalid in Railway variables.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY is invalid. Check Railway variables.");
 }
 
 app.use(express.static(__dirname));
 
-// Ensure the root path sends your HTML file
+// Ensure root path serves the HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -53,19 +53,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         fs.unlinkSync(req.file.path); 
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("Upload Error:", error);
+        console.error("Upload Error Detail:", error);
         res.status(500).send('Upload Failed');
     }
 });
 
-// --- THE FIX: DYNAMIC PORT BINDING ---
-// Railway assigns a port (usually 80) via process.env.PORT. 
-// We must use that first so slgpmeshserver.com can connect.
-const PORT = process.env.PORT || 8080; 
+// --- CRITICAL PORT FIX FOR RAILWAY ---
+// 1. MUST use process.env.PORT provided by Railway
+// 2. MUST bind to "0.0.0.0" to accept external traffic
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`-----------------------------------------`);
-    console.log(`SLGP SERVER IS LIVE ON PORT: ${PORT}`);
-    console.log(`WEBSITE: slgpmeshserver.com`);
+    console.log(`SLGP SERVER BOOKMARKED AND LIVE`);
+    console.log(`Listening on dynamic port: ${PORT}`);
+    console.log(`Bound to: 0.0.0.0`);
     console.log(`-----------------------------------------`);
 });
