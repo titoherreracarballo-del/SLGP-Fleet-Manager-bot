@@ -3,13 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.1.9</title>
-   
-    <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SLGP Fleet Health Check v1.2.0</title>
     <link rel="apple-touch-icon" href="Final-01.jpg">
-   
     <style>
         :root {
             --brand-blue: #0066ff;
@@ -36,7 +31,6 @@
         .card {
             background: var(--card-bg);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 28px;
             padding: 25px;
@@ -44,6 +38,8 @@
         }
 
         h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
+        
+        /* Form Groups with Relative Positioning for Checkmarks */
         .form-group { margin-bottom: 20px; position: relative; }
         label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
 
@@ -152,10 +148,11 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.1.9 - Confirmation Logic</div>
+    <div id="versionTag">BUILD VERSION: v1.2.0 - All Features Active</div>
 </div>
 
 <script>
+    // Complete VIN Mapping Database
     const FLEET_MAP = {
         '7867':'EDV','7871':'EDV','9412':'EDV','7872':'EDV','7866':'EDV','7860':'EDV','9418':'EDV','7863':'EDV','7859':'EDV','7857':'EDV',
         '4905':'CDV','7097':'CDV','2347':'CDV','1587':'CDV','6880':'CDV','6907':'CDV','1295':'CDV','6265':'CDV','6188':'CDV','1288':'CDV','6864':'CDV',
@@ -164,11 +161,13 @@
 
     let serviceTypeStr = '';
 
+    // Driver Name Confirmation Logic
     function validateName() {
         const name = document.getElementById('driverName').value.trim();
         document.getElementById('check_name').style.display = (name.length > 2) ? 'block' : 'none';
     }
    
+    // VIN and Service Type Auto-Detection Logic
     function autoDetectVehicle() {
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
@@ -194,6 +193,7 @@
         }
     }
 
+    // Inspection Shift Window Logic (10AM-3PM / 6PM-11:30PM)
     function runShiftLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
@@ -217,6 +217,7 @@
         }
     }
 
+    // Video Selection and Confirmation Logic
     document.getElementById('videoFile').onchange = (e) => {
         if (e.target.files.length > 0) {
             const sizeMB = (e.target.files[0].size / (1024 * 1024)).toFixed(2);
@@ -226,6 +227,7 @@
         }
     };
 
+    // Google Drive Sync Execution
     document.getElementById('submitBtn').onclick = async () => {
         const name = document.getElementById('driverName').value.trim();
         const vin = document.getElementById('vin').value.trim();
