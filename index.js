@@ -12,9 +12,13 @@ const upload = multer({ dest: 'uploads/' });
 // Folder ID for "Daily Fleet Health Checks"
 const DRIVE_FOLDER_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
-// Email Configuration
-const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASS = process.env.EMAIL_PASS;
+// --- EMAIL CONFIGURATION (Using Your Custom Variable Name) ---
+// 1. User: Defaults to your email if no variable is found
+const EMAIL_USER = process.env.FLEET_EMAIL_USER || 'slgpfleetmanager@gmail.com';
+
+// 2. Password: LOOKS FOR 'Report_Email_Pass' AS SHOWN IN YOUR SCREENSHOT
+const EMAIL_PASS = process.env.Report_Email_Pass; 
+
 const EMAIL_TO = 'slgpfleetmanager@gmail.com';
 
 // Persistent Log File
@@ -57,8 +61,10 @@ try {
 
 // --- HELPER: Send Email ---
 async function sendEmailReport(subject, textContent, attachmentPath) {
-    if (!EMAIL_USER || !EMAIL_PASS) {
-        console.error("EMAIL ERROR: Missing variables. Cannot send email.");
+    console.log(`ATTEMPTING EMAIL: ${subject} to ${EMAIL_TO}`);
+    
+    if (!EMAIL_PASS) {
+        console.error("EMAIL ERROR: 'Report_Email_Pass' variable is missing in Railway.");
         return;
     }
 
@@ -72,14 +78,14 @@ async function sendEmailReport(subject, textContent, attachmentPath) {
         to: EMAIL_TO,
         subject: subject,
         text: textContent,
-        attachments: [{ path: attachmentPath }]
+        attachments: attachmentPath ? [{ path: attachmentPath }] : []
     };
 
     try {
         await transporter.sendMail(mailOptions);
-        console.log(`EMAIL SENT: ${subject}`);
+        console.log(`EMAIL SUCCESS: Sent to ${EMAIL_TO}`);
     } catch (error) {
-        console.error("EMAIL FAILED:", error);
+        console.error("EMAIL FAILED TO SEND. Check App Password.", error);
     }
 }
 
@@ -124,13 +130,21 @@ async function generateReport(typeFilter, reportTitle) {
     await sendEmailReport(`${reportTitle} - ${todayStr}`, `Daily report attached.`, reportPath);
 }
 
-// --- SCHEDULER: 12:00 PM (Pre-checks) ---
+// --- SCHEDULER ---
 cron.schedule('0 12 * * *', () => { generateReport('pre', 'DAILY_PRECHECK_REPORT'); }, { timezone: "America/New_York" });
-
-// --- SCHEDULER: 11:00 PM (Post-checks) ---
-cron.schedule('0 23 * * *', () => { generateReport('post', 'DAILY_POSTCHECK_REPORT'); }, { timezone: "America/New_York" });
+cron.schedule('30 23 * * *', () => { generateReport('post', 'DAILY_POSTCHECK_REPORT'); }, { timezone: "America/New_York" });
 
 app.use(express.static(__dirname));
+
+// --- DEBUG ROUTE ---
+app.get('/debug-email', async (req, res) => {
+    const testPath = path.join(__dirname, 'test_email.txt');
+    fs.writeFileSync(testPath, "This is a test to verify your Report_Email_Pass credentials.");
+    
+    await sendEmailReport("TEST EMAIL FROM BOT", "If you are reading this, the variable 'Report_Email_Pass' is working!", testPath);
+    res.send("Email test trigger sent. Check logs if nothing arrives.");
+});
+
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -163,4 +177,4 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => { console.log(`SLGP SERVER v1.4.0 LIVE ON PORT: ${PORT}`); });
+app.listen(PORT, '0.0.0.0', () => { console.log(`SLGP SERVER v2.4 LIVE ON PORT: ${PORT}`); });
