@@ -1,7 +1,7 @@
 {
   "name": "slgp-fleet-manager-bot",
-  "version": "1.3.0",
-  "description": "Fleet Management Bot with Google Drive Upload & Reporting",
+  "version": "1.4.0",
+  "description": "Fleet Management Bot with Email Reports",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -10,7 +10,8 @@
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
     "googleapis": "^118.0.0",
-    "node-cron": "^3.0.0"
+    "node-cron": "^3.0.0",
+    "nodemailer": "^6.9.7"
   },
   "engines": {
     "node": "18.x"
