@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.6.0</title>
+    <title>SLGP Fleet Health Check v1.7.0</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -158,7 +158,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.6.0 - High Quality Fix</div>
+    <div id="versionTag">BUILD VERSION: v1.7.0 - Freshness Guard</div>
 </div>
 
 <script>
@@ -236,9 +236,27 @@
             const file = e.target.files[0];
             const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
             
-            fileLabel.innerHTML = `<span style="color: var(--text-dim);">VERIFYING RESOLUTION...</span>`;
-            statusDiv.innerText = "CHECKING VIDEO QUALITY...";
+            fileLabel.innerHTML = `<span style="color: var(--text-dim);">VERIFYING...</span>`;
+            statusDiv.innerText = "CHECKING VIDEO INTEGRITY...";
             
+            // --- 1. FRESHNESS GUARD (Prevents old videos) ---
+            const oneHour = 60 * 60 * 1000;
+            const fileAge = Date.now() - file.lastModified;
+            
+            // If video is older than 2 hours, reject it
+            if (fileAge > (oneHour * 2)) {
+                isVideoGood = false;
+                fileLabel.innerHTML = `<span style="color: var(--error-red);">❌ OLD VIDEO DETECTED</span><br><span style="font-size:9px">Must record NEW video</span>`;
+                checkVideo.style.display = 'none';
+                statusDiv.innerText = "ERROR: VIDEO IS TOO OLD. RECORD NEW.";
+                statusDiv.style.color = "var(--error-red)";
+                
+                // Reset file input
+                videoInput.value = "";
+                return;
+            }
+
+            // --- 2. QUALITY GUARD (Ensures 1080p) ---
             const url = URL.createObjectURL(file);
             tempVideo.src = url;
             
@@ -248,9 +266,9 @@
 
                 if (minDim >= 1080) {
                     isVideoGood = true;
-                    fileLabel.innerHTML = `<span style="color: var(--success-green);">✅ 1080p VERIFIED (${sizeMB}MB)</span>`;
+                    fileLabel.innerHTML = `<span style="color: var(--success-green);">✅ NEW 1080p VERIFIED (${sizeMB}MB)</span>`;
                     checkVideo.style.display = 'block';
-                    statusDiv.innerText = "QUALITY OK. READY TO UPLOAD.";
+                    statusDiv.innerText = "QUALITY & DATE OK. READY.";
                     statusDiv.style.color = "var(--success-green)";
                 } else {
                     isVideoGood = false;
@@ -270,7 +288,7 @@
         const activeInsp = document.querySelector('#groupType .active');
 
         if (!isVideoGood) {
-            alert("STOP: Video quality is too low (must be 1080p) or no video selected.");
+            alert("STOP: Video is either too old or low quality. Record a new 1080p video.");
             return;
         }
 
