@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.8.0</title>
+    <title>SLGP Fleet Health Check v2.0 (Pro Cam)</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +21,7 @@
             --text-dim: #a0a0a0;
             --success-green: #4ade80;
             --error-red: #ff4444;
-            --warning-orange: #ffaa00;
+            --record-red: #e74c3c;
         }
 
         body {
@@ -73,25 +73,77 @@
         .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
         .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
 
-        .upload-area {
-            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; position: relative;
+        /* --- NEW CAMERA UI STYLES --- */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 177%; /* 16:9 Aspect Ratio */
+            background: #000;
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            display: none; /* Hidden until activated */
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+
+        #livePreview, #recordedPlayback {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
         }
         
-        /* New styling for instruction text */
-        .instruction-step { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; display: block; }
-        .instruction-highlight { color: var(--warning-orange); font-weight: bold; }
+        #recordedPlayback { display: none; z-index: 10; }
+
+        .cam-controls {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .cam-btn {
+            background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);
+            padding: 12px 20px; border-radius: 10px; font-weight: 700; font-size: 12px;
+            text-transform: uppercase; cursor: pointer; flex: 1; margin: 0 5px;
+        }
+
+        #btnRecord {
+            background: var(--record-red); border: none; color: white;
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+        }
+        
+        #btnRecord.recording {
+            animation: pulse 1.5s infinite;
+            background: white; color: var(--record-red);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+        }
+
+        .camera-overlay {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px;
+            font-size: 10px; font-weight: bold; color: var(--success-green);
+            z-index: 20; display: none;
+        }
+
+        /* Initial "Open Camera" Button Area */
+        .start-cam-area {
+            background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px;
+        }
 
         #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
         #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
 
         #timestampDisplay { text-align: center; font-size: 11px; color: var(--success-green); font-weight: bold; margin-bottom: 20px; }
-        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
-
+        
         #submitBtn {
             background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white; border: none; padding: 18px; border-radius: 14px;
             width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer;
+            display: none; /* Hidden until video is recorded */
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
         
@@ -122,7 +174,7 @@
             <span id="check_vin" class="success-indicator">✓</span>
         </div>
 
-        <label>Service Type (Auto-Detect)</label>
+        <label>Service Type</label>
         <div class="toggle-group" id="groupVehicle">
             <div class="toggle-btn" id="v_EDV">EDV</div>
             <div class="toggle-btn" id="v_CDV">CDV</div>
@@ -130,27 +182,30 @@
             <div class="toggle-btn" id="v_Rental">Rental</div>
         </div>
 
-        <label>Inspection Type (Auto-Detect)</label>
+        <label>Inspection Type</label>
         <div class="toggle-group" id="groupType">
             <div class="toggle-btn" id="btnPre">Precheck</div>
             <div class="toggle-btn" id="btnPost">Postcheck</div>
         </div>
 
-        <label>1080p Video Sync</label>
-        <div class="upload-area" id="uploadBox">
-            <div id="fileLabel">
-                <span class="instruction-step">1. Record video in <span class="instruction-highlight">Camera App</span></span>
-                <span class="instruction-step">2. Tap here to <span class="instruction-highlight">Upload File</span></span>
-                <br>
-                <span style="font-size: 9px; color: var(--success-green);">MUST BE 1080p & RECENT</span>
-            </div>
-            
-            <input type="file" id="videoFile" accept="video/*">
-            
-            <span id="check_video" class="success-indicator" style="top: 10px; right: 10px; bottom: auto;">✓</span>
+        <label>1080p Camera</label>
+        
+        <div class="start-cam-area" id="startCamBox" onclick="startCamera()">
+            <div style="font-size: 30px; margin-bottom: 10px;">📹</div>
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-dim);">TAP TO START HD CAMERA</span><br>
+            <span style="font-size: 9px; color: var(--success-green);">FORCES 1080p RESOLUTION</span>
         </div>
 
-        <video id="tempVideo" style="display:none;"></video>
+        <div class="camera-container" id="cameraUI">
+            <div class="camera-overlay" id="resBadge">Checking Res...</div>
+            <video id="livePreview" autoplay playsinline muted></video>
+            <video id="recordedPlayback" playsinline controls></video>
+        </div>
+
+        <div class="cam-controls" id="camControls" style="display:none;">
+            <button class="cam-btn" id="btnRetake" onclick="resetCamera()" style="display:none;">RETAKE</button>
+            <button class="cam-btn" id="btnRecord" onclick="toggleRecording()">RECORD</button>
+        </div>
 
         <div id="progressContainer"><div id="progressBar"></div></div>
 
@@ -164,7 +219,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.8.0 - Workflow Guard</div>
+    <div id="versionTag">BUILD VERSION: v2.0 - Pro Camera</div>
 </div>
 
 <script>
@@ -175,8 +230,15 @@
     };
 
     let serviceTypeStr = '';
-    let isVideoGood = false;
+    
+    // --- CAMERA VARIABLES ---
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let finalVideoBlob = null;
+    let isRecording = false;
 
+    // --- LOGIC: Driver/VIN Validation ---
     function validateName() {
         const name = document.getElementById('driverName').value.trim();
         document.getElementById('check_name').style.display = (name.length > 2) ? 'block' : 'none';
@@ -187,10 +249,7 @@
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
         const checkVin = document.getElementById('check_vin');
         
-        btnList.forEach(b => { 
-            b.classList.remove('active'); 
-            b.style.pointerEvents = 'none'; 
-        });
+        btnList.forEach(b => { b.classList.remove('active'); b.style.pointerEvents = 'none'; });
 
         if (vinInput.length === 4) {
             checkVin.style.display = 'block';
@@ -207,6 +266,7 @@
         }
     }
 
+    // --- LOGIC: Shift Time ---
     function runShiftLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
@@ -214,7 +274,6 @@
         const btnPost = document.getElementById('btnPost');
 
         document.getElementById('timestampDisplay').innerText = now.toLocaleString();
-
         btnPre.classList.remove('active', 'disabled-state');
         btnPost.classList.remove('active', 'disabled-state');
         btnPre.style.pointerEvents = 'auto'; 
@@ -231,86 +290,128 @@
         }
     }
 
-    const videoInput = document.getElementById('videoFile');
-    const tempVideo = document.getElementById('tempVideo');
-    const fileLabel = document.getElementById('fileLabel');
-    const statusDiv = document.getElementById('status');
-    const checkVideo = document.getElementById('check_video');
+    // --- CAMERA LOGIC: The "Pro" Part ---
+    async function startCamera() {
+        try {
+            document.getElementById('startCamBox').style.display = 'none';
+            document.getElementById('cameraUI').style.display = 'block';
+            document.getElementById('camControls').style.display = 'flex';
+            document.getElementById('status').innerText = "INITIALIZING HD CAMERA...";
 
-    videoInput.onchange = (e) => {
-        if (e.target.files.length > 0) {
-            const file = e.target.files[0];
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            
-            fileLabel.innerHTML = `<span style="color: var(--text-dim);">VERIFYING...</span>`;
-            statusDiv.innerText = "CHECKING VIDEO...";
-            
-            // --- 1. FRESHNESS GUARD (2 Hour Limit) ---
-            const oneHour = 60 * 60 * 1000;
-            const fileAge = Date.now() - file.lastModified;
-            
-            if (fileAge > (oneHour * 2)) {
-                isVideoGood = false;
-                fileLabel.innerHTML = `<span style="color: var(--error-red);">❌ OLD VIDEO DETECTED</span><br><span style="font-size:9px">Must record NEW video</span>`;
-                checkVideo.style.display = 'none';
-                statusDiv.innerText = "ERROR: VIDEO IS TOO OLD. RECORD NEW.";
-                statusDiv.style.color = "var(--error-red)";
-                videoInput.value = "";
-                return;
-            }
-
-            // --- 2. QUALITY GUARD (1080p Check) ---
-            const url = URL.createObjectURL(file);
-            tempVideo.src = url;
-            
-            tempVideo.onloadedmetadata = () => {
-                const minDim = Math.min(tempVideo.videoWidth, tempVideo.videoHeight);
-                URL.revokeObjectURL(url); 
-
-                if (minDim >= 1080) {
-                    isVideoGood = true;
-                    fileLabel.innerHTML = `<span style="color: var(--success-green);">✅ 1080p VERIFIED (${sizeMB}MB)</span>`;
-                    checkVideo.style.display = 'block';
-                    statusDiv.innerText = "QUALITY & DATE OK. READY.";
-                    statusDiv.style.color = "var(--success-green)";
-                } else {
-                    isVideoGood = false;
-                    fileLabel.innerHTML = `<span style="color: var(--error-red);">❌ LOW QUALITY DETECTED</span><br><span style="font-size:9px">Do not use "Take Video". Record in Camera App first.</span>`;
-                    checkVideo.style.display = 'none';
-                    statusDiv.innerText = "ERROR: USE MAIN CAMERA APP";
-                    statusDiv.style.color = "var(--error-red)";
+            // FORCE 1080p
+            const constraints = {
+                audio: true,
+                video: {
+                    facingMode: 'environment', // Rear Camera
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                 }
             };
+
+            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const liveVideo = document.getElementById('livePreview');
+            liveVideo.srcObject = mediaStream;
+
+            // Check Resolution
+            const track = mediaStream.getVideoTracks()[0];
+            const settings = track.getSettings();
+            document.getElementById('resBadge').style.display = 'block';
+            document.getElementById('resBadge').innerText = `CAM: ${settings.width}x${settings.height}`;
+            document.getElementById('status').innerText = "CAMERA READY";
+
+        } catch (err) {
+            alert("Camera Access Denied or Error: " + err.message);
+            console.error(err);
+            document.getElementById('startCamBox').style.display = 'block';
+            document.getElementById('cameraUI').style.display = 'none';
         }
-    };
+    }
+
+    function toggleRecording() {
+        if (!isRecording) {
+            // START RECORDING
+            recordedChunks = [];
+            
+            // Try enabling high bitrate options if available
+            const options = { mimeType: 'video/webm;codecs=vp9' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                // Fallback for Safari/iOS
+                delete options.mimeType; 
+            }
+
+            mediaRecorder = new MediaRecorder(mediaStream, options);
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                // Video Stopped
+                finalVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' }); // Saving as mp4 container blob
+                
+                const playback = document.getElementById('recordedPlayback');
+                playback.src = URL.createObjectURL(finalVideoBlob);
+                playback.style.display = 'block';
+                document.getElementById('livePreview').style.display = 'none';
+                
+                document.getElementById('btnRecord').style.display = 'none';
+                document.getElementById('btnRetake').style.display = 'block';
+                document.getElementById('submitBtn').style.display = 'block'; // Show Upload Button
+                
+                document.getElementById('status').innerText = "VIDEO CAPTURED. REVIEW & UPLOAD.";
+                
+                // Stop camera stream to save battery
+                mediaStream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+            document.getElementById('btnRecord').innerText = "STOP";
+            document.getElementById('btnRecord').classList.add('recording');
+            document.getElementById('status').innerText = "RECORDING... (Keep Steady)";
+
+        } else {
+            // STOP RECORDING
+            mediaRecorder.stop();
+            isRecording = false;
+            document.getElementById('btnRecord').innerText = "RECORD";
+            document.getElementById('btnRecord').classList.remove('recording');
+        }
+    }
+
+    function resetCamera() {
+        // Reset UI
+        document.getElementById('recordedPlayback').style.display = 'none';
+        document.getElementById('livePreview').style.display = 'block';
+        document.getElementById('btnRecord').style.display = 'block';
+        document.getElementById('btnRetake').style.display = 'none';
+        document.getElementById('submitBtn').style.display = 'none';
+        
+        finalVideoBlob = null;
+        startCamera(); // Restart stream
+    }
 
     document.getElementById('submitBtn').onclick = async () => {
         const name = document.getElementById('driverName').value.trim();
         const vin = document.getElementById('vin').value.trim();
-        const file = document.getElementById('videoFile').files[0];
         const activeInsp = document.querySelector('#groupType .active');
 
-        if (!isVideoGood) {
-            alert("STOP: Video rejected. \n\n1. Use your main Camera App to record.\n2. Do not use 'Take Video' inside this page.\n3. Make sure it is a NEW video.");
-            return;
-        }
-
-        if (!name || !vin || !file || !activeInsp) { 
-            alert("STOP: Check Name, VIN, and Video first."); 
-            return; 
-        }
+        if (!finalVideoBlob) { alert("No video recorded!"); return; }
+        if (!name || !vin || !activeInsp) { alert("STOP: Check Name and VIN."); return; }
 
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
-        document.getElementById('status').innerText = "SYNCING 1080p VIDEO...";
-        document.getElementById('status').style.color = "var(--brand-blue)";
-
+        document.getElementById('status').innerText = "SYNCING HD VIDEO...";
+        
         const formData = new FormData();
         formData.append('driverName', name);
         formData.append('vin', vin);
         formData.append('serviceType', serviceTypeStr);
         formData.append('inspectionType', activeInsp.innerText);
-        formData.append('video', file);
+        // Append the Blob as 'video' with a filename
+        formData.append('video', finalVideoBlob, 'camera_recording.mp4');
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/upload-to-google-drive');
