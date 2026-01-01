@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.4.1</title>
+    <title>SLGP Fleet Health Check v1.5.0</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,6 +20,7 @@
             --text-main: #ffffff;
             --text-dim: #a0a0a0;
             --success-green: #4ade80;
+            --error-red: #ff4444;
         }
 
         body {
@@ -141,6 +142,8 @@
             <span id="check_video" class="success-indicator" style="top: 10px; right: 10px; bottom: auto;">✓</span>
         </div>
 
+        <video id="tempVideo" style="display:none;"></video>
+
         <div id="progressContainer"><div id="progressBar"></div></div>
 
         <button id="submitBtn">UPLOAD VIDEO</button>
@@ -153,7 +156,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.4.1 - Icon Fixed</div>
+    <div id="versionTag">BUILD VERSION: v1.5.0 - 1080p Enforced</div>
 </div>
 
 <script>
@@ -164,6 +167,7 @@
     };
 
     let serviceTypeStr = '';
+    let isVideoGood = false; // Prevents uploading if quality is low
 
     function validateName() {
         const name = document.getElementById('driverName').value.trim();
@@ -219,12 +223,51 @@
         }
     }
 
-    document.getElementById('videoFile').onchange = (e) => {
+    // --- NEW: 1080p ENFORCEMENT LOGIC ---
+    const videoInput = document.getElementById('videoFile');
+    const tempVideo = document.getElementById('tempVideo');
+    const fileLabel = document.getElementById('fileLabel');
+    const statusDiv = document.getElementById('status');
+    const checkVideo = document.getElementById('check_video');
+
+    videoInput.onchange = (e) => {
         if (e.target.files.length > 0) {
-            const sizeMB = (e.target.files[0].size / (1024 * 1024)).toFixed(2);
-            document.getElementById('fileLabel').innerHTML = `<span style="color: var(--success-green);">1080p READY (${sizeMB}MB)</span>`;
-            document.getElementById('check_video').style.display = 'block';
-            document.getElementById('status').innerText = `SIZE OK: ${sizeMB}MB`;
+            const file = e.target.files[0];
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            
+            // 1. Show processing status
+            fileLabel.innerHTML = `<span style="color: var(--text-dim);">VERIFYING RESOLUTION...</span>`;
+            statusDiv.innerText = "CHECKING VIDEO QUALITY...";
+            
+            // 2. Load video metadata to check dimensions
+            const url = URL.createObjectURL(file);
+            tempVideo.src = url;
+            
+            tempVideo.onloadedmetadata = () => {
+                // Check smallest dimension (covers both portrait and landscape 1080p)
+                const minDim = Math.min(tempVideo.videoWidth, tempVideo.videoHeight);
+                
+                URL.revokeObjectURL(url); // Clean up memory
+
+                if (minDim >= 1080) {
+                    // SUCCESS: 1080p or 4K
+                    isVideoGood = true;
+                    fileLabel.innerHTML = `<span style="color: var(--success-green);">✅ 1080p VERIFIED (${sizeMB}MB)</span>`;
+                    checkVideo.style.display = 'block';
+                    statusDiv.innerText = "QUALITY OK. READY TO UPLOAD.";
+                    statusDiv.style.color = "var(--success-green)";
+                } else {
+                    // FAIL: 720p or lower
+                    isVideoGood = false;
+                    fileLabel.innerHTML = `<span style="color: var(--error-red);">❌ LOW QUALITY DETECTED</span><br><span style="font-size:9px">Please check Camera Settings</span>`;
+                    checkVideo.style.display = 'none';
+                    statusDiv.innerText = "ERROR: VIDEO MUST BE 1080p OR HIGHER";
+                    statusDiv.style.color = "var(--error-red)";
+                    
+                    // Optional: Reset input so they have to pick again
+                    // videoInput.value = ""; 
+                }
+            };
         }
     };
 
@@ -234,6 +277,12 @@
         const file = document.getElementById('videoFile').files[0];
         const activeInsp = document.querySelector('#groupType .active');
 
+        // NEW: Check if video passed the quality test
+        if (!isVideoGood) {
+            alert("STOP: Video quality is too low (must be 1080p) or no video selected.");
+            return;
+        }
+
         if (!name || !vin || !file || !activeInsp) { 
             alert("STOP: Check Name, VIN, and Video first."); 
             return; 
@@ -242,6 +291,7 @@
         document.getElementById('submitBtn').disabled = true;
         document.getElementById('progressContainer').style.display = 'block';
         document.getElementById('status').innerText = "SYNCING 1080p VIDEO...";
+        document.getElementById('status').style.color = "var(--brand-blue)";
 
         const formData = new FormData();
         formData.append('driverName', name);
