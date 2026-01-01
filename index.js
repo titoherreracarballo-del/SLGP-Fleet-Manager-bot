@@ -7,8 +7,8 @@ const fs = require('fs');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Folder ID for "Daily Fleet Health Checks" inside your Shared Drive
-const DRIVE_FOLDER_ID = '1ldYUYV0BO2nEJ23GHKK5qN1o2';
+// FIXED: Now uses the Railway variable first, or defaults to the correct new ID
+const DRIVE_FOLDER_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
 let auth;
 try {
