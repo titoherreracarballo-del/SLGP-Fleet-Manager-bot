@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.2.5</title>
-   
+    <title>SLGP Fleet Health Check v1.3.0</title>
+    
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="Final-01.jpg">
-   
+    
     <style>
         :root {
             --brand-blue: #0066ff;
@@ -105,13 +105,13 @@
         
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Tito" oninput="validateName()">
+            <input type="text" id="driverName" placeholder="Name" oninput="validateName()">
             <span id="check_name" class="success-indicator">✓</span>
         </div>
 
         <div class="form-group">
             <label>Last 4 of VIN</label>
-            <input type="tel" id="vin" placeholder="3754" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
+            <input type="tel" id="vin" placeholder="Last 4 of VIN" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()">
             <span id="check_vin" class="success-indicator">✓</span>
         </div>
 
@@ -141,7 +141,7 @@
 
         <div id="progressContainer"><div id="progressBar"></div></div>
 
-        <button id="submitBtn">UPLOAD TO GOOGLE DRIVE</button>
+        <button id="submitBtn">UPLOAD VIDEO</button>
         <div id="status">System Online</div>
     </div>
 
@@ -151,7 +151,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.2.5 - Final Features</div>
+    <div id="versionTag">BUILD VERSION: v1.3.0 - Reporting Active</div>
 </div>
 
 <script>
@@ -167,7 +167,7 @@
         const name = document.getElementById('driverName').value.trim();
         document.getElementById('check_name').style.display = (name.length > 2) ? 'block' : 'none';
     }
-   
+    
     function autoDetectVehicle() {
         const vinInput = document.getElementById('vin').value;
         const btnList = document.querySelectorAll('#groupVehicle .toggle-btn');
