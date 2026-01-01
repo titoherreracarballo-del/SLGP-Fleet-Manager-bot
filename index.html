@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v2.0 (Pro Cam)</title>
+    <title>SLGP Fleet Health Check v2.1 (Timer Added)</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -73,7 +73,7 @@
         .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
         .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
 
-        /* --- NEW CAMERA UI STYLES --- */
+        /* --- CAMERA UI STYLES --- */
         .camera-container {
             position: relative;
             width: 100%;
@@ -83,7 +83,7 @@
             border-radius: 14px;
             overflow: hidden;
             margin-bottom: 15px;
-            display: none; /* Hidden until activated */
+            display: none; 
             border: 2px solid rgba(255,255,255,0.1);
         }
 
@@ -128,7 +128,15 @@
             z-index: 20; display: none;
         }
 
-        /* Initial "Open Camera" Button Area */
+        /* --- NEW: TIMER STYLES --- */
+        .video-timer {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(255, 0, 0, 0.8); color: white;
+            padding: 5px 10px; border-radius: 5px;
+            font-size: 12px; font-weight: bold; font-family: monospace;
+            z-index: 21; display: none; /* Hidden until recording starts */
+        }
+
         .start-cam-area {
             background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
             border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px;
@@ -143,7 +151,7 @@
             background: linear-gradient(135deg, #0066ff, #0044cc);
             color: white; border: none; padding: 18px; border-radius: 14px;
             width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer;
-            display: none; /* Hidden until video is recorded */
+            display: none; 
         }
         #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
         
@@ -198,6 +206,8 @@
 
         <div class="camera-container" id="cameraUI">
             <div class="camera-overlay" id="resBadge">Checking Res...</div>
+            <div class="video-timer" id="recordTimer">🔴 00:00</div>
+
             <video id="livePreview" autoplay playsinline muted></video>
             <video id="recordedPlayback" playsinline controls></video>
         </div>
@@ -219,7 +229,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v2.0 - Pro Camera</div>
+    <div id="versionTag">BUILD VERSION: v2.1 - Timer Active</div>
 </div>
 
 <script>
@@ -238,7 +248,10 @@
     let finalVideoBlob = null;
     let isRecording = false;
 
-    // --- LOGIC: Driver/VIN Validation ---
+    // --- TIMER VARIABLES ---
+    let timerInterval = null;
+    let timerSeconds = 0;
+
     function validateName() {
         const name = document.getElementById('driverName').value.trim();
         document.getElementById('check_name').style.display = (name.length > 2) ? 'block' : 'none';
@@ -266,7 +279,6 @@
         }
     }
 
-    // --- LOGIC: Shift Time ---
     function runShiftLogic() {
         const now = new Date();
         const mins = (now.getHours() * 60) + now.getMinutes();
@@ -290,7 +302,6 @@
         }
     }
 
-    // --- CAMERA LOGIC: The "Pro" Part ---
     async function startCamera() {
         try {
             document.getElementById('startCamBox').style.display = 'none';
@@ -302,7 +313,7 @@
             const constraints = {
                 audio: true,
                 video: {
-                    facingMode: 'environment', // Rear Camera
+                    facingMode: 'environment',
                     width: { ideal: 1920 },
                     height: { ideal: 1080 }
                 }
@@ -312,7 +323,6 @@
             const liveVideo = document.getElementById('livePreview');
             liveVideo.srcObject = mediaStream;
 
-            // Check Resolution
             const track = mediaStream.getVideoTracks()[0];
             const settings = track.getSettings();
             document.getElementById('resBadge').style.display = 'block';
@@ -327,29 +337,32 @@
         }
     }
 
+    function updateTimerDisplay() {
+        const minutes = Math.floor(timerSeconds / 60);
+        const seconds = timerSeconds % 60;
+        const fmt = (num) => num.toString().padStart(2, '0');
+        document.getElementById('recordTimer').innerText = `🔴 ${fmt(minutes)}:${fmt(seconds)}`;
+    }
+
     function toggleRecording() {
         if (!isRecording) {
             // START RECORDING
             recordedChunks = [];
-            
-            // Try enabling high bitrate options if available
             const options = { mimeType: 'video/webm;codecs=vp9' };
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                // Fallback for Safari/iOS
-                delete options.mimeType; 
-            }
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) { delete options.mimeType; }
 
             mediaRecorder = new MediaRecorder(mediaStream, options);
 
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    recordedChunks.push(event.data);
-                }
+                if (event.data.size > 0) { recordedChunks.push(event.data); }
             };
 
             mediaRecorder.onstop = () => {
-                // Video Stopped
-                finalVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' }); // Saving as mp4 container blob
+                // STOP TIMER
+                clearInterval(timerInterval);
+                document.getElementById('recordTimer').style.display = 'none';
+
+                finalVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
                 
                 const playback = document.getElementById('recordedPlayback');
                 playback.src = URL.createObjectURL(finalVideoBlob);
@@ -358,19 +371,28 @@
                 
                 document.getElementById('btnRecord').style.display = 'none';
                 document.getElementById('btnRetake').style.display = 'block';
-                document.getElementById('submitBtn').style.display = 'block'; // Show Upload Button
+                document.getElementById('submitBtn').style.display = 'block';
                 
                 document.getElementById('status').innerText = "VIDEO CAPTURED. REVIEW & UPLOAD.";
-                
-                // Stop camera stream to save battery
                 mediaStream.getTracks().forEach(track => track.stop());
             };
 
             mediaRecorder.start();
             isRecording = true;
+            
+            // UI UPDATES FOR RECORDING
             document.getElementById('btnRecord').innerText = "STOP";
             document.getElementById('btnRecord').classList.add('recording');
-            document.getElementById('status').innerText = "RECORDING... (Keep Steady)";
+            document.getElementById('status').innerText = "RECORDING...";
+            
+            // START TIMER
+            timerSeconds = 0;
+            updateTimerDisplay();
+            document.getElementById('recordTimer').style.display = 'block';
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                updateTimerDisplay();
+            }, 1000);
 
         } else {
             // STOP RECORDING
@@ -382,7 +404,6 @@
     }
 
     function resetCamera() {
-        // Reset UI
         document.getElementById('recordedPlayback').style.display = 'none';
         document.getElementById('livePreview').style.display = 'block';
         document.getElementById('btnRecord').style.display = 'block';
@@ -390,7 +411,7 @@
         document.getElementById('submitBtn').style.display = 'none';
         
         finalVideoBlob = null;
-        startCamera(); // Restart stream
+        startCamera(); 
     }
 
     document.getElementById('submitBtn').onclick = async () => {
@@ -410,7 +431,6 @@
         formData.append('vin', vin);
         formData.append('serviceType', serviceTypeStr);
         formData.append('inspectionType', activeInsp.innerText);
-        // Append the Blob as 'video' with a filename
         formData.append('video', finalVideoBlob, 'camera_recording.mp4');
 
         const xhr = new XMLHttpRequest();
