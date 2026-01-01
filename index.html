@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Health Check v1.5.0</title>
+    <title>SLGP Fleet Health Check v1.6.0</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -135,10 +135,12 @@
         <label>1080p Video Sync</label>
         <div class="upload-area" id="uploadBox">
             <div id="fileLabel">
-                <span>Tap to Record 1080p Video</span><br>
+                <span>Tap to Select/Record 1080p Video</span><br>
                 <span style="font-size: 9px; color: var(--success-green);">BITRATE OPTIMIZED FOR GOOGLE DRIVE</span>
             </div>
-            <input type="file" id="videoFile" accept="video/*" capture="environment">
+            
+            <input type="file" id="videoFile" accept="video/*">
+            
             <span id="check_video" class="success-indicator" style="top: 10px; right: 10px; bottom: auto;">✓</span>
         </div>
 
@@ -156,7 +158,7 @@
         <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
     </div>
 
-    <div id="versionTag">BUILD VERSION: v1.5.0 - 1080p Enforced</div>
+    <div id="versionTag">BUILD VERSION: v1.6.0 - High Quality Fix</div>
 </div>
 
 <script>
@@ -167,7 +169,7 @@
     };
 
     let serviceTypeStr = '';
-    let isVideoGood = false; // Prevents uploading if quality is low
+    let isVideoGood = false;
 
     function validateName() {
         const name = document.getElementById('driverName').value.trim();
@@ -223,7 +225,6 @@
         }
     }
 
-    // --- NEW: 1080p ENFORCEMENT LOGIC ---
     const videoInput = document.getElementById('videoFile');
     const tempVideo = document.getElementById('tempVideo');
     const fileLabel = document.getElementById('fileLabel');
@@ -235,37 +236,28 @@
             const file = e.target.files[0];
             const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
             
-            // 1. Show processing status
             fileLabel.innerHTML = `<span style="color: var(--text-dim);">VERIFYING RESOLUTION...</span>`;
             statusDiv.innerText = "CHECKING VIDEO QUALITY...";
             
-            // 2. Load video metadata to check dimensions
             const url = URL.createObjectURL(file);
             tempVideo.src = url;
             
             tempVideo.onloadedmetadata = () => {
-                // Check smallest dimension (covers both portrait and landscape 1080p)
                 const minDim = Math.min(tempVideo.videoWidth, tempVideo.videoHeight);
-                
-                URL.revokeObjectURL(url); // Clean up memory
+                URL.revokeObjectURL(url); 
 
                 if (minDim >= 1080) {
-                    // SUCCESS: 1080p or 4K
                     isVideoGood = true;
                     fileLabel.innerHTML = `<span style="color: var(--success-green);">✅ 1080p VERIFIED (${sizeMB}MB)</span>`;
                     checkVideo.style.display = 'block';
                     statusDiv.innerText = "QUALITY OK. READY TO UPLOAD.";
                     statusDiv.style.color = "var(--success-green)";
                 } else {
-                    // FAIL: 720p or lower
                     isVideoGood = false;
                     fileLabel.innerHTML = `<span style="color: var(--error-red);">❌ LOW QUALITY DETECTED</span><br><span style="font-size:9px">Please check Camera Settings</span>`;
                     checkVideo.style.display = 'none';
                     statusDiv.innerText = "ERROR: VIDEO MUST BE 1080p OR HIGHER";
                     statusDiv.style.color = "var(--error-red)";
-                    
-                    // Optional: Reset input so they have to pick again
-                    // videoInput.value = ""; 
                 }
             };
         }
@@ -277,7 +269,6 @@
         const file = document.getElementById('videoFile').files[0];
         const activeInsp = document.querySelector('#groupType .active');
 
-        // NEW: Check if video passed the quality test
         if (!isVideoGood) {
             alert("STOP: Video quality is too low (must be 1080p) or no video selected.");
             return;
