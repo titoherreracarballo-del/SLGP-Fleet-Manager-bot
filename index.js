@@ -20,10 +20,22 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- 3. NAVIGATION ---
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
+// --- 3. NAVIGATION (UPDATED TO FIX LINKS) ---
+// Note: Ensure your main menu file is named 'index.html'. If it is named 'menu.html', change the line below.
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html'))); 
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
+
+// *** THIS IS THE FIX FOR YOUR "NOT FOUND" ERROR ***
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+    if (mode === 'issue') {
+        res.sendFile(path.join(__dirname, 'report-issue.html'));
+    } else if (mode === 'accident') {
+        res.sendFile(path.join(__dirname, 'accident-report.html'));
+    } else {
+        res.status(404).send('Error: Report type not found. Please return to the menu.');
+    }
+});
 
 // --- 4. AUTHENTICATION ---
 let auth;
