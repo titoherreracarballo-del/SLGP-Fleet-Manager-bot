@@ -1,7 +1,7 @@
 {
-  "name": "slgp-fleet-manager-bot",
-  "version": "1.4.0",
-  "description": "Fleet Management Bot with Email Reports",
+  "name": "slgp-fleet-portal",
+  "version": "1.0.0",
+  "description": "Fleet Management Portal",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,9 +9,9 @@
   "dependencies": {
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
-    "googleapis": "^118.0.0",
-    "node-cron": "^3.0.0",
-    "nodemailer": "^6.9.7"
+    "googleapis": "^126.0.1",
+    "nodemailer": "^6.9.5",
+    "pdf-lib": "^1.17.1"
   },
   "engines": {
     "node": "18.x"
