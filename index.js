@@ -1,9 +1,9 @@
 /**
- * SLGP FLEET PORTAL - FINAL PRODUCTION SERVER
- * -------------------------------------------
- * 1. Video Uploads -> Uses Old Logic & Folder
- * 2. Reports -> Uses New Logic & Folder
- * 3. Auth -> Checks Railway Variables first, then File
+ * SLGP FLEET PORTAL - UNIVERSAL SERVER v3.0
+ * -----------------------------------------
+ * 1. Video Uploads -> Uses upload.any() to accept ALL files.
+ * 2. Reports -> Uses New Logic & Folder.
+ * 3. Auth -> Checks Railway Variables first.
  */
 
 const express = require('express');
@@ -19,16 +19,15 @@ const stream = require('stream');
 const app = express();
 
 // --- 1. STORAGE CONFIGURATION ---
-// We use /tmp/ because it is the only writable folder on Railway
+// /tmp/ is the only safe place to write files on Railway
 const upload = multer({ 
     dest: '/tmp/', 
     limits: { fileSize: 1024 * 1024 * 1024 } // 1GB Limit
 });
 
-// --- 2. CONFIGURATION (HARDCODED SAFEGUARDS) ---
-// We force these IDs to ensure no variables are missing
-const VIDEO_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; 
-const REPORT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+// --- 2. CONFIGURATION ---
+const VIDEO_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Old Video Folder
+const REPORT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy'; // New Report Folder
 
 const EMAIL_USER = process.env.EMAIL_USER || 'strategiclogisticsgroupllc@gmail.com';
 const EMAIL_PASS = process.env.EMAIL_PASS || 'wnSx-72@!'; 
@@ -37,19 +36,16 @@ const LOG_FILE = path.join(__dirname, 'submission_log.json');
 
 // --- 3. AUTHENTICATION ---
 function getGoogleAuth() {
-    // Attempt 1: Railway Variable
+    // 1. Try Railway Variable
     if (process.env.GCP_SA_KEY) {
         try {
-            // Check if key is valid JSON
-            const creds = JSON.parse(process.env.GCP_SA_KEY);
             return new google.auth.GoogleAuth({
-                credentials: creds,
+                credentials: JSON.parse(process.env.GCP_SA_KEY),
                 scopes: ['https://www.googleapis.com/auth/drive.file'],
             });
-        } catch (e) { console.error("AUTH WARNING: GCP_SA_KEY found but invalid.", e.message); }
+        } catch (e) { console.error("GCP_SA_KEY Error:", e.message); }
     }
-    
-    // Attempt 2: Local File
+    // 2. Try Local File
     const keyPath = path.join(__dirname, 'credentials.json');
     if (fs.existsSync(keyPath)) {
         return new google.auth.GoogleAuth({
@@ -57,7 +53,6 @@ function getGoogleAuth() {
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
     }
-    
     return null;
 }
 
@@ -84,23 +79,27 @@ app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html'
 
 
 // ============================================================================
-// SYSTEM A: VIDEO UPLOADS (ORIGINAL LOGIC)
+// SYSTEM A: VIDEO UPLOADS (UNIVERSAL FIX)
 // ============================================================================
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
-    console.log("\n>>> VIDEO UPLOAD STARTED");
+// We use upload.any() so it accepts the file even if HTML names it differently
+app.post('/upload-to-google-drive', upload.any(), async (req, res) => {
+    console.log("\n>>> VIDEO UPLOAD RECEIVED");
 
-    // 1. Check File
-    if (!req.file) {
-        console.error("❌ ERROR: No file received.");
+    // 1. Find the File
+    // req.files is an array because we used upload.any()
+    const file = req.files && req.files.length > 0 ? req.files[0] : null;
+    
+    if (!file) {
+        console.error("❌ ERROR: No file found in request.");
         return res.status(400).send('No file received.');
     }
-    console.log(`File Received: ${req.file.originalname} | Size: ${req.file.size}`);
+    console.log(`Processing File: ${file.originalname} | Size: ${file.size}`);
 
-    // 2. Check Auth
+    // 2. Auth Check
     const auth = getGoogleAuth();
     if (!auth) {
-        console.error("❌ ERROR: Google Auth Failed. Check GCP_SA_KEY.");
-        return res.status(500).send('Server Error: Google Auth Missing');
+        console.error("❌ ERROR: Auth Missing. Check GCP_SA_KEY.");
+        return res.status(500).send('Server Auth Missing');
     }
 
     const { driverName, vin, inspectionType } = req.body;
@@ -108,24 +107,22 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // Generate Name
+        // Name & Time
         const now = new Date();
         const timeStringFile = now.toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
         const timeStringLog = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
         const dateStringLog = now.toISOString().split('T')[0];
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${timeStringFile}.mp4`;
 
-        console.log(`Uploading to Folder: ${VIDEO_FOLDER_ID}`);
-
         // Upload
         const response = await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_FOLDER_ID] },
-            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(file.path) },
             fields: 'webViewLink'
         });
 
-        console.log(`✅ SUCCESS: ${finalFileName}`);
-        
+        console.log(`✅ UPLOAD COMPLETE: ${finalFileName}`);
+
         // Log & Email
         saveLog({ date: dateStringLog, time: timeStringLog, driverName, vin, inspectionType, fileName: finalFileName });
 
@@ -138,12 +135,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
 
         // Cleanup
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.status(200).send('Upload Successful');
 
     } catch (error) {
         console.error("❌ UPLOAD FAILED:", error.message);
-        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.status(500).send(`Upload Failed: ${error.message}`);
     }
 });
@@ -153,16 +150,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 // SYSTEM B: INCIDENT REPORTS (NEW LOGIC)
 // ============================================================================
 app.post('/submit-report', async (req, res) => {
-    console.log("\n>>> REPORT SUBMISSION STARTED");
+    console.log("\n>>> REPORT SUBMISSION RECEIVED");
     const data = req.body;
-
     const auth = getGoogleAuth();
+    
     if (!auth) return res.status(500).json({ success: false, error: "Auth Missing" });
 
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // Create Folder
         const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_FOLDER_ID] },
@@ -170,7 +166,6 @@ app.post('/submit-report', async (req, res) => {
         });
         const subFolderId = folder.data.id;
 
-        // Upload Helper
         let photoLinks = [];
         const uploadImage = async (imgObj, type) => {
             if (!imgObj || !imgObj.data) return;
@@ -191,7 +186,6 @@ app.post('/submit-report', async (req, res) => {
         if (data.mphPhotos) await uploadImage(data.mphPhotos, 'MPH');
         if (data.accidentPhotos) await uploadImage(data.accidentPhotos, 'Accident');
 
-        // PDF Generation
         const doc = await PDFDocument.create();
         const page = doc.addPage([600, 800]);
         const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -217,7 +211,6 @@ app.post('/submit-report', async (req, res) => {
         const pdfPath = path.join(__dirname, `report-${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // Email
         const recipients = (data.priorityLevel === 'accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] 
             : ['slgpfleetmanager@gmail.com'];
@@ -276,4 +269,4 @@ cron.schedule('0 12 * * *', () => generateDailyReport('pre', 'DAILY_PRECHECK_REP
 cron.schedule('30 23 * * *', () => generateDailyReport('post', 'DAILY_POSTCHECK_REPORT'), { timezone: "America/New_York" });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`SLGP SERVER v2.0 LIVE ON PORT ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`SLGP SERVER v3.0 LIVE ON PORT ${PORT}`));
