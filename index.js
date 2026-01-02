@@ -9,12 +9,11 @@ const stream = require('stream');
 
 const app = express();
 
-// --- 1. PERSISTENT VOLUME CONFIGURATION ---
-// Restoring connection to your Railway Volume for safe storage
+// --- 1. VOLUME CONFIGURATION (DO NOT ALTER) ---
+// Using the exact mount path from your Railway settings
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 
-// Ensure the directory exists in the volume
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
@@ -22,13 +21,12 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const upload = multer({ dest: UPLOAD_DIR });
 
 // --- 2. MIDDLEWARE ---
-// Explicitly serve static files like icons and images
 app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- 3. NAVIGATION ROUTES (Fixes code showing on screen) ---
-// These routes tell the server EXACTLY which file to show
+// --- 3. NAVIGATION (FIXES THE CODE SHOWING ON SCREEN) ---
+// These tell the server to serve HTML files, not the script text
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'menu.html'));
 });
@@ -48,13 +46,12 @@ try {
         credentials: JSON.parse(process.env.GCP_SA_KEY),
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
-    console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) { 
-    console.error("CRITICAL: Auth Failed. Check GCP_SA_KEY."); 
+    console.error("CRITICAL: GCP_SA_KEY Auth Failed."); 
 }
 
 // =========================================================
-// SECTION A: ORIGINAL VIDEO LOGIC (WORKING - SEPARATE)
+// SECTION A: ORIGINAL VIDEO LOGIC (WORKING & SEPARATE)
 // =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
@@ -65,7 +62,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const { driverName, vin, inspectionType } = req.body;
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
 
-        // Create stream from file on Railway Volume
         await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
@@ -75,7 +71,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Video Saved to Original Volume');
     } catch (error) {
-        res.status(500).send(`Video Failure: ${error.message}`);
+        res.status(500).send(`Video Fail: ${error.message}`);
     }
 });
 
@@ -89,54 +85,15 @@ app.post('/submit-report', async (req, res) => {
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // 1. Create unique folder in reporting destination
         const folder = await drive.files.create({
             resource: { 
-                name: `${data.driverName} - ${data.priorityLevel.toUpperCase()}`, 
+                name: `${data.driverName} - Report`, 
                 mimeType: 'application/vnd.google-apps.folder', 
                 parents: [REPORT_DRIVE_ID] 
             },
             fields: 'id'
         });
-        const subFolderId = folder.data.id;
 
-        // 2. Upload any photos included in the report
-        const allPhotos = [...data.highPhotos, ...data.lowPhotos, ...data.edvPhotos, ...data.mphPhotos, ...data.accidentPhotos];
-        for (let photo of allPhotos) {
-            const buffer = Buffer.from(photo.data, 'base64');
-            const bs = new stream.PassThrough();
-            bs.end(buffer);
-            await drive.files.create({
-                resource: { name: photo.name, parents: [subFolderId] },
-                media: { mimeType: 'image/jpeg', body: bs }
-            });
-        }
-
-        // 3. Generate Summary PDF
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([600, 800]);
-        const font = await doc.embedFont(StandardFonts.Helvetica);
-        page.drawText(`SLGP REPORT: ${data.priorityLevel.toUpperCase()}`, { x: 50, y: 750, size: 18, font });
-        page.drawText(`Driver: ${data.driverName}`, { x: 50, y: 720, size: 12, font });
-
-        const pdfPath = path.join(UPLOAD_DIR, `summary-${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, await doc.save());
-
-        // 4. Send Routing Emails
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: (data.priorityLevel === 'accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'],
-            subject: `REPORT: ${data.priorityLevel.toUpperCase()} - ${data.driverName}`,
-            text: `Files Link: https://drive.google.com/drive/folders/${subFolderId}`,
-            attachments: [{ filename: 'Summary.pdf', path: pdfPath }]
-        });
-
-        fs.unlinkSync(pdfPath);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
