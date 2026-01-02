@@ -16,23 +16,37 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             min-height: 100vh; margin: 0; padding: 20px; text-align: center;
         }
-        .logo { width: 280px; margin-bottom: 40px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
-        h1 { font-size: 20px; margin-bottom: 30px; letter-spacing: 1px; color: #0066ff; text-transform: uppercase; }
+        .logo { width: 280px; margin-bottom: 30px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+        h1 { font-size: 18px; margin-bottom: 25px; letter-spacing: 1px; color: #0066ff; text-transform: uppercase; }
+        
         .menu-btn {
-            display: flex; align-items: center; justify-content: center;
-            width: 100%; max-width: 320px; padding: 25px; margin-bottom: 20px;
-            border-radius: 18px; text-decoration: none; font-weight: 800; font-size: 16px;
+            display: flex; align-items: center; justify-content: flex-start;
+            width: 100%; max-width: 320px; padding: 15px 25px; margin-bottom: 15px;
+            border-radius: 16px; text-decoration: none; font-weight: 800; font-size: 15px;
             text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); position: relative; overflow: hidden;
+            box-sizing: border-box;
+            background-color: rgba(255, 255, 255, 0.05); /* Fallback background */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
         }
-        .btn-video {
-            background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border: 1px solid #0055aa;
-        }
-        .btn-report {
-            background: rgba(255, 170, 0, 0.1); color: #ffaa00; border: 2px solid #ffaa00;
-        }
+
         .menu-btn:active { transform: scale(0.96); }
-        .icon { font-size: 24px; margin-right: 12px; }
+
+        /* IMAGE ICON STYLING */
+        .btn-icon {
+            width: 40px;       /* Slightly larger for your custom JPGs */
+            height: 40px;      
+            margin-right: 20px; 
+            object-fit: contain; 
+            border-radius: 6px; /* Softens the corners of your JPGs */
+        }
+        
+        /* Custom Colors for Borders/Glows */
+        .btn-video { border-color: #0055aa; background: linear-gradient(135deg, #0066ff, #0044cc); }
+        .btn-issue { border-color: #aa6600; background: linear-gradient(135deg, #ff9900, #cc7a00); }
+        .btn-accident { border-color: #aa0000; background: linear-gradient(135deg, #ff4444, #cc0000); }
+
         .footer { margin-top: 40px; font-size: 11px; color: #444; }
     </style>
 </head>
@@ -41,13 +55,20 @@
     <h1>Select Action</h1>
 
     <a href="/video" class="menu-btn btn-video">
-        <span class="icon">📹</span> Daily Video Inspection
+        <img src="Pre & Post Fleet Vids.jpg" class="btn-icon" alt="Video">
+        <span>Daily Video Check</span>
     </a>
 
-    <a href="/report" class="menu-btn btn-report">
-        <span class="icon">⚠️</span> Report Issue / Accident
+    <a href="/report?mode=issue" class="menu-btn btn-issue">
+        <img src="Report An Issue.jpg" class="btn-icon" alt="Issue">
+        <span>Report Issue</span>
     </a>
 
-    <div class="footer">SLGP Fleet Portal v5.0</div>
+    <a href="/report?mode=accident" class="menu-btn btn-accident">
+        <img src="Accident or Incident Reporting.jpg" class="btn-icon" alt="Accident">
+        <span>Report Accident</span>
+    </a>
+
+    <div class="footer">SLGP Fleet Portal v5.4</div>
 </body>
 </html>
