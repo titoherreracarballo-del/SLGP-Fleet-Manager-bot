@@ -1,11 +1,9 @@
 /**
- * SLGP FLEET PORTAL - MASTER SERVER v7.1
- * --------------------------------------
- * 1. Video Uploads -> Fleet Manager
- * 2. Maintenance Reports -> Fleet Manager
- * 3. Accident Reports -> Incident Reporting + Strategic Logistics
- * 4. PDF Generation (Full Detail)
- * 5. Google Drive Integration
+ * SLGP FLEET PORTAL - MASTER SERVER v7.2 (UNIVERSAL FIX)
+ * ------------------------------------------------------
+ * 1. Fixed "Upload Failed" by accepting ANY file field name.
+ * 2. Increased Timeout/Size limits for large videos.
+ * 3. Maintains all Incident/Maintenance routing.
  */
 
 const express = require('express');
@@ -19,74 +17,62 @@ const stream = require('stream');
 
 const app = express();
 
-// Configure Multer: 'memory' for photos, 'disk' for large videos
-const upload = multer({ 
-    dest: 'uploads/',
-    limits: { fileSize: 500 * 1024 * 1024 } // 500MB Limit
-});
-
-// =========================================================
-// 1. CONFIGURATION
-// =========================================================
-
-// Google Drive Folder ID
+// --- CONFIGURATION ---
 const PARENT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy'; 
-
-// Email Settings (Sender)
 const EMAIL_USER = 'strategiclogisticsgroupllc@gmail.com'; 
-const EMAIL_PASS = 'wnSx-72@!'; // REPLACE WITH REAL APP PASSWORD
-
-// --- EMAIL ROUTING ---
-// Maintenance (High, Low, EDV, MPH) & Videos -> Fleet Manager
-const MAIL_FLEET_MGR = ['slgpfleetmanager@gmail.com'];
-
-// Accidents -> Incident Reporting + Main Office
-const MAIL_ACCIDENT = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
-
-// Service Account Credentials
+const EMAIL_PASS = 'wnSx-72@!'; // REPLACE WITH YOUR REAL APP PASSWORD
 const KEY_FILE_PATH = path.join(__dirname, 'credentials.json');
 
+// Email Routing
+const MAIL_FLEET_MGR = ['slgpfleetmanager@gmail.com'];
+const MAIL_ACCIDENT = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
 
-// =========================================================
-// 2. MIDDLEWARE
-// =========================================================
+// --- UPLOAD SETTINGS ---
+// Increased limits to handle large video files comfortably
+const upload = multer({ 
+    dest: 'uploads/',
+    limits: { 
+        fileSize: 1024 * 1024 * 1024, // 1 GB limit
+        fieldSize: 50 * 1024 * 1024   // 50 MB for text fields
+    }
+});
+
+// --- MIDDLEWARE ---
 app.use(express.static(__dirname)); 
-app.use(express.json({ limit: '50mb' })); 
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100mb' })); 
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-
-// =========================================================
-// 3. PAGE ROUTES
-// =========================================================
+// --- ROUTES ---
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
 
-
 // =========================================================
-// 4. VIDEO SUBMISSION HANDLER
+// 1. VIDEO SUBMISSION (UNIVERSAL FIX)
 // =========================================================
-app.post('/submit-video', upload.single('videoFile'), async (req, res) => {
+// We use 'upload.any()' to accept the file regardless of what your HTML calls it.
+app.post('/submit-video', upload.any(), async (req, res) => {
     console.log("Received Video Submission...");
+    
+    // 1. Find the video file in the array (regardless of name)
+    const file = req.files && req.files.length > 0 ? req.files[0] : null;
     const { driverName, vanNumber, checkType, mileage } = req.body;
-    const file = req.file;
 
     if (!file) {
-        return res.status(400).json({ success: false, error: "No video file received." });
+        console.error("Error: No file found in request.");
+        return res.status(400).json({ success: false, error: "No video file received. Please wait for the upload to finish before clicking submit." });
     }
 
     try {
-        // A. Auth Drive
+        // 2. Auth Drive
         const auth = new google.auth.GoogleAuth({
             keyFile: KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // B. Create Folder Name
+        // 3. Create Folder
         const folderName = `VIDEO - ${driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
-        
-        // C. Create Folder
         const folderReq = await drive.files.create({
             resource: {
                 name: folderName,
@@ -97,7 +83,8 @@ app.post('/submit-video', upload.single('videoFile'), async (req, res) => {
         });
         const folderId = folderReq.data.id;
 
-        // D. Upload Video
+        // 4. Upload Video
+        console.log(`Uploading file: ${file.originalname} (${file.size} bytes)`);
         const fileMetadata = {
             name: `${checkType}_${vanNumber}_${driverName}.mp4`,
             parents: [folderId]
@@ -113,7 +100,7 @@ app.post('/submit-video', upload.single('videoFile'), async (req, res) => {
             fields: 'webViewLink'
         });
 
-        // E. Send Email (To Fleet Manager)
+        // 5. Send Email
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: EMAIL_USER, pass: EMAIL_PASS }
@@ -127,47 +114,41 @@ app.post('/submit-video', upload.single('videoFile'), async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log("Video Email Sent.");
+        console.log("Video Email Sent Successfully.");
 
         // Cleanup
         fs.unlinkSync(file.path);
         res.json({ success: true });
 
     } catch (error) {
-        console.error("Video Upload Error:", error);
+        console.error("Video System Error:", error);
+        // Clean up file if it exists
+        if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-
 // =========================================================
-// 5. REPORT SUBMISSION HANDLER
+// 2. REPORT SUBMISSION (MAINTENANCE & ACCIDENTS)
 // =========================================================
 app.post('/submit-report', async (req, res) => {
     console.log("Received Report Submission...");
     const data = req.body;
 
     try {
-        // A. Auth Drive
         const auth = new google.auth.GoogleAuth({
             keyFile: KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // B. Create Folder
         const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         const folderReq = await drive.files.create({
-            resource: {
-                name: folderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [PARENT_FOLDER_ID]
-            },
+            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [PARENT_FOLDER_ID] },
             fields: 'id'
         });
         const reportFolderId = folderReq.data.id;
 
-        // C. Upload Photos
         let photoLinks = [];
         const uploadImage = async (imgObj, type) => {
             if (!imgObj || !imgObj.data) return;
@@ -189,19 +170,15 @@ app.post('/submit-report', async (req, res) => {
         if (data.mphPhotos) await uploadImage(data.mphPhotos, 'MPH');
         if (data.accidentPhotos) await uploadImage(data.accidentPhotos, 'Accident');
 
-        // D. Generate PDF (Full Detail)
         const pdfPath = await generatePDF(data, photoLinks);
         
-        // E. SMART ROUTING LOGIC
         let targetRecipients = [];
         let subjectPrefix = "";
 
         if (data.priorityLevel === 'accident') {
-            // Accident -> Incident Reporting AND Strategic Logistics
             targetRecipients = MAIL_ACCIDENT;
             subjectPrefix = "🚨 URGENT: ACCIDENT REPORT";
         } else {
-            // Maintenance (High, Low, EDV, MPH) -> Fleet Manager
             targetRecipients = MAIL_FLEET_MGR;
             subjectPrefix = `🛠️ Maintenance: ${data.priorityLevel.toUpperCase()}`;
         }
@@ -220,29 +197,25 @@ app.post('/submit-report', async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Report Email Sent to: ${targetRecipients.join(', ')}`);
+        console.log("Report Email Sent.");
 
         fs.unlinkSync(pdfPath);
         res.json({ success: true });
 
     } catch (error) {
-        console.error("Report Error:", error);
+        console.error("Report System Error:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-
-// =========================================================
-// 6. PDF GENERATOR (FULL DETAILS RESTORED)
-// =========================================================
+// --- HELPER: PDF GENERATOR ---
 async function generatePDF(data, photoLinks) {
     const doc = await PDFDocument.create();
     const page = doc.addPage([600, 800]);
-    const { width, height } = page.getSize();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-    let y = height - 50;
+    let y = 750;
     const drawText = (text, f = font, s = 12) => {
         page.drawText(text, { x: 50, y, size: s, font: f, color: rgb(0, 0, 0) });
         y -= 20;
@@ -252,41 +225,31 @@ async function generatePDF(data, photoLinks) {
     y -= 10;
     drawText(`Date: ${new Date().toLocaleString()}`);
     drawText(`Driver: ${data.driverName}`);
-    
-    // Show VIN only if present (Always present for Accident)
-    if (data.vinLast4) {
-        drawText(`VIN (Last 4): ${data.vinLast4}`);
-    }
+    if (data.vinLast4) drawText(`VIN (Last 4): ${data.vinLast4}`);
     y -= 20;
 
     drawText(`Report Type: ${data.priorityLevel.toUpperCase()}`, bold, 14);
     y -= 10;
 
-    // --- DETAILED FIELDS (Restored) ---
     if (data.priorityLevel === 'high') {
         drawText(`Issue: ${data.highIssues}`);
         if(data.highNotes) drawText(`Notes: ${data.highNotes}`);
-    }
-    else if (data.priorityLevel === 'low') {
+    } else if (data.priorityLevel === 'low') {
         drawText(`Issue: ${data.lowIssues}`);
         if(data.lowNotes) drawText(`Notes: ${data.lowNotes}`);
-    }
-    else if (data.priorityLevel === 'edv') {
+    } else if (data.priorityLevel === 'edv') {
         drawText(`Issue: ${data.edvIssues}`);
         if(data.edvNotes) drawText(`Notes: ${data.edvNotes}`);
-    }
-    else if (data.priorityLevel === 'mph') {
+    } else if (data.priorityLevel === 'mph') {
         drawText(`Street: ${data.mphRoadName}`);
         drawText(`Location: ${data.mphCity}, ${data.mphState}`);
         if(data.gpsLat) drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
-    }
-    else if (data.priorityLevel === 'accident') {
+    } else if (data.priorityLevel === 'accident') {
         drawText(`Statement: ${data.accidentStatement}`);
-        drawText(`Police Report #: ${data.policeReportNumber}`);
+        drawText(`Police #: ${data.policeReportNumber}`);
         drawText(`Case #: ${data.lmetCaseNumber}`);
         if(data.gpsLat) drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
         
-        // Add Signature
         if (data.affidavitSignature) {
             y -= 40;
             const sigImage = await doc.embedPng(Buffer.from(data.affidavitSignature, 'base64'));
@@ -309,7 +272,6 @@ async function generatePDF(data, photoLinks) {
     return filePath;
 }
 
-// START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
