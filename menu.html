@@ -19,64 +19,102 @@
         
         /* LOGO BADGE STYLE */
         .logo-container { 
-            background: white; padding: 15px 25px; border-radius: 20px; 
-            margin-bottom: 30px; box-shadow: 0 0 20px rgba(0, 102, 255, 0.3); display: inline-block;
+            background: white; 
+            padding: 15px 25px; 
+            border-radius: 20px; 
+            margin-bottom: 30px; 
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3); 
+            display: inline-block;
         }
-        .logo-container img { width: 100%; max-width: 250px; display: block; }
+        .logo-container img { 
+            width: 100%; 
+            max-width: 250px; 
+            display: block; 
+        }
         
         /* BUTTON CONTAINER */
         .menu-btn {
-            display: flex; flex-direction: column; width: 100%; max-width: 320px; 
-            margin-bottom: 25px; border-radius: 18px; text-decoration: none;
+            display: flex; 
+            flex-direction: column; 
+            width: 100%; 
+            max-width: 320px; 
+            margin-bottom: 25px; 
+            border-radius: 18px; 
+            text-decoration: none;
             transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.4); padding: 0; 
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4); 
+            padding: 0; 
+            background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.1);
             overflow: hidden; 
         }
         .menu-btn:active { transform: scale(0.97); }
 
         /* IMAGE BOX */
-        .btn-img-box { width: 100%; height: 180px; overflow: hidden; }
-        .btn-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .btn-img-box { 
+            width: 100%; 
+            height: 180px; 
+            overflow: hidden; 
+        }
+        .btn-img { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            display: block; 
+        }
 
         /* LABEL STYLE */
         .btn-label {
-            padding: 15px; font-size: 16px; font-weight: 800; color: white;
-            text-transform: uppercase; letter-spacing: 1px;
+            padding: 15px; 
+            font-size: 16px; 
+            font-weight: 800; 
+            color: white;
+            text-transform: uppercase; 
+            letter-spacing: 1px;
         }
         
         /* COLOR BARS */
         .lbl-video { border-bottom: 4px solid #0066ff; }
         .lbl-issue { border-bottom: 4px solid #ff9900; }
         .lbl-accident { border-bottom: 4px solid #ff4444; }
-        .lbl-insurance { border-bottom: 4px solid #00cc66; } /* Green for Insurance */
+        .lbl-insurance { border-bottom: 4px solid #00cc66; } /* Green */
 
         .footer { margin-top: 40px; font-size: 11px; color: #444; }
     </style>
 </head>
 <body>
-    <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
+    <div class="logo-container">
+        <img src="Final-01.jpg" alt="SLGP Logo">
+    </div>
 
     <a href="/video" class="menu-btn">
-        <div class="btn-img-box"><img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video"></div>
+        <div class="btn-img-box">
+            <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
+        </div>
         <div class="btn-label lbl-video">Pre & Post Fleet Vids</div>
     </a>
 
     <a href="/report?mode=issue" class="menu-btn">
-        <div class="btn-img-box"><img src="Report An Issue.jpg" class="btn-img" alt="Issue"></div>
+        <div class="btn-img-box">
+            <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
+        </div>
         <div class="btn-label lbl-issue">Report Issue</div>
     </a>
 
     <a href="/report?mode=accident" class="menu-btn">
-        <div class="btn-img-box"><img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident"></div>
+        <div class="btn-img-box">
+            <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
+        </div>
         <div class="btn-label lbl-accident">Report Accident</div>
     </a>
 
     <a href="/report?mode=insurance" class="menu-btn">
-        <div class="btn-img-box"><img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance"></div>
+        <div class="btn-img-box">
+            <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
+        </div>
         <div class="btn-label lbl-insurance">Insurance Cards</div>
     </a>
 
-    <div class="footer">SLGP Fleet Portal v6.0</div>
+    <div class="footer">SLGP Fleet Portal v6.1</div>
 </body>
 </html>
