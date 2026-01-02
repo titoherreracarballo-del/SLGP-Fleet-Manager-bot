@@ -8,22 +8,25 @@ const { PDFDocument } = require('pdf-lib');
 
 const app = express();
 
-// --- MIDDLEWARE & STATIC FILES ---
-// This line fixes "Cannot GET /" by allowing the server to see your HTML files
+// --- 1. VOLUME STORAGE CONFIGURATION ---
+// Explicitly using the mount path from your Railway Connection settings
+const VOLUME_PATH = '/app/meshcentral-data';
+const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
+
+// Ensure the directory exists in the volume so the server can write files
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const upload = multer({ dest: UPLOAD_DIR });
+
+// --- 2. MIDDLEWARE & STATIC FILES ---
 app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Use project folder for uploads to match your GitHub structure
-const upload = multer({ dest: path.join(__dirname, 'uploads/') });
-
-// Ensure upload directory exists locally
-if (!fs.existsSync(path.join(__dirname, 'uploads/'))) {
-    fs.mkdirSync(path.join(__dirname, 'uploads/'));
-}
-
-// --- NAVIGATION ROUTES ---
-// This tells the server to show menu.html when visiting slgpmeshserver.com
+// --- 3. NAVIGATION ROUTES (FIXES "CANNOT GET /") ---
+// Sends menu.html when visiting the root domain
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'menu.html'));
 });
@@ -31,7 +34,7 @@ app.get('/', (req, res) => {
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
 
-// --- AUTHENTICATION (Railway Variable) ---
+// --- 4. AUTHENTICATION (Using your Railway Variable) ---
 let auth;
 try {
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
@@ -41,11 +44,11 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY is missing or invalid.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY variable is missing or invalid.");
 }
 
 // =========================================================
-// SECTION 1: ORIGINAL VIDEO LOGIC
+// SECTION 1: ORIGINAL VIDEO LOGIC (Uses Railway Volume)
 // =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
@@ -57,6 +60,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
 
+        // Create stream from the file stored in the Railway Volume
         await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
@@ -72,7 +76,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 });
 
 // =========================================================
-// SECTION 2: NEW REPORT LOGIC
+// SECTION 2: NEW REPORT LOGIC (Separate Logic)
 // =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 
@@ -92,7 +96,7 @@ app.post('/submit-report', async (req, res) => {
         page.drawText(`SLGP INCIDENT REPORT: ${data.driverName}`, { x: 50, y: 750, size: 20 });
         
         const pdfBytes = await doc.save();
-        const pdfPath = path.join(__dirname, `report-${Date.now()}.pdf`);
+        const pdfPath = path.join(UPLOAD_DIR, `report-${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, pdfBytes);
 
         const transporter = nodemailer.createTransport({
@@ -116,4 +120,4 @@ app.post('/submit-report', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server LIVE on ${PORT}`));
