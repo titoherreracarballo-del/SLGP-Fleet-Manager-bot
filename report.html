@@ -184,11 +184,63 @@
 </div>
 
 <script>
-// LISTS
-var HIGH_LIST = ["Brakes squealing","Tire blowout","Vehicle won't start","Burning smell","Fluid leak","Other"];
-var LOW_LIST = ["Light scratches","Interior dirty","Radio broken","QR code faded","Other"];
-var EDV_LIST = ["EDV key battery","EDV not charging","EDV warning light","Severe damages","Broken mirror","Other"];
-var ACCIDENT_LIST = ["Slip/Trip/Fall","Dog Bite","Altercation","Unsafe Situation","Vehicle Accident","Other"];
+// --- FULL RESTORED LISTS ---
+var HIGH_LIST = [
+    "Brakes squealing or grinding",
+    "Tire blowout / extreme wear",
+    "Steering column loose",
+    "Vehicle will not start",
+    "Burning smell",
+    "Fluid leak",
+    "Sliding door off track",
+    "Rear van door will not open",
+    "Headlight bulb out",
+    "Taillight bulb out",
+    "Turn signal bulb out",
+    "Backup camera no image",
+    "Phone mount broken",
+    "Low DEF light on",
+    "Flat tire",
+    "Power bank not working",
+    "Charger cable needs replaced",
+    "Gas card missing",
+    "Dog deterrent missing",
+    "Broken key",
+    "Work phone damaged",
+    "AVI Grounded",
+    "Missing license plate",
+    "Missing temp tag",
+    "Package spill",
+    "Missing windshield wiper",
+    "Other (describe)"
+];
+
+var EDV_LIST = [
+    "EDV key fob battery low",
+    "EDV not charging",
+    "EDV warning light (describe)",
+    "Bulkhead door not opening",
+    "Rear cargo door not opening",
+    "Severe dent",
+    "Minor dent",
+    "Severe damages",
+    "Broken light fixture",
+    "Broken mirror",
+    "Broken windshield",
+    "Other (describe)"
+];
+
+var LOW_LIST = [
+    "Light scratches",
+    "Interior dirty",
+    "Door closes but sensor says open",
+    "Seat does not adjust",
+    "Radio not working",
+    "QR code faded",
+    "Other"
+];
+
+var ACCIDENT_LIST = ["Slip / Trip / Fall","Dog Bite","Customer Altercation","Unsafe Situation","Vehicle Accident","Other"];
 var accidentMap, mphMap, sigCanvas, sigCtx, drawing = false, isSubmitting = false;
 
 window.onload = function() {
@@ -217,7 +269,6 @@ window.onload = function() {
       document.getElementById('pill-low').style.display = 'none';
       document.getElementById('pill-edv').style.display = 'none';
       document.getElementById('pill-mph').style.display = 'none';
-      // Auto-select
       selectPriority('accident');
   }
 };
