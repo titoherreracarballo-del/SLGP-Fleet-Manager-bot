@@ -5,176 +5,187 @@ const path = require('path');
 const fs = require('fs');
 const cron = require('node-cron');
 const nodemailer = require('nodemailer');
+const stream = require('stream');
 
 const app = express();
+
+// INCREASE LIMIT: Allows large photo reports (50MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(__dirname));
+
 const upload = multer({ dest: 'uploads/' });
 
-// Folder ID for "Daily Fleet Health Checks"
-const DRIVE_FOLDER_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
-
-// --- EMAIL CONFIGURATION (Using Your Custom Variable Name) ---
-// 1. User: Defaults to your email if no variable is found
-const EMAIL_USER = process.env.FLEET_EMAIL_USER || 'slgpfleetmanager@gmail.com';
-
-// 2. Password: LOOKS FOR 'Report_Email_Pass' AS SHOWN IN YOUR SCREENSHOT
-const EMAIL_PASS = process.env.Report_Email_Pass; 
-
-const EMAIL_TO = 'slgpfleetmanager@gmail.com';
-
-// Persistent Log File
+// --- CONFIGURATION ---
+const VIDEO_FOLDER_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+const REPORT_FOLDER_ID = '1_x9yb_L78PrbCMqKUE4JVaF5auY4ZsmK'; 
 const LOG_FILE = '/app/meshcentral-data/submission_log.json';
 
-// --- HELPER: Load Logs ---
-function loadLogs() {
-    try {
-        if (fs.existsSync(LOG_FILE)) {
-            return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
-        }
-    } catch (e) {
-        console.error("Error reading log file:", e);
-    }
-    return [];
-}
+// --- EMAIL CREDENTIALS ---
+const EMAIL_USER = process.env.FLEET_EMAIL_USER || 'slgpfleetmanager@gmail.com';
+const EMAIL_PASS = process.env.Report_Email_Pass; // Looks for your specific variable
+const EMAIL_MAIN = 'slgpfleetmanager@gmail.com';
+const EMAIL_ACCIDENT = 'strategiclogisticsgroupllc@gmail.com';
 
-// --- HELPER: Save Log ---
-function saveLog(entry) {
-    const logs = loadLogs();
-    logs.push(entry);
-    try {
-        fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2));
-    } catch (e) {
-        console.error("Error writing to log file:", e);
-    }
-}
-
+// --- GOOGLE AUTHENTICATION ---
 let auth;
 try {
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
     auth = new google.auth.GoogleAuth({
         credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
+        scopes: ['https://www.googleapis.com/auth/drive'],
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
     console.error("CRITICAL ERROR: GCP_SA_KEY parsing failed.");
 }
 
-// --- HELPER: Send Email ---
-async function sendEmailReport(subject, textContent, attachmentPath) {
-    console.log(`ATTEMPTING EMAIL: ${subject} to ${EMAIL_TO}`);
+// --- HELPER: SEND EMAIL ---
+async function sendEmail(recipients, subject, htmlBody, attachments = []) {
+    if (!EMAIL_PASS) { console.error("EMAIL ERROR: Missing Password."); return; }
     
-    if (!EMAIL_PASS) {
-        console.error("EMAIL ERROR: 'Report_Email_Pass' variable is missing in Railway.");
-        return;
-    }
-
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: { user: EMAIL_USER, pass: EMAIL_PASS },
     });
 
-    const mailOptions = {
-        from: `"SLGP Fleet Bot" <${EMAIL_USER}>`,
-        to: EMAIL_TO,
-        subject: subject,
-        text: textContent,
-        attachments: attachmentPath ? [{ path: attachmentPath }] : []
-    };
-
     try {
-        await transporter.sendMail(mailOptions);
-        console.log(`EMAIL SUCCESS: Sent to ${EMAIL_TO}`);
-    } catch (error) {
-        console.error("EMAIL FAILED TO SEND. Check App Password.", error);
-    }
-}
-
-// --- HELPER: Generate Report & Email It ---
-async function generateReport(typeFilter, reportTitle) {
-    console.log(`Generating ${reportTitle}...`);
-    const logs = loadLogs();
-    const todayStr = new Date().toISOString().split('T')[0];
-    
-    const relevantLogs = logs.filter(entry => {
-        return entry.date === todayStr && 
-               entry.inspectionType.toLowerCase().includes(typeFilter);
-    });
-
-    if (relevantLogs.length === 0) {
-        console.log(`No entries found for ${reportTitle}. Skipping.`);
-        return;
-    }
-
-    let reportContent = `FLEET REPORT: ${reportTitle}\nDATE: ${todayStr}\n-----------------------------------\n\n`;
-    relevantLogs.forEach((log, index) => {
-        reportContent += `${index + 1}. Driver: ${log.driverName}\n   VIN: ${log.vin}\n   Time: ${log.time}\n   File: ${log.fileName}\n\n`;
-    });
-
-    const reportPath = path.join(__dirname, `${reportTitle}_${todayStr}.txt`);
-    fs.writeFileSync(reportPath, reportContent);
-
-    // Upload to Google Drive
-    try {
-        const drive = google.drive({ version: 'v3', auth });
-        await drive.files.create({
-            resource: { name: `${reportTitle}_${todayStr}.txt`, parents: [DRIVE_FOLDER_ID] },
-            media: { mimeType: 'text/plain', body: fs.createReadStream(reportPath) },
-            fields: 'id', supportsAllDrives: true, supportsTeamDrives: true
+        await transporter.sendMail({
+            from: `"SLGP Fleet Bot" <${EMAIL_USER}>`,
+            to: recipients,
+            subject: subject,
+            html: htmlBody,
+            attachments: attachments
         });
-        console.log(`REPORT UPLOADED TO DRIVE: ${reportTitle}`);
+        console.log(`EMAIL SENT to: ${recipients}`);
     } catch (error) {
-        console.error(`FAILED to upload report to Drive: ${error.message}`);
+        console.error("EMAIL FAILED:", error);
     }
-
-    // Send Email
-    await sendEmailReport(`${reportTitle} - ${todayStr}`, `Daily report attached.`, reportPath);
 }
 
-// --- SCHEDULER ---
-cron.schedule('0 12 * * *', () => { generateReport('pre', 'DAILY_PRECHECK_REPORT'); }, { timezone: "America/New_York" });
-cron.schedule('30 23 * * *', () => { generateReport('post', 'DAILY_POSTCHECK_REPORT'); }, { timezone: "America/New_York" });
+// --- PAGE ROUTING ---
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'menu.html')); });
+app.get('/video', (req, res) => { res.sendFile(path.join(__dirname, 'video.html')); });
+app.get('/report', (req, res) => { res.sendFile(path.join(__dirname, 'report.html')); });
 
-app.use(express.static(__dirname));
-
-// --- DEBUG ROUTE ---
-app.get('/debug-email', async (req, res) => {
-    const testPath = path.join(__dirname, 'test_email.txt');
-    fs.writeFileSync(testPath, "This is a test to verify your Report_Email_Pass credentials.");
-    
-    await sendEmailReport("TEST EMAIL FROM BOT", "If you are reading this, the variable 'Report_Email_Pass' is working!", testPath);
-    res.send("Email test trigger sent. Check logs if nothing arrives.");
-});
-
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
-
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+// --- API: HANDLE VIDEO UPLOAD ---
+app.post('/upload-video', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('No file received.');
+        if (!req.file) return res.status(400).send('No file.');
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
         
         const now = new Date();
-        const timeStringFile = now.toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
-        const timeStringLog = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
-        const dateStringLog = now.toISOString().split('T')[0];
+        const timeFile = now.toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
+        const finalName = `${driverName}_${vin}_${inspectionType}_${timeFile}.mp4`;
 
-        const finalFileName = `${driverName}_${vin}_${inspectionType}_${timeStringFile}.mp4`;
-
-        const response = await drive.files.create({
-            resource: { name: finalFileName, parents: [DRIVE_FOLDER_ID] },
+        await drive.files.create({
+            resource: { name: finalName, parents: [VIDEO_FOLDER_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id', supportsAllDrives: true, supportsTeamDrives: true
         });
 
-        console.log(`SYNC SUCCESS: ${finalFileName}`);
-        saveLog({ date: dateStringLog, time: timeStringLog, driverName, vin, inspectionType, fileName: finalFileName });
+        // Log it
+        const logEntry = { 
+            date: now.toISOString().split('T')[0], 
+            time: now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' }), 
+            driverName, vin, inspectionType, fileName: finalName 
+        };
+        let logs = [];
+        try { if(fs.existsSync(LOG_FILE)) logs = JSON.parse(fs.readFileSync(LOG_FILE)); } catch(e){}
+        logs.push(logEntry);
+        fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2));
+
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Successful');
     } catch (error) {
-        console.error("UPLOAD ERROR DETAILS:", error.message);
-        res.status(500).send(`Upload Failed: ${error.message}`);
+        console.error("VIDEO UPLOAD ERROR:", error.message);
+        res.status(500).send(error.message);
+    }
+});
+
+// --- API: HANDLE REPORT SUBMISSION ---
+app.post('/submit-report', async (req, res) => {
+    try {
+        const data = req.body;
+        const drive = google.drive({ version: 'v3', auth });
+        console.log(`PROCESSING REPORT: ${data.priorityLevel} by ${data.driverName}`);
+
+        // 1. Create Sub-Folder
+        const folderName = `${new Date().toISOString().split('T')[0]} - ${data.driverName}`;
+        const folderRes = await drive.files.create({
+            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_FOLDER_ID] },
+            fields: 'id', supportsAllDrives: true, supportsTeamDrives: true
+        });
+        const folderId = folderRes.data.id;
+
+        // 2. Build Email & Upload Photos
+        let emailHtml = `<h2>SLGP Report: ${data.priorityLevel.toUpperCase()}</h2>
+                         <p><b>Driver:</b> ${data.driverName}<br><b>VIN:</b> ${data.vinLast4}<br>
+                         <b>Date:</b> ${data.signatureTimestamp}</p><hr>`;
+
+        const processImages = async (list, title) => {
+            if (!list || list.length === 0) return;
+            emailHtml += `<h3>${title} Photos</h3>`;
+            for (const img of list) {
+                const buf = Buffer.from(img.data, 'base64');
+                const bs = new stream.PassThrough(); bs.end(buf);
+                const fileRes = await drive.files.create({
+                    resource: { name: img.name, parents: [folderId] },
+                    media: { mimeType: 'image/jpeg', body: bs },
+                    fields: 'webViewLink', supportsAllDrives: true, supportsTeamDrives: true
+                });
+                emailHtml += `<p><a href="${fileRes.data.webViewLink}">View ${img.name}</a></p>`;
+            }
+        };
+
+        if (data.priorityLevel === 'high') {
+            emailHtml += `<p style="color:red; font-weight:bold;">HIGH PRIORITY</p><p>Issues: ${data.highIssues.join(', ')}</p><p>Notes: ${data.highNotes}</p>`;
+            await processImages(data.highPhotos, "High Priority");
+        }
+        if (data.priorityLevel === 'low') {
+            emailHtml += `<p>Low Priority</p><p>Issues: ${data.lowIssues.join(', ')}</p><p>Notes: ${data.lowNotes}</p>`;
+            await processImages(data.lowPhotos, "Low Priority");
+        }
+        if (data.priorityLevel === 'edv') {
+            emailHtml += `<p>EDV Issue</p><p>Issues: ${data.edvIssues.join(', ')}</p><p>Notes: ${data.edvNotes}</p>`;
+            await processImages(data.edvPhotos, "EDV");
+        }
+        if (data.priorityLevel === 'mph') {
+            emailHtml += `<p>MPH Error</p><p>Loc: ${data.mphRoadName}, ${data.mphCity}</p>`;
+            await processImages(data.mphPhotos, "MPH Sign");
+        }
+        if (data.priorityLevel === 'accident') {
+            emailHtml += `<p style="color:red; font-weight:bold;">ACCIDENT / INCIDENT</p>
+                          <p>Type: ${data.accidentType}</p><p>Statement: ${data.accidentStatement}</p>
+                          <p>Police #: ${data.policeReportNumber}</p>
+                          <p>GPS: <a href="http://maps.google.com/maps?q=${data.gpsLat},${data.gpsLng}">Open Map</a></p>`;
+            await processImages(data.accidentPhotos, "Accident");
+        }
+
+        // 3. Signature
+        if (data.affidavitSignature) {
+            const buf = Buffer.from(data.affidavitSignature, 'base64');
+            const bs = new stream.PassThrough(); bs.end(buf);
+            const sigRes = await drive.files.create({
+                resource: { name: 'signature.png', parents: [folderId] },
+                media: { mimeType: 'image/png', body: bs },
+                fields: 'webViewLink', supportsAllDrives: true, supportsTeamDrives: true
+            });
+            emailHtml += `<hr><p>Signed:</p><img src="${sigRes.data.webViewLink}" width="200">`;
+        }
+
+        // 4. Send Email
+        let recipients = [EMAIL_MAIN];
+        if (data.priorityLevel === 'accident') recipients.push(EMAIL_ACCIDENT);
+        
+        await sendEmail(recipients, `SLGP Report: ${data.priorityLevel.toUpperCase()} - ${data.driverName}`, emailHtml);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error("REPORT ERROR:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => { console.log(`SLGP SERVER v2.4 LIVE ON PORT: ${PORT}`); });
+app.listen(PORT, '0.0.0.0', () => { console.log(`SLGP SERVER v5.0 LIVE ON PORT: ${PORT}`); });
