@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-    /* DARK THEME TO MATCH SCREENSHOTS */
+    /* THEME: DARK & PURPLE (Matches Screenshots) */
     :root { 
         --bg-dark: #18181b; 
         --card-bg: #222226; 
@@ -17,148 +17,191 @@
         --text: #ffffff;
         --text-dim: #a1a1aa;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--bg-dark); color: var(--text); margin: 0; padding: 15px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-dark); color: var(--text); margin: 0; padding: 15px; }
     .container { max-width: 600px; margin: 0 auto; }
     
     /* HEADER */
-    h1 { text-align: center; font-size: 22px; text-transform: uppercase; margin-bottom: 20px; font-weight: 800; }
+    h1 { text-align: center; font-size: 22px; text-transform: uppercase; margin-bottom: 20px; font-weight: 800; letter-spacing: 0.5px; }
     .section-title { color: #a78bfa; font-size: 14px; font-weight: bold; margin-top: 25px; margin-bottom: 10px; }
 
-    /* FORMS */
-    label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 5px; color: var(--text-dim); }
+    /* INPUTS */
+    label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 6px; color: var(--text-dim); }
     input, textarea, select { 
-        width: 100%; padding: 12px; background: #27272a; border: 1px solid var(--border); 
-        border-radius: 6px; color: white; font-size: 14px; box-sizing: border-box; margin-bottom: 10px; 
+        width: 100%; padding: 14px; background: #27272a; border: 1px solid var(--border); 
+        border-radius: 8px; color: white; font-size: 14px; box-sizing: border-box; margin-bottom: 12px; 
+        font-family: inherit;
     }
-    input:focus, textarea:focus { outline: none; border-color: var(--purple); }
+    input:focus, textarea:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2); }
     
-    /* PILLS / BUTTONS */
-    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+    /* PILLS (TABS) */
+    .pill-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; }
     .pill { 
         flex: 1 1 auto; background: #27272a; border: 1px solid var(--border); color: #e4e4e7;
-        padding: 10px 15px; border-radius: 20px; font-size: 12px; text-align: center; cursor: pointer; transition: 0.2s;
+        padding: 12px 16px; border-radius: 25px; font-size: 13px; text-align: center; cursor: pointer; transition: 0.2s;
     }
-    .pill.active { background: var(--purple); border-color: var(--purple); color: white; font-weight: bold; }
+    .pill.active { background: var(--purple); border-color: var(--purple); color: white; font-weight: 600; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); }
     
     /* TAGS (ISSUES) */
-    .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tag-container { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
     .tag { 
-        background: #3f3f46; padding: 8px 12px; border-radius: 15px; font-size: 12px; cursor: pointer; border: 1px solid transparent;
+        background: #3f3f46; padding: 10px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: 0.2s;
     }
-    .tag.selected { background: #5b21b6; border-color: #8b5cf6; }
+    .tag.selected { background: #5b21b6; border-color: #8b5cf6; color: white; box-shadow: 0 0 10px rgba(139, 92, 246, 0.4); }
 
     /* SECTIONS */
-    .dynamic-section { display: none; background: var(--card-bg); padding: 15px; border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; }
-    
+    .dynamic-section { display: none; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
     /* MAP & WEATHER */
-    #map { height: 200px; width: 100%; border-radius: 8px; margin-top: 10px; z-index: 1; }
-    .weather-box { background: #27272a; padding: 10px; border-radius: 6px; border-left: 4px solid var(--purple); font-size: 12px; margin-bottom: 10px; }
+    #map-accident, #map-mph { height: 200px; width: 100%; border-radius: 12px; margin-top: 10px; z-index: 1; border: 1px solid var(--border); }
+    .weather-box { background: #27272a; padding: 12px; border-radius: 8px; border-left: 4px solid var(--purple); font-size: 13px; margin-bottom: 15px; color: #e4e4e7; }
     
     /* SIGNATURE */
-    canvas { background: white; border-radius: 6px; width: 100%; height: 150px; border: 2px solid var(--purple); touch-action: none; }
+    canvas { background: #18181b; border-radius: 8px; width: 100%; height: 160px; border: 1px solid var(--purple); touch-action: none; margin-bottom: 10px; }
     
-    /* SUBMIT */
-    #submitBtn { background: var(--purple); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; font-size: 16px; margin-top: 30px; cursor: pointer; }
-    #submitBtn:disabled { opacity: 0.5; }
+    /* INSURANCE CARD (PREVIOUS LAYOUT) */
+    #insuranceView { display: none; text-align: center; margin-top: 50px; }
+    .ins-card-btn {
+        display: flex; align-items: center; justify-content: center; width: 100%; padding: 25px; margin-bottom: 20px;
+        border-radius: 16px; font-size: 18px; font-weight: bold; color: white;
+        text-decoration: none; cursor: pointer; border: none; box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        transition: transform 0.2s;
+    }
+    .ins-card-btn:active { transform: scale(0.98); }
+    
+    /* FILE UPLOAD */
+    input[type="file"] { padding: 10px; background: #2f2f35; border: 1px dashed #555; }
+
+    /* SUBMIT BUTTON */
+    #submitBtn { 
+        background: var(--purple); color: white; border: none; padding: 18px; width: 100%; 
+        border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 30px; 
+        cursor: pointer; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4); 
+    }
+    #submitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
 <div class="container">
-    <a href="/" style="color: #71717a; text-decoration: none; font-size: 12px;">← Back to Menu</a>
-    <h1>SLGP Vehicle Assistance<br>& Reporting Tool</h1>
+    <a href="/" style="color: #71717a; text-decoration: none; font-size: 13px; display:inline-block; margin-bottom:15px;">← Back to Menu</a>
+    
+    <div id="insuranceView">
+        <h1>INSURANCE CARDS</h1>
+        <p style="color:var(--text-dim); margin-bottom:30px;">Tap below to view the insurance card for your vehicle.</p>
+        
+        <button class="ins-card-btn" onclick="window.open('/amazon.pdf', '_blank')" style="background: linear-gradient(135deg, #0066ff, #0044cc);">
+            🚙 AMAZON VAN
+        </button>
+        <button class="ins-card-btn" onclick="window.open('/hertz.pdf', '_blank')" style="background: linear-gradient(135deg, #ff9900, #cc7a00);">
+            🚗 HERTZ RENTAL
+        </button>
+    </div>
 
-    <form onsubmit="submitForm(event)">
-        <div class="section-title">1. Driver & Vehicle Information</div>
-        <label>Driver Full Name *</label><input type="text" id="driverName" required>
-        <div style="display:flex; gap:10px;">
-            <div style="flex:1;"><label>Date *</label><input type="date" id="date" required></div>
-            <div style="flex:1;"><label>Time *</label><input type="time" id="time" required></div>
-        </div>
-        <label>Last 4 of VIN *</label><input type="tel" id="vin" maxlength="4" required>
+    <div id="reportFormContainer">
+        <h1 id="pageTitle">SLGP VEHICLE ASSISTANCE<br>& REPORTING TOOL</h1>
 
-        <div class="section-title">2. Issue Type & Priority</div>
-        <div class="pill-row">
-            <div class="pill" onclick="setMode('High Priority', this)">High Priority</div>
-            <div class="pill" onclick="setMode('EDV Issue', this)">EDV Issue</div>
-            <div class="pill" onclick="setMode('Low Priority', this)">Low Priority</div>
-            <div class="pill" onclick="setMode('Road MPH Error', this)">Road MPH Error</div>
-            <div class="pill" onclick="setMode('Accident / Incident', this)">Accident / Incident</div>
-            <div class="pill" onclick="window.open('/amazon.pdf', '_blank')">Insurance Card</div>
-        </div>
-
-        <div id="sec-High Priority" class="dynamic-section">
-            <div class="section-title" style="margin-top:0;">High Priority Issues</div>
-            <div class="tag-container" id="tags-high">
-                </div>
-            <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-high"></textarea>
-            <label>Upload Photos (up to 5)</label><input type="file" id="photos-high" multiple accept="image/*">
-        </div>
-
-        <div id="sec-EDV Issue" class="dynamic-section">
-            <div class="section-title" style="margin-top:0;">EDV Issues</div>
-            <div class="tag-container" id="tags-edv"></div>
-            <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-edv"></textarea>
-            <label>Upload Photos</label><input type="file" id="photos-edv" multiple accept="image/*">
-        </div>
-
-        <div id="sec-Low Priority" class="dynamic-section">
-            <div class="section-title" style="margin-top:0;">Low Priority Issues</div>
-            <div class="tag-container" id="tags-low"></div>
-            <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-low"></textarea>
-            <label>Upload Photos</label><input type="file" id="photos-low" multiple accept="image/*">
-        </div>
-
-        <div id="sec-Road MPH Error" class="dynamic-section">
-            <div class="section-title" style="margin-top:0;">Road MPH Sign Error</div>
-            <label>Street or Road Name *</label><input type="text" id="mph-street">
-            <label>City *</label><input type="text" id="mph-city">
-            <label>State *</label><input type="text" id="mph-state">
-            <label>Upload 1-2 photos showing MPH sign (REQUIRED)</label><input type="file" id="photos-mph" multiple accept="image/*">
-            <div id="map-mph"></div> </div>
-
-        <div id="sec-Accident / Incident" class="dynamic-section">
-            <div class="section-title" style="margin-top:0;">Accident / Incident Type</div>
-            <div class="pill-row" id="accident-types">
-                <div class="pill" onclick="setSubType(this)">Slip / Trip / Fall</div>
-                <div class="pill" onclick="setSubType(this)">Dog Bite</div>
-                <div class="pill" onclick="setSubType(this)">Customer Altercation</div>
-                <div class="pill" onclick="setSubType(this)">Unsafe Situation</div>
-                <div class="pill" onclick="setSubType(this)">Vehicle Accident</div>
-                <div class="pill" onclick="setSubType(this)">Other</div>
-            </div>
-
-            <div class="weather-box" id="weather-display">Fetching Weather...</div>
-            <div id="map-accident" style="height:200px; width:100%; border-radius:8px;"></div>
+        <form onsubmit="submitForm(event)">
+            <div class="section-title">1. Driver & Vehicle Information</div>
+            <label>Driver Full Name *</label><input type="text" id="driverName" required placeholder="Enter full name">
             
-            <label style="margin-top:10px;">Incident / Accident Statement *</label>
-            <textarea id="accident-stmt" rows="4"></textarea>
-
-            <label>Police Report #</label><input type="text" id="police-rpt">
-            <label>LMET / EMT Case #</label><input type="text" id="lmet-case">
-            <label>Upload Photos</label><input type="file" id="photos-accident" multiple accept="image/*">
-
-            <div class="section-title">Employee Affidavit</div>
-            <p style="font-size:11px; color:#aaa;">I declare that the information provided is true and complete.</p>
-            <canvas id="sig-pad"></canvas>
-            <button type="button" onclick="clearSig()" style="margin-top:5px; padding:5px; background:#333; color:white; border:none; border-radius:4px; font-size:10px;">Clear Signature</button>
-
-            <div style="margin-top:15px; display:flex; align-items:center; gap:10px;">
-                <input type="checkbox" id="ack" style="width:auto; margin:0;">
-                <label for="ack" style="margin:0; color:white;">I acknowledge all required tasks have been completed.</label>
+            <div style="display:flex; gap:12px;">
+                <div style="flex:1;"><label>Date *</label><input type="date" id="date" required></div>
+                <div style="flex:1;"><label>Time *</label><input type="time" id="time" required></div>
             </div>
-        </div>
+            
+            <label>Last 4 of VIN *</label><input type="tel" id="vin" maxlength="4" required placeholder="e.g. 1234">
 
-        <button id="submitBtn" type="submit">SUBMIT REPORT</button>
-    </form>
+            <div id="issueSelector" style="display:none;">
+                <div class="section-title">2. Issue Type & Priority</div>
+                <div class="pill-row">
+                    <div class="pill" onclick="setMode('High Priority', this)">High Priority</div>
+                    <div class="pill" onclick="setMode('EDV Issue', this)">EDV Issue</div>
+                    <div class="pill" onclick="setMode('Low Priority', this)">Low Priority</div>
+                    <div class="pill" onclick="setMode('Road MPH Error', this)">Road MPH Error</div>
+                </div>
+            </div>
+
+            <div id="sec-High Priority" class="dynamic-section">
+                <div class="section-title" style="margin-top:0;">High Priority Issues</div>
+                <div class="tag-container" id="tags-high"></div>
+                <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-high" rows="2"></textarea>
+                <label>Upload Photos (up to 5)</label><input type="file" id="photos-high" multiple accept="image/*">
+            </div>
+
+            <div id="sec-EDV Issue" class="dynamic-section">
+                <div class="section-title" style="margin-top:0;">EDV Issues</div>
+                <div class="tag-container" id="tags-edv"></div>
+                <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-edv" rows="2"></textarea>
+                <label>Upload Photos</label><input type="file" id="photos-edv" multiple accept="image/*">
+            </div>
+
+            <div id="sec-Low Priority" class="dynamic-section">
+                <div class="section-title" style="margin-top:0;">Low Priority Issues</div>
+                <div class="tag-container" id="tags-low"></div>
+                <label style="margin-top:10px;">Other (describe)</label><textarea id="desc-low" rows="2"></textarea>
+                <label>Upload Photos</label><input type="file" id="photos-low" multiple accept="image/*">
+            </div>
+
+            <div id="sec-Road MPH Error" class="dynamic-section">
+                <div class="section-title" style="margin-top:0;">Road MPH Sign Error</div>
+                <label>Street or Road Name *</label><input type="text" id="mph-street">
+                <label>City *</label><input type="text" id="mph-city">
+                <label>State *</label><input type="text" id="mph-state">
+                
+                <div id="map-mph"></div>
+                <div style="font-size:10px; color:#666; margin-bottom:10px;">GPS Location Auto-Detected</div>
+
+                <label>Upload 1-2 photos showing MPH sign (REQUIRED)</label>
+                <input type="file" id="photos-mph" multiple accept="image/*">
+            </div>
+
+            <div id="sec-Accident / Incident" class="dynamic-section">
+                <div class="section-title" style="margin-top:0;">Accident / Incident Type</div>
+                <div class="pill-row" id="accident-types">
+                    <div class="pill" onclick="setSubType(this)">Slip / Trip / Fall</div>
+                    <div class="pill" onclick="setSubType(this)">Dog Bite</div>
+                    <div class="pill" onclick="setSubType(this)">Customer Altercation</div>
+                    <div class="pill" onclick="setSubType(this)">Unsafe Situation</div>
+                    <div class="pill" onclick="setSubType(this)">Vehicle Accident</div>
+                    <div class="pill" onclick="setSubType(this)">Other</div>
+                </div>
+
+                <div class="weather-box" id="weather-display">Fetching local weather...</div>
+                
+                <div id="map-accident"></div>
+                <div style="font-size:10px; color:#666; margin-bottom:15px;">Incident Location</div>
+
+                <label>Incident / Accident Statement *</label>
+                <textarea id="accident-stmt" rows="5" placeholder="Describe exactly what happened..."></textarea>
+
+                <label>Police Report #</label><input type="text" id="police-rpt">
+                <label>LMET / EMT Case #</label><input type="text" id="lmet-case">
+                <label>Upload Photos (Damage, Scene, etc)</label><input type="file" id="photos-accident" multiple accept="image/*">
+
+                <div class="section-title">Employee Affidavit</div>
+                <p style="font-size:11px; color:var(--text-dim); margin-bottom:5px;">I declare that the information provided is true and complete.</p>
+                <label>Affidavit Signature *</label>
+                <canvas id="sig-pad"></canvas>
+                <button type="button" onclick="clearSig()" style="padding:6px 10px; background:#333; color:white; border:none; border-radius:4px; font-size:11px;">Clear Signature</button>
+
+                <div style="margin-top:20px; display:flex; align-items:center; gap:10px; padding:10px; background:rgba(124, 58, 237, 0.1); border-radius:8px; border:1px solid var(--purple);">
+                    <input type="checkbox" id="ack" style="width:auto; margin:0; accent-color:var(--purple);">
+                    <label for="ack" style="margin:0; color:white; font-size:12px;">I acknowledge all required tasks have been completed.</label>
+                </div>
+            </div>
+
+            <button id="submitBtn" type="submit">SUBMIT REPORT</button>
+        </form>
+    </div>
 </div>
 
 <script>
-    // --- CONFIGURATION ---
+    // --- DATA ---
     const TAGS = {
-        'high': ['Brakes squealing', 'Tire blowout', 'Steering loose', 'Vehicle wont start', 'Burning smell', 'Fluid leak', 'Sliding door off track', 'Rear door stuck', 'Headlight out', 'Taillight out', 'Flat tire', 'Gas card missing', 'Broken key'],
+        'high': ['Brakes squealing', 'Tire blowout', 'Steering loose', 'Vehicle wont start', 'Burning smell', 'Fluid leak', 'Sliding door off track', 'Rear door stuck', 'Headlight out', 'Taillight out', 'Flat tire', 'Gas card missing', 'Broken key', 'Missing license plate'],
         'edv': ['EDV key fob low', 'EDV not charging', 'EDV warning light', 'Bulkhead door stuck', 'Rear cargo door stuck', 'Severe dent', 'Minor dent', 'Broken mirror', 'Broken windshield'],
-        'low': ['Light scratches', 'Interior dirty', 'Door sensor error', 'Seat stuck', 'Radio broken', 'QR code faded']
+        'low': ['Light scratches', 'Interior dirty', 'Door sensor error', 'Seat stuck', 'Radio broken', 'QR code faded', 'Phone mount broken']
     };
 
     let currentMode = '';
@@ -170,12 +213,15 @@
 
     // --- INITIALIZATION ---
     window.onload = function() {
-        // Set default date/time
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+
+        // Set Date/Time
         const now = new Date();
         document.getElementById('date').valueAsDate = now;
         document.getElementById('time').value = now.toTimeString().substring(0,5);
 
-        // Populate Tags
+        // Populate Tag Lists
         populateTags('high', TAGS.high);
         populateTags('edv', TAGS.edv);
         populateTags('low', TAGS.low);
@@ -183,12 +229,31 @@
         // Init Signature
         initCanvas();
 
-        // Get GPS
-        navigator.geolocation.getCurrentPosition(pos => {
-            gps.lat = pos.coords.latitude;
-            gps.lng = pos.coords.longitude;
-            fetchWeather(gps.lat, gps.lng);
-        }, err => console.log("GPS denied"));
+        // ROUTING LOGIC
+        if (mode === 'insurance') {
+            document.getElementById('reportFormContainer').style.display = 'none';
+            document.getElementById('insuranceView').style.display = 'block';
+        } 
+        else if (mode === 'accident') {
+            document.getElementById('insuranceView').style.display = 'none';
+            document.getElementById('issueSelector').style.display = 'none'; // Hide Issue Tabs
+            setMode('Accident / Incident', null); // Force Accident Mode
+        } 
+        else {
+            // Default: Issue Mode
+            document.getElementById('insuranceView').style.display = 'none';
+            document.getElementById('issueSelector').style.display = 'block'; // Show Issue Tabs
+            setMode('High Priority', document.querySelector('.pill')); // Default to High
+        }
+
+        // GPS
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                gps.lat = pos.coords.latitude;
+                gps.lng = pos.coords.longitude;
+                if(currentMode === 'Accident / Incident') fetchWeather(gps.lat, gps.lng);
+            });
+        }
     };
 
     function populateTags(id, list) {
@@ -206,21 +271,26 @@
         });
     }
 
-    // --- UI LOGIC ---
+    // --- MODE SWITCHING ---
     function setMode(mode, el) {
         currentMode = mode;
-        // Reset UI
-        document.querySelectorAll('.dynamic-section').forEach(s => s.style.display = 'none');
-        document.querySelectorAll('.pill-row .pill').forEach(p => p.classList.remove('active'));
         
-        // Activate
-        if(el) el.classList.add('active');
+        // Hide all sections first
+        document.querySelectorAll('.dynamic-section').forEach(s => s.style.display = 'none');
+        
+        // Update Pills (only if in Issue Mode)
+        if (document.getElementById('issueSelector').style.display !== 'none') {
+            document.querySelectorAll('#issueSelector .pill').forEach(p => p.classList.remove('active'));
+            if(el) el.classList.add('active');
+        }
+
+        // Show active section
         const sec = document.getElementById(`sec-${mode}`);
         if(sec) sec.style.display = 'block';
 
-        // Init Map if needed
+        // Initialize Map if needed
         if(mode === 'Road MPH Error' || mode === 'Accident / Incident') {
-            setTimeout(initMap, 500); // Delay for render
+            setTimeout(initMap, 500);
         }
     }
 
@@ -230,16 +300,15 @@
         currentSubType = el.innerText;
     }
 
+    // --- MAP & WEATHER ---
     function initMap() {
         const mapId = currentMode === 'Road MPH Error' ? 'map-mph' : 'map-accident';
         if(!document.getElementById(mapId)) return;
-        
-        // If map exists in this container, remove it
         if(map) { map.remove(); map = null; }
 
         map = L.map(mapId).setView([gps.lat || 33.7, gps.lng || -84.3], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        if(gps.lat) L.marker([gps.lat, gps.lng]).addTo(map).bindPopup("Your Location").openPopup();
+        if(gps.lat) L.marker([gps.lat, gps.lng]).addTo(map).bindPopup("Current Location").openPopup();
     }
 
     async function fetchWeather(lat, lng) {
@@ -247,8 +316,8 @@
             const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`);
             const data = await res.json();
             const cur = data.current;
-            document.getElementById('weather-display').innerText = `Weather at Incident Location: ${cur.temperature_2m}°F | ${cur.wind_speed_10m} mph`;
-        } catch(e) { console.log("Weather error"); }
+            document.getElementById('weather-display').innerText = `Current Weather: ${cur.temperature_2m}°F | Wind: ${cur.wind_speed_10m} mph`;
+        } catch(e) {}
     }
 
     // --- SIGNATURE PAD ---
@@ -257,7 +326,7 @@
         canvas.width = canvas.offsetWidth;
         canvas.height = canvas.offsetHeight;
         ctx = canvas.getContext('2d');
-        ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; // White ink for dark mode
 
         ['mousedown', 'touchstart'].forEach(e => canvas.addEventListener(e, startDraw, {passive: false}));
         ['mousemove', 'touchmove'].forEach(e => canvas.addEventListener(e, draw, {passive: false}));
@@ -289,9 +358,16 @@
     async function submitForm(e) {
         e.preventDefault();
         const btn = document.getElementById('submitBtn');
-        btn.disabled = true; btn.innerText = "SENDING REPORT...";
+        btn.disabled = true; btn.innerText = "SENDING...";
 
-        // Determine specific inputs based on mode
+        // Validation for Accident Mode
+        if (currentMode === 'Accident / Incident' && !document.getElementById('ack').checked) {
+            alert("Please check the acknowledgment box.");
+            btn.disabled = false; btn.innerText = "SUBMIT REPORT";
+            return;
+        }
+
+        // Gather Specific Photos
         let photos = [], desc = '';
         if(currentMode === 'High Priority') {
             photos = await getB64('photos-high');
@@ -302,7 +378,6 @@
         } else if (currentMode === 'Road MPH Error') {
             photos = await getB64('photos-mph');
         } else {
-            // EDV or Low
             photos = await getB64(currentMode === 'EDV Issue' ? 'photos-edv' : 'photos-low');
             desc = document.getElementById(currentMode === 'EDV Issue' ? 'desc-edv' : 'desc-low').value;
         }
@@ -314,17 +389,16 @@
             vinLast4: document.getElementById('vin').value,
             reportType: currentMode,
             tags: selectedTags,
-            otherDescription: desc, // For High/Low/EDV
+            otherDescription: desc,
             
-            // Accident Specifics
             subType: currentSubType,
             statement: document.getElementById('accident-stmt').value,
             weather: document.getElementById('weather-display').innerText,
             policeReport: document.getElementById('police-rpt').value,
             lmetCase: document.getElementById('lmet-case').value,
             signature: canvas.toDataURL().split(',')[1],
+            acknowledged: document.getElementById('ack').checked,
             
-            // MPH Specifics
             addressStreet: document.getElementById('mph-street').value,
             addressCity: document.getElementById('mph-city').value,
             addressState: document.getElementById('mph-state').value,
@@ -341,9 +415,10 @@
         })
         .then(r => r.json())
         .then(d => {
-            if(d.success) alert("Report Successfully Sent!");
+            if(d.success) alert("Report Sent Successfully!");
             else alert("Error: " + d.error);
         })
+        .catch(() => alert("Network Error"))
         .finally(() => { btn.disabled = false; btn.innerText = "SUBMIT REPORT"; });
     }
 </script>
