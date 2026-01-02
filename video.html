@@ -106,7 +106,50 @@
     function toggleRecording() { if(!isRecording){ recordedChunks=[]; const opt={mimeType:'video/webm;codecs=vp9'}; if(!MediaRecorder.isTypeSupported(opt.mimeType)) delete opt.mimeType; mediaRecorder = new MediaRecorder(mediaStream, opt); mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); }; mediaRecorder.onstop = () => { clearInterval(timerInterval); document.getElementById('recordTimer').style.display='none'; finalVideoBlob = new Blob(recordedChunks, {type:'video/mp4'}); document.getElementById('recordedPlayback').src = URL.createObjectURL(finalVideoBlob); document.getElementById('recordedPlayback').style.display='block'; document.getElementById('livePreview').style.display='none'; document.getElementById('btnRecord').style.display='none'; document.getElementById('btnRetake').style.display='block'; document.getElementById('submitBtn').style.display='block'; document.getElementById('status').innerText="VIDEO CAPTURED."; mediaStream.getTracks().forEach(t=>t.stop()); }; mediaRecorder.start(); isRecording=true; document.getElementById('btnRecord').innerText="STOP"; document.getElementById('btnRecord').classList.add('recording'); timerSeconds=0; updateTimer(); document.getElementById('recordTimer').style.display='block'; timerInterval = setInterval(()=>{timerSeconds++; updateTimer();}, 1000); } else { mediaRecorder.stop(); isRecording=false; document.getElementById('btnRecord').innerText="RECORD"; document.getElementById('btnRecord').classList.remove('recording'); } }
     function resetCamera() { document.getElementById('recordedPlayback').style.display='none'; document.getElementById('livePreview').style.display='block'; document.getElementById('btnRecord').style.display='block'; document.getElementById('btnRetake').style.display='none'; document.getElementById('submitBtn').style.display='none'; finalVideoBlob=null; startCamera(); }
 
-    document.getElementById('submitBtn').onclick = async () => { const n = document.getElementById('driverName').value.trim(); const v = document.getElementById('vin').value.trim(); const insp = document.querySelector('#groupType .active'); if(!finalVideoBlob){alert("No video!");return;} if(!n||!v||!insp){alert("Check info.");return;} document.getElementById('submitBtn').disabled=true; document.getElementById('progressContainer').style.display='block'; document.getElementById('status').innerText="SYNCING..."; const fd = new FormData(); fd.append('driverName',n); fd.append('vin',v); fd.append('serviceType',serviceTypeStr); fd.append('inspectionType',insp.innerText); fd.append('video',finalVideoBlob,'cam.mp4'); const xhr = new XMLHttpRequest(); xhr.open('POST','/upload-video'); xhr.upload.onprogress = e => { if(e.lengthComputable){ const p = Math.round((e.loaded/e.total)*100); document.getElementById('progressBar').style.width=p+'%'; document.getElementById('status').innerText=`SYNCING: ${p}%`; } }; xhr.onload=()=>{ if(xhr.status===200){ document.getElementById('mainCard').style.display='none'; document.getElementById('successCard').style.display='block'; } else { document.getElementById('status').innerText="FAILED"; document.getElementById('submitBtn').disabled=false; } }; xhr.send(fd); };
+    /**
+     * FIXED SUBMISSION LOGIC
+     * Points to '/upload-to-google-drive' and uses 'video' as the field name
+     */
+    document.getElementById('submitBtn').onclick = async () => { 
+        const n = document.getElementById('driverName').value.trim(); 
+        const v = document.getElementById('vin').value.trim(); 
+        const insp = document.querySelector('#groupType .active'); 
+        if(!finalVideoBlob){alert("No video!");return;} 
+        if(!n||!v||!insp){alert("Check info.");return;} 
+        
+        document.getElementById('submitBtn').disabled=true; 
+        document.getElementById('progressContainer').style.display='block'; 
+        document.getElementById('status').innerText="SYNCING..."; 
+        
+        const fd = new FormData(); 
+        fd.append('driverName',n); 
+        fd.append('vin',v); 
+        fd.append('serviceType',serviceTypeStr); 
+        fd.append('inspectionType',insp.innerText); 
+        fd.append('video',finalVideoBlob,'cam.mp4'); // Matches 'upload.single('video')'
+
+        const xhr = new XMLHttpRequest(); 
+        xhr.open('POST','/upload-to-google-drive'); // Matches server endpoint
+        
+        xhr.upload.onprogress = e => { 
+            if(e.lengthComputable){ 
+                const p = Math.round((e.loaded/e.total)*100); 
+                document.getElementById('progressBar').style.width=p+'%'; 
+                document.getElementById('status').innerText=`SYNCING: ${p}%`; 
+            } 
+        }; 
+        
+        xhr.onload=()=>{ 
+            if(xhr.status===200){ 
+                document.getElementById('mainCard').style.display='none'; 
+                document.getElementById('successCard').style.display='block'; 
+            } else { 
+                document.getElementById('status').innerText="FAILED: " + xhr.responseText; 
+                document.getElementById('submitBtn').disabled=false; 
+            } 
+        }; 
+        xhr.send(fd); 
+    };
     runShiftLogic(); setInterval(runShiftLogic, 1000);
 </script>
 </body>
