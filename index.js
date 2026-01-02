@@ -1,9 +1,9 @@
 /**
- * SLGP FLEET PORTAL - MASTER SERVER v7.2 (UNIVERSAL FIX)
+ * SLGP FLEET PORTAL - MASTER SERVER v7.3 (STABILITY FIX)
  * ------------------------------------------------------
- * 1. Fixed "Upload Failed" by accepting ANY file field name.
- * 2. Increased Timeout/Size limits for large videos.
- * 3. Maintains all Incident/Maintenance routing.
+ * 1. Fixed "Upload Failed" by using /tmp/ storage (Railway Standard).
+ * 2. Added detailed error logging to find the exact cause.
+ * 3. Keeps all Incident/Maintenance/Video routing intact.
  */
 
 const express = require('express');
@@ -27,10 +27,10 @@ const KEY_FILE_PATH = path.join(__dirname, 'credentials.json');
 const MAIL_FLEET_MGR = ['slgpfleetmanager@gmail.com'];
 const MAIL_ACCIDENT = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
 
-// --- UPLOAD SETTINGS ---
-// Increased limits to handle large video files comfortably
+// --- UPLOAD SETTINGS (FIXED) ---
+// We use '/tmp/' because Cloud Servers (Railway) allow writing there reliably.
 const upload = multer({ 
-    dest: 'uploads/',
+    dest: '/tmp/', 
     limits: { 
         fileSize: 1024 * 1024 * 1024, // 1 GB limit
         fieldSize: 50 * 1024 * 1024   // 50 MB for text fields
@@ -48,30 +48,37 @@ app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html'))
 app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
 
 // =========================================================
-// 1. VIDEO SUBMISSION (UNIVERSAL FIX)
+// 1. VIDEO SUBMISSION (DEBUG MODE)
 // =========================================================
-// We use 'upload.any()' to accept the file regardless of what your HTML calls it.
 app.post('/submit-video', upload.any(), async (req, res) => {
-    console.log("Received Video Submission...");
+    console.log("Received Video Submission Request...");
+
+    // 1. Check if Credentials Exist
+    if (!fs.existsSync(KEY_FILE_PATH)) {
+        console.error("CRITICAL ERROR: credentials.json is missing!");
+        return res.status(500).json({ success: false, error: "Server Error: Credentials file missing." });
+    }
     
-    // 1. Find the video file in the array (regardless of name)
+    // 2. Find the video file
     const file = req.files && req.files.length > 0 ? req.files[0] : null;
     const { driverName, vanNumber, checkType, mileage } = req.body;
 
     if (!file) {
-        console.error("Error: No file found in request.");
-        return res.status(400).json({ success: false, error: "No video file received. Please wait for the upload to finish before clicking submit." });
+        console.error("Error: No file received. Check HTML form enctype.");
+        return res.status(400).json({ success: false, error: "No video file found. Make sure your form has enctype='multipart/form-data'." });
     }
 
     try {
-        // 2. Auth Drive
+        console.log(`Processing File: ${file.originalname} | Size: ${file.size} bytes`);
+
+        // 3. Auth Drive
         const auth = new google.auth.GoogleAuth({
             keyFile: KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // 3. Create Folder
+        // 4. Create Folder
         const folderName = `VIDEO - ${driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         const folderReq = await drive.files.create({
             resource: {
@@ -82,9 +89,9 @@ app.post('/submit-video', upload.any(), async (req, res) => {
             fields: 'id'
         });
         const folderId = folderReq.data.id;
+        console.log(`Folder Created: ${folderName} (${folderId})`);
 
-        // 4. Upload Video
-        console.log(`Uploading file: ${file.originalname} (${file.size} bytes)`);
+        // 5. Upload Video to Drive
         const fileMetadata = {
             name: `${checkType}_${vanNumber}_${driverName}.mp4`,
             parents: [folderId]
@@ -99,8 +106,9 @@ app.post('/submit-video', upload.any(), async (req, res) => {
             media: media,
             fields: 'webViewLink'
         });
+        console.log("Video Uploaded to Drive Successfully.");
 
-        // 5. Send Email
+        // 6. Send Email
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: EMAIL_USER, pass: EMAIL_PASS }
@@ -114,15 +122,15 @@ app.post('/submit-video', upload.any(), async (req, res) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log("Video Email Sent Successfully.");
+        console.log("Email Notification Sent.");
 
         // Cleanup
-        fs.unlinkSync(file.path);
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.json({ success: true });
 
     } catch (error) {
-        console.error("Video System Error:", error);
-        // Clean up file if it exists
+        console.error("VIDEO UPLOAD ERROR:", error);
+        // Clean up temp file
         if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.status(500).json({ success: false, error: error.message });
     }
