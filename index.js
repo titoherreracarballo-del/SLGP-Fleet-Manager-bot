@@ -3,38 +3,35 @@ const multer = require('multer');
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
-const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const { PDFDocument } = require('pdf-lib');
 
 const app = express();
 
-/**
- * 1. FIXED: DIRECTORY & STATIC FILES
- * Tells the server to serve your HTML/CSS/Images
- */
-app.use(express.static(__dirname));
+// --- MIDDLEWARE & STATIC FILES ---
+// This line fixes "Cannot GET /" by allowing the server to see your HTML files
+app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Use /tmp/ for temporary video storage on Railway
-const upload = multer({ dest: '/tmp/' });
+// Use project folder for uploads to match your GitHub structure
+const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
-/**
- * 2. FIXED: HOMEPAGE ROUTE (Fixes "Cannot GET /")
- * Tells the server to show menu.html when visiting the main site
- */
+// Ensure upload directory exists locally
+if (!fs.existsSync(path.join(__dirname, 'uploads/'))) {
+    fs.mkdirSync(path.join(__dirname, 'uploads/'));
+}
+
+// --- NAVIGATION ROUTES ---
+// This tells the server to show menu.html when visiting slgpmeshserver.com
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'menu.html'));
 });
 
-// Other page routes
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
 
-/**
- * 3. AUTHENTICATION (Railway Variable)
- */
+// --- AUTHENTICATION (Railway Variable) ---
 let auth;
 try {
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
@@ -44,17 +41,17 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY variable is missing or invalid.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY is missing or invalid.");
 }
 
 // =========================================================
-// SECTION 1: ORIGINAL VIDEO LOGIC (RESTORED)
+// SECTION 1: ORIGINAL VIDEO LOGIC
 // =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('No video file received.');
+        if (!req.file) return res.status(400).send('No video received.');
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
         
@@ -63,19 +60,19 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
-            fields: 'id', supportsAllDrives: true, supportsTeamDrives: true
+            fields: 'id', supportsAllDrives: true
         });
 
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(200).send('Upload Successful');
+        res.status(200).send('Video Upload Successful');
     } catch (error) {
         console.error("VIDEO ERROR:", error.message);
-        res.status(500).send(`Upload Failed: ${error.message}`);
+        res.status(500).send(`Video Upload Failed: ${error.message}`);
     }
 });
 
 // =========================================================
-// SECTION 2: NEW REPORT LOGIC (SEPARATE)
+// SECTION 2: NEW REPORT LOGIC
 // =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 
@@ -95,12 +92,8 @@ app.post('/submit-report', async (req, res) => {
         page.drawText(`SLGP INCIDENT REPORT: ${data.driverName}`, { x: 50, y: 750, size: 20 });
         
         const pdfBytes = await doc.save();
-        const pdfPath = path.join('/tmp', `report-${Date.now()}.pdf`);
+        const pdfPath = path.join(__dirname, `report-${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, pdfBytes);
-
-        const recipients = (data.priorityLevel === 'accident') 
-            ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] 
-            : ['slgpfleetmanager@gmail.com'];
 
         const transporter = nodemailer.createTransport({
             service: 'gmail',
@@ -109,8 +102,8 @@ app.post('/submit-report', async (req, res) => {
 
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
-            to: recipients,
-            subject: `New ${data.priorityLevel} Report: ${data.driverName}`,
+            to: (data.priorityLevel === 'accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'],
+            subject: `New Report: ${data.driverName}`,
             text: `Files: https://drive.google.com/drive/folders/${subFolderId}`,
             attachments: [{ filename: 'Report.pdf', path: pdfPath }]
         });
