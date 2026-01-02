@@ -8,27 +8,26 @@ const { PDFDocument } = require('pdf-lib');
 
 const app = express();
 
-// --- 1. VOLUME STORAGE CONFIGURATION ---
-// Mount path from your Railway Connection settings
+// --- VOLUME CONFIGURATION ---
+// Explicitly using the mount path from your Railway settings
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 
-// Ensure directory exists in the volume so the server doesn't crash
+// Ensure the directory exists in the volume
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-// Multer handles the 'video' field from your HTML
+// Multer configured to use the Volume for storage
 const upload = multer({ dest: UPLOAD_DIR });
 
-// --- 2. MIDDLEWARE & STATIC FILES ---
-// This allows the browser to load icon.jpg and manifest.json
+// --- MIDDLEWARE & STATIC FILES ---
 app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- 3. NAVIGATION ROUTES (Fixes "Cannot GET" Errors) ---
-// This sends menu.html when visiting slgpmeshserver.com
+// --- NAVIGATION ROUTES (Fixes "Cannot GET" Errors) ---
+// This serves your menu when visiting the main domain
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'menu.html'));
 });
@@ -41,7 +40,7 @@ app.get('/report', (req, res) => {
     res.sendFile(path.join(__dirname, 'report.html'));
 });
 
-// --- 4. AUTHENTICATION ---
+// --- AUTHENTICATION ---
 let auth;
 try {
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
@@ -51,15 +50,14 @@ try {
     });
     console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL ERROR: GCP_SA_KEY invalid or missing.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY missing.");
 }
 
 // =========================================================
-// SECTION 1: ORIGINAL VIDEO LOGIC
+// SECTION A: ORIGINAL VIDEO LOGIC (SEPARATE)
 // =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
-// Route matches the updated video.html endpoint
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).send('No video received.');
@@ -68,7 +66,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
 
-        // Upload to Drive from the volume storage
+        // Create stream from the file stored in the Railway Volume
         await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
@@ -84,7 +82,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 });
 
 // =========================================================
-// SECTION 2: NEW INCIDENT REPORT LOGIC
+// SECTION B: NEW REPORT LOGIC (SEPARATE)
 // =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 
@@ -94,12 +92,10 @@ app.post('/submit-report', async (req, res) => {
         const drive = google.drive({ version: 'v3', auth });
         const folderName = `${data.driverName} - ${new Date().toLocaleDateString()}`;
         
-        // Create folder in the dedicated reporting Drive
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
             fields: 'id'
         });
-        const subFolderId = folder.data.id;
 
         const doc = await PDFDocument.create();
         const page = doc.addPage([600, 800]);
@@ -118,7 +114,7 @@ app.post('/submit-report', async (req, res) => {
             from: process.env.EMAIL_USER,
             to: (data.priorityLevel === 'accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'],
             subject: `New Report: ${data.driverName}`,
-            text: `Files: https://drive.google.com/drive/folders/${subFolderId}`,
+            text: `Files: https://drive.google.com/drive/folders/${folder.data.id}`,
             attachments: [{ filename: 'Report.pdf', path: pdfPath }]
         });
 
@@ -130,4 +126,4 @@ app.post('/submit-report', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server LIVE on ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server LIVE`));
