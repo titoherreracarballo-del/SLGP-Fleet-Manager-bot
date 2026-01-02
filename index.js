@@ -1,198 +1,219 @@
-const express = require('express');
-const multer = require('multer');
-const { google } = require('googleapis');
-const path = require('path');
-const fs = require('fs');
-const nodemailer = require('nodemailer');
-const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const stream = require('stream');
-
-const app = express();
-
-// --- 1. VOLUME CONFIGURATION ---
-const VOLUME_PATH = '/app/meshcentral-data';
-const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-const upload = multer({ dest: UPLOAD_DIR });
-
-// --- 2. MIDDLEWARE ---
-app.use(express.static(__dirname)); 
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-
-// --- 3. NAVIGATION ---
-// FIX: Pointing back to 'menu.html' as per your original setup
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html'))); 
-app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-
-// ROUTE: Handle Issue & Accident Reports
-app.get('/report', (req, res) => {
-    const mode = req.query.mode;
-    if (mode === 'issue') {
-        res.sendFile(path.join(__dirname, 'report-issue.html'));
-    } else if (mode === 'accident') {
-        res.sendFile(path.join(__dirname, 'accident-report.html'));
-    } else {
-        // If the user goes to /report without a mode, try to show the old report.html if it exists, 
-        // otherwise show an error.
-        if (fs.existsSync(path.join(__dirname, 'report.html'))) {
-             res.sendFile(path.join(__dirname, 'report.html'));
-        } else {
-             res.status(404).send('Error: Report type not specified.');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Issue - Fleet Health</title>
+    <style>
+        /* --- THEME SETTINGS --- */
+        :root {
+            --bg-body: #0F1115;       
+            --bg-card: #161B28;       
+            --bg-input: #0b0d12;      
+            --bg-button: #242c3d;     
+            --primary-blue: #2563EB;  
+            --text-label: #3B82F6;    
+            --text-green: #4ade80;    
+            --radius: 12px;           
         }
-    }
-});
 
-// --- 4. AUTHENTICATION ---
-let auth;
-try {
-    auth = new google.auth.GoogleAuth({
-        credentials: JSON.parse(process.env.GCP_SA_KEY),
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-} catch (err) { console.error("CRITICAL: Auth Error"); }
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            color: white;
+            min-height: 100vh;
+        }
 
-// =========================================================
-// SECTION A: VIDEO ENGINE (LOCKED - DO NOT TOUCH)
-// =========================================================
-const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).send('No video received.');
-        const drive = google.drive({ version: 'v3', auth });
-        const { driverName, vin, inspectionType } = req.body;
-        const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
-        await drive.files.create({
-            resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
-            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
-            fields: 'id', supportsAllDrives: true
-        });
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(200).send('Video Upload Successful');
-    } catch (error) { res.status(500).send(`Video Failure: ${error.message}`); }
-});
+        .container {
+            width: 100%;
+            max-width: 400px; 
+            background-color: var(--bg-card);
+            border-radius: 24px;
+            padding: 24px;
+            border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
 
-// =========================================================
-// SECTION B: REPORT ENGINE
-// =========================================================
-const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+        /* --- HEADER --- */
+        .back-link {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .timestamp {
+            color: var(--text-green);
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        h1 {
+            color: var(--text-label);
+            text-align: center;
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin: 0 0 20px 0;
+        }
 
-app.post('/submit-report', async (req, res) => {
-    const data = req.body;
-    try {
-        const drive = google.drive({ version: 'v3', auth });
+        /* --- FORMS --- */
+        .form-group { margin-bottom: 20px; }
+
+        label {
+            color: var(--text-label);
+            display: block;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        input, textarea {
+            width: 100%;
+            background-color: var(--bg-input);
+            border: 1px solid #1f2937;
+            color: white;
+            padding: 16px;
+            border-radius: var(--radius);
+            font-size: 16px;
+            box-sizing: border-box; 
+            outline: none;
+            font-family: inherit;
+        }
+        input:focus, textarea:focus { border-color: var(--text-label); }
+
+        /* --- BUTTON GRID (UPDATED) --- */
+        .grid-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn-option {
+            background-color: var(--bg-button);
+            border: 1px solid #374151;
+            color: #cbd5e1;
+            padding: 12px;
+            border-radius: var(--radius);
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-align: center;
+        }
+
+        .btn-option:hover { background-color: #334155; color: white; }
         
-        // 1. Create Folder
-        const folderName = `${data.driverName} - ${data.reportType}`;
-        const folder = await drive.files.create({
-            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
-            fields: 'id'
-        });
-        const subFolderId = folder.data.id;
-
-        // 2. Upload Photos
-        if (data.photos && data.photos.length > 0) {
-            for (let i = 0; i < data.photos.length; i++) {
-                const photo = data.photos[i];
-                const bs = new stream.PassThrough();
-                bs.end(Buffer.from(photo.data, 'base64'));
-                await drive.files.create({
-                    resource: { name: `Photo_${i+1}.jpg`, parents: [subFolderId] },
-                    media: { mimeType: 'image/jpeg', body: bs }
-                });
-            }
+        .btn-option.selected {
+            background-color: #1e293b;
+            border-color: var(--text-label);
+            color: white;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
         }
 
-        // 3. Generate PDF
-        const doc = await PDFDocument.create();
-        let page = doc.addPage([600, 800]);
-        const font = await doc.embedFont(StandardFonts.Helvetica);
-        const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
-        let y = 750;
+        /* --- SEVERITY BUTTONS --- */
+        .row-split { display: flex; gap: 10px; }
+        .row-split .btn-option { width: 100%; font-size: 13px; }
 
-        const draw = (txt, size = 12, isBold = false) => { 
-            if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawText(txt || '', { x: 50, y, size, font: isBold ? boldFont : font }); 
-            y -= 20; 
-        };
-
-        // PDF Content
-        draw('SLGP VEHICLE ASSISTANCE REPORT', 18, true);
-        y -= 10;
-        draw(`Type: ${data.reportType}`, 14, true);
-        draw(`Driver: ${data.driverName}`);
-        draw(`Date: ${data.date}   Time: ${data.time}`);
-        draw(`VIN: ${data.vinLast4 || 'N/A'}`);
-        draw(`GPS: ${data.gpsLat || 'N/A'}, ${data.gpsLng || 'N/A'}`);
-        draw('------------------------------------------------------');
-        y -= 10;
-
-        if (data.reportType === 'Accident / Incident') {
-            draw('INCIDENT DETAILS:', 14, true);
-            draw(`Sub-Type: ${data.subType || 'N/A'}`);
-            draw(`Weather: ${data.weather || 'N/A'}`);
-            draw(`Police Report: ${data.policeReport || 'N/A'}`);
-            draw(`LMET Case: ${data.lmetCase || 'N/A'}`);
-            y -= 10;
-            draw('STATEMENT:', 12, true);
-            const words = (data.statement || '').split(' ');
-            let line = '';
-            for (let word of words) {
-                if ((line + word).length > 80) { draw(line); line = ''; }
-                line += word + ' ';
-            }
-            draw(line);
-            y -= 20;
-        } else {
-            draw('REPORTED ISSUES:', 14, true);
-            if (data.tags && data.tags.length > 0) {
-                data.tags.forEach(tag => draw(`[x] ${tag}`));
-            }
-            if (data.otherDescription) draw(`Other Notes: ${data.otherDescription}`);
+        /* --- CAMERA BOX --- */
+        .camera-box {
+            border: 2px dashed #374151;
+            border-radius: 16px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background-color: rgba(255,255,255,0.02);
         }
+        .camera-icon { width: 32px; height: 32px; fill: #64748b; }
 
-        y -= 20;
-        draw('------------------------------------------------------');
-        if (data.signature) {
-            try {
-                const sigImg = await doc.embedPng(Buffer.from(data.signature, 'base64'));
-                page.drawImage(sigImg, { x: 50, y: y - 80, width: 200, height: 60 });
-                y -= 90;
-            } catch (e) { console.log('Signature Error', e); }
+        /* --- SUBMIT --- */
+        .btn-submit {
+            width: 100%;
+            background-color: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 18px;
+            font-size: 16px;
+            font-weight: 900;
+            text-transform: uppercase;
+            border-radius: var(--radius);
+            cursor: pointer;
+            margin-top: 10px;
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
         }
-        draw(`Signed: ${data.driverName}`);
-        draw(`Timestamp: ${new Date().toLocaleString()}`);
+    </style>
+</head>
+<body>
 
-        const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, await doc.save());
+    <div class="container">
+        <a href="menu.html" class="back-link">← Back to Menu</a>
+        
+        <div class="timestamp">1/2/2026, 6:55:00 PM</div>
+        <h1>Report Issue</h1>
 
-        // 4. Email
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" placeholder="Enter Name">
+        </div>
+
+        <div class="form-group">
+            <label>Select Issue(s)</label>
+            <div class="grid-options">
+                <button class="btn-option">Engine / Check Engine</button>
+                <button class="btn-option">Brakes / Noise</button>
+                <button class="btn-option">Tires / Flat</button>
+                <button class="btn-option">Battery / No Start</button>
+                <button class="btn-option">Oil / Fluids</button>
+                <button class="btn-option">Lights / Signals</button>
+                <button class="btn-option">Body Damage</button>
+                <button class="btn-option">Wipers / Glass</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Severity Level</label>
+            <div class="row-split">
+                <button class="btn-option selected">Safe to Drive</button>
+                <button class="btn-option" style="color:#ef4444; border-color:rgba(239,68,68,0.4);">DO NOT DRIVE</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Description</label>
+            <textarea style="min-height: 80px;" placeholder="Describe the noise, error code, or specific details..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Photo Evidence</label>
+            <div class="camera-box">
+                <svg class="camera-icon" viewBox="0 0 24 24">
+                    <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+                </svg>
+            </div>
+        </div>
+
+        <button class="btn-submit">Submit Issue Report</button>
+    </div>
+
+    <script>
+        // Simple script to toggle selection on buttons
+        const buttons = document.querySelectorAll('.grid-options .btn-option');
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('selected');
+            });
         });
+    </script>
 
-        const isIncident = ['Accident / Incident', 'Road MPH Error'].includes(data.reportType);
-        const recipients = isIncident 
-            ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] 
-            : ['slgpfleetmanager@gmail.com'];
-
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: recipients,
-            subject: `REPORT: ${data.reportType} - ${data.driverName}`,
-            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nFiles: https://drive.google.com/drive/folders/${subFolderId}`,
-            attachments: [{ filename: 'Report_Summary.pdf', path: pdfPath }]
-        });
-
-        fs.unlinkSync(pdfPath);
-        res.json({ success: true });
-
-    } catch (error) {
-        console.error("REPORT ERROR:", error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`SYSTEMS ONLINE: Port ${PORT}`));
+</body>
+</html>
