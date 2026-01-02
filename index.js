@@ -1,8 +1,11 @@
 /**
- * SLGP FLEET PORTAL - MAIN SERVER v6.6
+ * SLGP FLEET PORTAL - MASTER SERVER v7.1
  * --------------------------------------
- * This single file handles BOTH the Video Checks and the Incident Reports.
- * It acts as the traffic controller for your entire application.
+ * 1. Video Uploads -> Fleet Manager
+ * 2. Maintenance Reports -> Fleet Manager
+ * 3. Accident Reports -> Incident Reporting + Strategic Logistics
+ * 4. PDF Generation (Full Detail)
+ * 5. Google Drive Integration
  */
 
 const express = require('express');
@@ -12,109 +15,172 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const stream = require('stream');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+
+// Configure Multer: 'memory' for photos, 'disk' for large videos
+const upload = multer({ 
+    dest: 'uploads/',
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB Limit
+});
 
 // =========================================================
-// 1. CONFIGURATION (KEYS & EMAILS)
+// 1. CONFIGURATION
 // =========================================================
 
-// Google Drive Folder ID (Shared Storage)
+// Google Drive Folder ID
 const PARENT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy'; 
 
-// Email Settings (The Account SENDING the emails)
+// Email Settings (Sender)
 const EMAIL_USER = 'strategiclogisticsgroupllc@gmail.com'; 
-const EMAIL_PASS = 'wnSx-72@!'; // REPLACE WITH YOUR REAL 16-CHAR APP PASSWORD
+const EMAIL_PASS = 'wnSx-72@!'; // REPLACE WITH REAL APP PASSWORD
 
-// --- SMART EMAIL ROUTING (RECIPIENTS) ---
+// --- EMAIL ROUTING ---
+// Maintenance (High, Low, EDV, MPH) & Videos -> Fleet Manager
+const MAIL_FLEET_MGR = ['slgpfleetmanager@gmail.com'];
 
-// A. Maintenance Issues (High, Low, EDV, MPH) -> Fleet Manager Only
-const MAIL_MAINTENANCE = ['slgpfleetmanager@gmail.com'];
-
-// B. Accidents -> Incident Reporting AND Strategic Logistics
+// Accidents -> Incident Reporting + Main Office
 const MAIL_ACCIDENT = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
 
-
-// Service Account Key Path
+// Service Account Credentials
 const KEY_FILE_PATH = path.join(__dirname, 'credentials.json');
 
 
 // =========================================================
-// 2. MIDDLEWARE (The Setup)
+// 2. MIDDLEWARE
 // =========================================================
-app.use(express.static(__dirname)); // Serves html, jpg, css files
-app.use(express.json({ limit: '50mb' })); // Allows large data (photos)
-
-
-// =========================================================
-// 3. PAGE ROUTES (The Menu)
-// =========================================================
-
-// Home / Menu
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'menu.html'));
-});
-
-// Video Check Page
-// (This ensures your "Pre & Post Fleet Vids" button works)
-app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video.html'));
-});
-
-// Report / Insurance Page
-app.get('/report', (req, res) => {
-    res.sendFile(path.join(__dirname, 'report.html'));
-});
+app.use(express.static(__dirname)); 
+app.use(express.json({ limit: '50mb' })); 
+app.use(express.urlencoded({ extended: true }));
 
 
 // =========================================================
-// 4. BACKEND LOGIC: REPORT SUBMISSION
+// 3. PAGE ROUTES
 // =========================================================
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
+app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
+app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
 
-app.post('/submit-report', async (req, res) => {
-    console.log("Received Report Submission...");
-    const data = req.body;
+
+// =========================================================
+// 4. VIDEO SUBMISSION HANDLER
+// =========================================================
+app.post('/submit-video', upload.single('videoFile'), async (req, res) => {
+    console.log("Received Video Submission...");
+    const { driverName, vanNumber, checkType, mileage } = req.body;
+    const file = req.file;
+
+    if (!file) {
+        return res.status(400).json({ success: false, error: "No video file received." });
+    }
 
     try {
-        // --- STEP A: CONNECT TO GOOGLE DRIVE ---
+        // A. Auth Drive
         const auth = new google.auth.GoogleAuth({
             keyFile: KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // --- STEP B: CREATE A FOLDER FOR THIS REPORT ---
-        const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
-        const fileMetadata = {
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [PARENT_FOLDER_ID]
-        };
+        // B. Create Folder Name
+        const folderName = `VIDEO - ${driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         
-        const folder = await drive.files.create({
-            resource: fileMetadata,
+        // C. Create Folder
+        const folderReq = await drive.files.create({
+            resource: {
+                name: folderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [PARENT_FOLDER_ID]
+            },
             fields: 'id'
         });
-        const reportFolderId = folder.data.id;
-        console.log(`Created Drive Folder: ${folderName} (${reportFolderId})`);
+        const folderId = folderReq.data.id;
 
-        // --- STEP C: UPLOAD PHOTOS ---
+        // D. Upload Video
+        const fileMetadata = {
+            name: `${checkType}_${vanNumber}_${driverName}.mp4`,
+            parents: [folderId]
+        };
+        const media = {
+            mimeType: file.mimetype,
+            body: fs.createReadStream(file.path)
+        };
+
+        const videoUpload = await drive.files.create({
+            resource: fileMetadata,
+            media: media,
+            fields: 'webViewLink'
+        });
+
+        // E. Send Email (To Fleet Manager)
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: EMAIL_USER, pass: EMAIL_PASS }
+        });
+
+        const mailOptions = {
+            from: EMAIL_USER,
+            to: MAIL_FLEET_MGR,
+            subject: `🎥 Video Check: ${driverName} (Van ${vanNumber})`,
+            text: `A new ${checkType} video check has been uploaded.\n\nDriver: ${driverName}\nVan: ${vanNumber}\nMileage: ${mileage}\n\nWatch Video: ${videoUpload.data.webViewLink}\nFolder: https://drive.google.com/drive/folders/${folderId}`
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log("Video Email Sent.");
+
+        // Cleanup
+        fs.unlinkSync(file.path);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error("Video Upload Error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
+// =========================================================
+// 5. REPORT SUBMISSION HANDLER
+// =========================================================
+app.post('/submit-report', async (req, res) => {
+    console.log("Received Report Submission...");
+    const data = req.body;
+
+    try {
+        // A. Auth Drive
+        const auth = new google.auth.GoogleAuth({
+            keyFile: KEY_FILE_PATH,
+            scopes: ['https://www.googleapis.com/auth/drive.file'],
+        });
+        const drive = google.drive({ version: 'v3', auth });
+
+        // B. Create Folder
+        const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
+        const folderReq = await drive.files.create({
+            resource: {
+                name: folderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [PARENT_FOLDER_ID]
+            },
+            fields: 'id'
+        });
+        const reportFolderId = folderReq.data.id;
+
+        // C. Upload Photos
         let photoLinks = [];
         const uploadImage = async (imgObj, type) => {
             if (!imgObj || !imgObj.data) return;
             const buffer = Buffer.from(imgObj.data, 'base64');
-            const stream = require('stream');
             const bs = new stream.PassThrough();
             bs.end(buffer);
 
-            const photoName = `${type}_${imgObj.name}`;
             const photoFile = await drive.files.create({
-                resource: { name: photoName, parents: [reportFolderId] },
+                resource: { name: `${type}_${imgObj.name}`, parents: [reportFolderId] },
                 media: { mimeType: 'image/jpeg', body: bs },
                 fields: 'webViewLink'
             });
-            photoLinks.push({ name: photoName, link: photoFile.data.webViewLink });
+            photoLinks.push({ name: `${type}_${imgObj.name}`, link: photoFile.data.webViewLink });
         };
 
         if (data.highPhotos) await uploadImage(data.highPhotos, 'HighPriority');
@@ -123,20 +189,20 @@ app.post('/submit-report', async (req, res) => {
         if (data.mphPhotos) await uploadImage(data.mphPhotos, 'MPH');
         if (data.accidentPhotos) await uploadImage(data.accidentPhotos, 'Accident');
 
-        // --- STEP D: GENERATE PDF ---
+        // D. Generate PDF (Full Detail)
         const pdfPath = await generatePDF(data, photoLinks);
         
-        // --- STEP E: SEND EMAIL (SMART ROUTING) ---
+        // E. SMART ROUTING LOGIC
         let targetRecipients = [];
         let subjectPrefix = "";
 
         if (data.priorityLevel === 'accident') {
-            // ROUTE: Accident
+            // Accident -> Incident Reporting AND Strategic Logistics
             targetRecipients = MAIL_ACCIDENT;
             subjectPrefix = "🚨 URGENT: ACCIDENT REPORT";
         } else {
-            // ROUTE: Maintenance (High, Low, EDV, MPH)
-            targetRecipients = MAIL_MAINTENANCE;
+            // Maintenance (High, Low, EDV, MPH) -> Fleet Manager
+            targetRecipients = MAIL_FLEET_MGR;
             subjectPrefix = `🛠️ Maintenance: ${data.priorityLevel.toUpperCase()}`;
         }
 
@@ -147,27 +213,27 @@ app.post('/submit-report', async (req, res) => {
 
         const mailOptions = {
             from: EMAIL_USER,
-            to: targetRecipients, 
+            to: targetRecipients,
             subject: `${subjectPrefix} - ${data.driverName}`,
-            text: `A new report has been submitted.\n\nDriver: ${data.driverName}\nType: ${data.priorityLevel.toUpperCase()}\n\nView Photos & Files: https://drive.google.com/drive/folders/${reportFolderId}`,
+            text: `Report Submitted by ${data.driverName}.\nType: ${data.priorityLevel.toUpperCase()}\n\nView Photos & Files: https://drive.google.com/drive/folders/${reportFolderId}`,
             attachments: [{ filename: 'Report.pdf', path: pdfPath }]
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Email Sent Successfully to: ${targetRecipients.join(', ')}`);
+        console.log(`Report Email Sent to: ${targetRecipients.join(', ')}`);
 
-        // Cleanup
         fs.unlinkSync(pdfPath);
         res.json({ success: true });
 
     } catch (error) {
-        console.error("Error processing report:", error);
+        console.error("Report Error:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+
 // =========================================================
-// 5. HELPER FUNCTION: PDF GENERATOR
+// 6. PDF GENERATOR (FULL DETAILS RESTORED)
 // =========================================================
 async function generatePDF(data, photoLinks) {
     const doc = await PDFDocument.create();
@@ -182,11 +248,12 @@ async function generatePDF(data, photoLinks) {
         y -= 20;
     };
 
-    drawText("SLGP INCIDENT / MAINTENANCE REPORT", bold, 18);
+    drawText("SLGP REPORT", bold, 18);
     y -= 10;
     drawText(`Date: ${new Date().toLocaleString()}`);
     drawText(`Driver: ${data.driverName}`);
     
+    // Show VIN only if present (Always present for Accident)
     if (data.vinLast4) {
         drawText(`VIN (Last 4): ${data.vinLast4}`);
     }
@@ -195,29 +262,31 @@ async function generatePDF(data, photoLinks) {
     drawText(`Report Type: ${data.priorityLevel.toUpperCase()}`, bold, 14);
     y -= 10;
 
+    // --- DETAILED FIELDS (Restored) ---
     if (data.priorityLevel === 'high') {
         drawText(`Issue: ${data.highIssues}`);
         if(data.highNotes) drawText(`Notes: ${data.highNotes}`);
     }
-    if (data.priorityLevel === 'low') {
+    else if (data.priorityLevel === 'low') {
         drawText(`Issue: ${data.lowIssues}`);
         if(data.lowNotes) drawText(`Notes: ${data.lowNotes}`);
     }
-    if (data.priorityLevel === 'edv') {
+    else if (data.priorityLevel === 'edv') {
         drawText(`Issue: ${data.edvIssues}`);
         if(data.edvNotes) drawText(`Notes: ${data.edvNotes}`);
     }
-    if (data.priorityLevel === 'mph') {
+    else if (data.priorityLevel === 'mph') {
         drawText(`Street: ${data.mphRoadName}`);
         drawText(`Location: ${data.mphCity}, ${data.mphState}`);
-        drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
+        if(data.gpsLat) drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
     }
-    if (data.priorityLevel === 'accident') {
+    else if (data.priorityLevel === 'accident') {
         drawText(`Statement: ${data.accidentStatement}`);
         drawText(`Police Report #: ${data.policeReportNumber}`);
         drawText(`Case #: ${data.lmetCaseNumber}`);
-        drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
+        if(data.gpsLat) drawText(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
         
+        // Add Signature
         if (data.affidavitSignature) {
             y -= 40;
             const sigImage = await doc.embedPng(Buffer.from(data.affidavitSignature, 'base64'));
@@ -240,9 +309,7 @@ async function generatePDF(data, photoLinks) {
     return filePath;
 }
 
-// =========================================================
-// 6. START THE SERVER
-// =========================================================
+// START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
