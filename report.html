@@ -9,7 +9,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-    /* --- SHARED THEME (Glassmorphism) --- */
+    /* SHARED THEME */
     :root {
         --brand-blue: #0066ff;
         --brand-dark: #0a0e17;
@@ -31,16 +31,18 @@
 
     .container { width: 100%; max-width: 480px; margin-top: 10px; position: relative; }
     
-    /* --- LOGO FIX --- */
-    .logo-container { text-align: center; margin-bottom: 20px; }
-    .logo-container img { 
-        width: 100%; 
-        max-width: 250px; 
-        border-radius: 12px;
-        /* This filter blends the white JPG into the dark background */
-        filter: invert(0.88) hue-rotate(180deg) brightness(1.2) contrast(1.1) drop-shadow(0 0 15px rgba(0, 102, 255, 0.5));
+    /* LOGO BADGE STYLE (Matches Menu) */
+    .logo-container { 
+        background: white; 
+        padding: 15px 25px; 
+        border-radius: 20px; 
+        margin-bottom: 20px; 
+        box-shadow: 0 0 20px rgba(0, 102, 255, 0.3); 
+        display: inline-block; 
+        text-align: center; 
     }
-
+    .logo-container img { width: 100%; max-width: 200px; display: block; }
+    
     .card {
         background: var(--card-bg); backdrop-filter: blur(20px);
         border: 1px solid var(--border-color); border-radius: 28px;
@@ -59,7 +61,6 @@
     }
     textarea { min-height: 100px; resize: vertical; }
 
-    /* PILL BUTTONS */
     .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .pill {
         flex: 1 1 calc(50% - 8px); padding: 14px;
@@ -100,14 +101,31 @@
 <body>
 
 <div class="container">
-  <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
+  <div style="text-align:center;">
+      <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
+  </div>
   
   <a href="/" class="back-link">← Back to Menu</a>
 
   <div class="card" id="mainCard">
       <h1 id="pageTitle" style="text-align:center; font-size:18px; margin-top:0;">REPORTING TOOL</h1>
       
+      <div id="insuranceView" style="display:none;">
+          <p style="text-align:center; color:var(--text-dim); margin-bottom:20px;">
+              Please select the vehicle type to view the insurance card.
+          </p>
+          
+          <button onclick="openCard('amazon')" class="pill" style="width:100%; padding:20px; font-size:14px; margin-bottom:15px; background:linear-gradient(135deg, #0066ff, #0044cc); color:white; border:none; text-align:center;">
+              🚙 AMAZON BRANDED VAN
+          </button>
+          
+          <button onclick="openCard('hertz')" class="pill" style="width:100%; padding:20px; font-size:14px; background:linear-gradient(135deg, #ff9900, #cc7a00); color:white; border:none; text-align:center;">
+              🚗 HERTZ RENTAL (WHITE)
+          </button>
+      </div>
+
       <form id="reportForm" onsubmit="submitForm(event)">
+        
         <h2>1. Driver Info</h2>
         <div class="form-group"><label>Driver Full Name *</label><input type="text" id="driverName" placeholder="Enter Full Name" required></div>
         <div style="display:flex; gap:10px;">
@@ -123,23 +141,25 @@
           <div class="pill" id="pill-low" onclick="selectPriority('low')">Low Priority</div>
           <div class="pill" id="pill-mph" onclick="selectPriority('mph')">Road MPH Error</div>
           <div class="pill" id="pill-accident" onclick="selectPriority('accident')">Accident</div>
-          <div class="pill" id="pill-insurance" onclick="selectPriority('insurance')">Insurance Card</div>
         </div>
 
         <div id="section-high" class="section">
-          <h2>High Priority</h2><div class="pill-row" id="highIssues"></div>
+          <h2>High Priority</h2>
+          <div class="pill-row" id="highIssues"></div>
           <label>Notes</label><textarea id="highNotes" placeholder="Describe the issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="highPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-edv" class="section">
-          <h2>EDV Specific</h2><div class="pill-row" id="edvIssues"></div>
+          <h2>EDV Specific</h2>
+          <div class="pill-row" id="edvIssues"></div>
           <label>Notes</label><textarea id="edvNotes" placeholder="Describe EDV issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 8)</label><input type="file" id="edvPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-low" class="section">
-          <h2>Low Priority</h2><div class="pill-row" id="lowIssues"></div>
+          <h2>Low Priority</h2>
+          <div class="pill-row" id="lowIssues"></div>
           <label>Notes</label><textarea id="lowNotes" placeholder="Describe issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="lowPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
@@ -155,24 +175,28 @@
         </div>
 
         <div id="section-accident" class="section">
-          <h2>Accident Report</h2><div class="pill-row" id="accidentTypes"></div>
-          <div id="weatherBox" class="weather-box" style="display:none;"><b>Conditions:</b><br><span id="weatherText">Fetching...</span></div>
+          <h2>Accident Report</h2>
+          <div class="pill-row" id="accidentTypes"></div>
+          
+          <div id="weatherBox" class="weather-box" style="display:none;">
+            <b>Conditions:</b><br><span id="weatherText">Fetching...</span>
+          </div>
+
           <div class="gps-info">GPS: <span id="gpsStatus">Ready</span><br><span id="gpsLat">--</span>, <span id="gpsLng">--</span></div>
           <div id="accidentMap" class="mapBox"></div>
+
           <label>Statement *</label><textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
+          
           <label>Police Report #</label><input type="text" id="policeReportNumber">
           <label>Case # (LMET/EMT)</label><input type="text" id="lmetCaseNumber">
-          <div class="photo-box"><label>Scene Photos (Max 8)</label><input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;"></div>
-          <h2>Affidavit</h2><p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I certify the information above is true.</p>
-          <label>Sign Below</label><canvas id="affidavitPad" width="350" height="150"></canvas>
-          <div class="pill" onclick="clearSig()" style="margin-top:5px; background:rgba(255,255,255,0.1);">Clear Signature</div>
-        </div>
 
-        <div id="section-insurance" class="section">
-          <h2>Insurance Card</h2><p style="font-size:12px; text-align:center; color:var(--text-dim);">Tap to view</p>
-          <label><input type="radio" name="insCard" value="amazon" style="width:auto;"> Amazon Branded</label>
-          <label><input type="radio" name="insCard" value="hertz" style="width:auto;"> Hertz White</label>
-          <button type="button" class="pill" onclick="openInsurancePopup()" style="width:100%; margin-top:15px; background:var(--brand-blue); color:white;">OPEN CARD</button>
+          <div class="photo-box"><label>Upload Scene Photos (Max 8)</label><input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;"></div>
+
+          <h2>Affidavit</h2>
+          <p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I certify the information above is true.</p>
+          <label>Sign Below (Finger)</label>
+          <canvas id="affidavitPad" width="350" height="150"></canvas>
+          <div class="pill" onclick="clearSig()" style="margin-top:5px; background:rgba(255,255,255,0.1);">Clear Signature</div>
         </div>
 
         <h2>Submit</h2>
@@ -185,7 +209,8 @@
 
   <div class="card" id="successMessage">
     <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-    <h2>RECEIVED</h2><p style="font-size:13px; color:var(--text-dim);">Report securely logged and emailed.</p>
+    <h2>RECEIVED</h2>
+    <p style="font-size:13px; color:var(--text-dim); line-height:1.5;">Report securely logged and emailed.</p>
     <button onclick="location.href='/'" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">Return to Menu</button>
   </div>
 </div>
@@ -265,10 +290,14 @@ window.onload = function() {
   const urlParams = new URLSearchParams(window.location.search);
   const mode = urlParams.get('mode');
   
-  if(mode === 'issue') {
+  if(mode === 'insurance') {
+      document.getElementById('pageTitle').innerText = "INSURANCE CARDS";
+      document.getElementById('reportForm').style.display = 'none'; // Hide Form
+      document.getElementById('insuranceView').style.display = 'block'; // Show Cards
+  }
+  else if(mode === 'issue') {
       document.getElementById('pageTitle').innerText = "MAINTENANCE REPORT";
       document.getElementById('pill-accident').style.display = 'none';
-      document.getElementById('pill-insurance').style.display = 'none';
   } 
   else if(mode === 'accident') {
       document.getElementById('pageTitle').innerText = "ACCIDENT REPORT";
@@ -279,6 +308,11 @@ window.onload = function() {
       selectPriority('accident');
   }
 };
+
+function openCard(type) {
+    var url = (type === 'amazon') ? "https://drive.google.com/file/d/1RiLwgYSCdNgxrEB0ypRpcchuKfCxiTIv/view?usp=drive_link" : "https://drive.google.com/file/d/1ZoWnRZlCwB-YMBv_QaUAP-TQ5LWQhnK8/view?usp=drive_link";
+    window.open(url, "_blank");
+}
 
 window.loadPills = function(containerId, list) {
   var container = document.getElementById(containerId); if (!container) return;
@@ -325,7 +359,6 @@ function successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident) {
     
     if (window[mapVar]) window[mapVar].remove();
     
-    // LAYERS
     var street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© OpenStreetMap' });
     var sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: 'Tiles © Esri' });
     
@@ -347,13 +380,7 @@ function successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident) {
 window.captureGPS_accident = function() { getSmartLocation("gpsStatus", "gpsLat", "gpsLng", "accidentMap", "accidentMap", true); };
 window.captureGPS_mph = function() { getSmartLocation("gpsStatus_mph", "gpsLat_mph", "gpsLng_mph", "map_mph", "mphMap", false); };
 
-// --- MISC ---
-window.openInsurancePopup = function() {
-  var rad = document.querySelector("input[name='insCard']:checked"); if (!rad) { alert("Select vehicle type"); return; }
-  var url = (rad.value === "amazon") ? "https://drive.google.com/file/d/1RiLwgYSCdNgxrEB0ypRpcchuKfCxiTIv/view?usp=drive_link" : "https://drive.google.com/file/d/1ZoWnRZlCwB-YMBv_QaUAP-TQ5LWQhnK8/view?usp=drive_link";
-  window.open(url, "_blank");
-};
-
+// --- SUBMIT ---
 window.setupCanvas = function() {
   sigCanvas = document.getElementById("affidavitPad"); if (!sigCanvas) return;
   sigCtx = sigCanvas.getContext("2d"); sigCtx.lineWidth = 3; sigCtx.strokeStyle = "#0066ff";
@@ -367,7 +394,6 @@ window.setupCanvas = function() {
 };
 window.clearSig = function() { if(sigCtx) sigCtx.clearRect(0,0,sigCanvas.width, sigCanvas.height); };
 
-// --- SUBMIT ---
 var b64 = function(id) {
   return new Promise(function(resolve) {
     var input = document.getElementById(id); if (!input || !input.files.length) { resolve([]); return; }
