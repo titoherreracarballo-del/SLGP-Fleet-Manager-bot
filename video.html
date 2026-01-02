@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SLGP Video Check</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon.jpg">
+    <link rel="icon" type="image/jpeg" href="icon.jpg">
+    <style>
+        :root { --brand-blue: #0066ff; --brand-dark: #0a0e17; --card-bg: rgba(255, 255, 255, 0.05); --text-main: #ffffff; --text-dim: #a0a0a0; --success-green: #4ade80; --error-red: #ff4444; --record-red: #e74c3c; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--brand-dark); background-image: radial-gradient(circle at top right, #1a2a44, var(--brand-dark)); color: var(--text-main); margin: 0; padding: 15px; display: flex; justify-content: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 420px; margin-top: 10px; position: relative; }
+        .logo-container { text-align: center; margin-bottom: 20px; }
+        .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+        .card { background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 28px; padding: 25px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5); }
+        h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 0 0 20px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; }
+        .form-group { margin-bottom: 20px; position: relative; }
+        label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.2px; }
+        .success-indicator { position: absolute; right: 15px; bottom: 16px; color: var(--success-green); font-weight: bold; font-size: 18px; display: none; }
+        input[type="text"], input[type="tel"] { width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.4); border: 1.5px solid rgba(255, 255, 255, 0.1); border-radius: 12px; color: white; font-size: 16px; box-sizing: border-box; }
+        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .toggle-btn { flex: 1 1 calc(50% - 8px); padding: 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; color: var(--text-dim); font-weight: 700; text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px; }
+        .toggle-btn.active { background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important; }
+        .toggle-btn.disabled-state { opacity: 0.15; pointer-events: none; }
+        
+        .camera-container { position: relative; width: 100%; height: 0; padding-bottom: 177%; background: #000; border-radius: 14px; overflow: hidden; margin-bottom: 15px; display: none; border: 2px solid rgba(255,255,255,0.1); }
+        #livePreview, #recordedPlayback { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        #recordedPlayback { display: none; z-index: 10; }
+        .cam-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .cam-btn { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 20px; border-radius: 10px; font-weight: 700; font-size: 12px; text-transform: uppercase; cursor: pointer; flex: 1; margin: 0 5px; }
+        #btnRecord { background: var(--record-red); border: none; color: white; box-shadow: 0 0 15px rgba(231, 76, 60, 0.5); }
+        #btnRecord.recording { animation: pulse 1.5s infinite; background: white; color: var(--record-red); }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .camera-overlay { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; font-size: 10px; font-weight: bold; color: var(--success-green); z-index: 20; display: none; }
+        .video-timer { position: absolute; top: 10px; right: 10px; background: rgba(255, 0, 0, 0.8); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: bold; font-family: monospace; z-index: 21; display: none; }
+        .start-cam-area { background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 14px; padding: 25px 15px; text-align: center; cursor: pointer; margin-bottom: 15px; }
+        #progressContainer { width: 100%; background: rgba(255,255,255,0.1); border-radius: 10px; height: 10px; margin: 15px 0; display: none; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #0066ff, #4ade80); transition: width 0.3s; }
+        #timestampDisplay { text-align: center; font-size: 11px; color: var(--success-green); font-weight: bold; margin-bottom: 20px; }
+        #submitBtn { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border: none; padding: 18px; border-radius: 14px; width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer; display: none; }
+        #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
+        #status { margin-top: 15px; text-align: center; font-size: 11px; font-weight: 600; color: var(--brand-blue); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="logo-container"><img src="Final-01.jpg" alt="Strategic Logistics"></div>
+    
+    <div style="text-align:left; margin-bottom:10px;">
+        <a href="/" style="text-decoration:none; color:#a0a0a0; font-size:12px;">← Back to Menu</a>
+    </div>
+
+    <div class="card" id="mainCard">
+        <div id="timestampDisplay">LOADING SYSTEM TIME...</div>
+        <h2>Fleet Health Check</h2>
+        <div class="form-group"><label>Driver Full Name</label><input type="text" id="driverName" placeholder="Name" oninput="validateName()"><span id="check_name" class="success-indicator">✓</span></div>
+        <div class="form-group"><label>Last 4 of VIN</label><input type="tel" id="vin" placeholder="Last 4 of VIN" maxlength="4" pattern="\d*" oninput="autoDetectVehicle()"><span id="check_vin" class="success-indicator">✓</span></div>
+        <label>Service Type</label><div class="toggle-group" id="groupVehicle"><div class="toggle-btn" id="v_EDV">EDV</div><div class="toggle-btn" id="v_CDV">CDV</div><div class="toggle-btn" id="v_Cargo">Cargo</div><div class="toggle-btn" id="v_Rental">Rental</div></div>
+        <label>Inspection Type</label><div class="toggle-group" id="groupType"><div class="toggle-btn" id="btnPre">Precheck</div><div class="toggle-btn" id="btnPost">Postcheck</div></div>
+        
+        <label>1080p Camera</label>
+        <div class="start-cam-area" id="startCamBox" onclick="startCamera()">
+            <div style="font-size: 30px; margin-bottom: 10px;">📹</div>
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-dim);">TAP TO START HD CAMERA</span><br>
+            <span style="font-size: 9px; color: var(--success-green);">FORCES 1080p RESOLUTION</span>
+        </div>
+
+        <div class="camera-container" id="cameraUI">
+            <div class="camera-overlay" id="resBadge">Checking Res...</div>
+            <div class="video-timer" id="recordTimer">🔴 00:00</div>
+            <video id="livePreview" autoplay playsinline muted></video>
+            <video id="recordedPlayback" playsinline controls></video>
+        </div>
+
+        <div class="cam-controls" id="camControls" style="display:none;">
+            <button class="cam-btn" id="btnRetake" onclick="resetCamera()" style="display:none;">RETAKE</button>
+            <button class="cam-btn" id="btnRecord" onclick="toggleRecording()">RECORD</button>
+        </div>
+
+        <div id="progressContainer"><div id="progressBar"></div></div>
+        <button id="submitBtn">UPLOAD VIDEO</button>
+        <div id="status">System Online</div>
+    </div>
+
+    <div class="card" id="successCard" style="display:none; text-align:center;">
+        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+        <h2>SYNC SUCCESSFUL</h2>
+        <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">New Submission</button>
+    </div>
+</div>
+
+<script>
+    const FLEET_MAP = {'7867':'EDV','7871':'EDV','9412':'EDV','7872':'EDV','7866':'EDV','7860':'EDV','9418':'EDV','7863':'EDV','7859':'EDV','7857':'EDV','4905':'CDV','7097':'CDV','2347':'CDV','1587':'CDV','6880':'CDV','6907':'CDV','1295':'CDV','6265':'CDV','6188':'CDV','1288':'CDV','6864':'CDV','1051':'Cargo','9488':'Cargo','7088':'Cargo','1664':'Cargo','0871':'Cargo','3010':'Cargo','5344':'Cargo','0890':'Cargo','5341':'Cargo','3754':'Cargo'};
+    let serviceTypeStr = ''; let mediaStream = null; let mediaRecorder = null; let recordedChunks = []; let finalVideoBlob = null; let isRecording = false; let timerInterval = null; let timerSeconds = 0;
+
+    function validateName() { document.getElementById('check_name').style.display = (document.getElementById('driverName').value.trim().length > 2) ? 'block' : 'none'; }
+    function autoDetectVehicle() { const vin = document.getElementById('vin').value; const btns = document.querySelectorAll('#groupVehicle .toggle-btn'); btns.forEach(b => {b.classList.remove('active'); b.style.pointerEvents='none';}); if(vin.length===4){ document.getElementById('check_vin').style.display='block'; const type = FLEET_MAP[vin] || 'Rental'; serviceTypeStr = type; document.getElementById('v_'+type).classList.add('active'); } else { document.getElementById('check_vin').style.display='none'; } }
+    function runShiftLogic() { const now = new Date(); document.getElementById('timestampDisplay').innerText = now.toLocaleString(); const mins = (now.getHours()*60)+now.getMinutes(); const pre = document.getElementById('btnPre'); const post = document.getElementById('btnPost'); pre.classList.remove('active','disabled-state'); post.classList.remove('active','disabled-state'); pre.style.pointerEvents='auto'; post.style.pointerEvents='auto'; if(mins>=360 && mins<=960){ pre.classList.add('active'); post.classList.add('disabled-state'); post.style.pointerEvents='none'; } else { post.classList.add('active'); pre.classList.add('disabled-state'); pre.style.pointerEvents='none'; } }
+
+    async function startCamera() { try { document.getElementById('startCamBox').style.display='none'; document.getElementById('cameraUI').style.display='block'; document.getElementById('camControls').style.display='flex'; document.getElementById('status').innerText="INITIALIZING..."; const c = {audio:true, video:{facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}}}; mediaStream = await navigator.mediaDevices.getUserMedia(c); document.getElementById('livePreview').srcObject = mediaStream; const track = mediaStream.getVideoTracks()[0]; const s = track.getSettings(); document.getElementById('resBadge').style.display='block'; document.getElementById('resBadge').innerText=`CAM: ${s.width}x${s.height}`; document.getElementById('status').innerText="CAMERA READY"; } catch(err){ alert("Error: "+err.message); document.getElementById('startCamBox').style.display='block'; document.getElementById('cameraUI').style.display='none'; } }
+    function updateTimer() { const m = Math.floor(timerSeconds/60); const s = timerSeconds%60; document.getElementById('recordTimer').innerText = `🔴 ${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; }
+    function toggleRecording() { if(!isRecording){ recordedChunks=[]; const opt={mimeType:'video/webm;codecs=vp9'}; if(!MediaRecorder.isTypeSupported(opt.mimeType)) delete opt.mimeType; mediaRecorder = new MediaRecorder(mediaStream, opt); mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); }; mediaRecorder.onstop = () => { clearInterval(timerInterval); document.getElementById('recordTimer').style.display='none'; finalVideoBlob = new Blob(recordedChunks, {type:'video/mp4'}); document.getElementById('recordedPlayback').src = URL.createObjectURL(finalVideoBlob); document.getElementById('recordedPlayback').style.display='block'; document.getElementById('livePreview').style.display='none'; document.getElementById('btnRecord').style.display='none'; document.getElementById('btnRetake').style.display='block'; document.getElementById('submitBtn').style.display='block'; document.getElementById('status').innerText="VIDEO CAPTURED."; mediaStream.getTracks().forEach(t=>t.stop()); }; mediaRecorder.start(); isRecording=true; document.getElementById('btnRecord').innerText="STOP"; document.getElementById('btnRecord').classList.add('recording'); timerSeconds=0; updateTimer(); document.getElementById('recordTimer').style.display='block'; timerInterval = setInterval(()=>{timerSeconds++; updateTimer();}, 1000); } else { mediaRecorder.stop(); isRecording=false; document.getElementById('btnRecord').innerText="RECORD"; document.getElementById('btnRecord').classList.remove('recording'); } }
+    function resetCamera() { document.getElementById('recordedPlayback').style.display='none'; document.getElementById('livePreview').style.display='block'; document.getElementById('btnRecord').style.display='block'; document.getElementById('btnRetake').style.display='none'; document.getElementById('submitBtn').style.display='none'; finalVideoBlob=null; startCamera(); }
+
+    document.getElementById('submitBtn').onclick = async () => { const n = document.getElementById('driverName').value.trim(); const v = document.getElementById('vin').value.trim(); const insp = document.querySelector('#groupType .active'); if(!finalVideoBlob){alert("No video!");return;} if(!n||!v||!insp){alert("Check info.");return;} document.getElementById('submitBtn').disabled=true; document.getElementById('progressContainer').style.display='block'; document.getElementById('status').innerText="SYNCING..."; const fd = new FormData(); fd.append('driverName',n); fd.append('vin',v); fd.append('serviceType',serviceTypeStr); fd.append('inspectionType',insp.innerText); fd.append('video',finalVideoBlob,'cam.mp4'); const xhr = new XMLHttpRequest(); xhr.open('POST','/upload-video'); xhr.upload.onprogress = e => { if(e.lengthComputable){ const p = Math.round((e.loaded/e.total)*100); document.getElementById('progressBar').style.width=p+'%'; document.getElementById('status').innerText=`SYNCING: ${p}%`; } }; xhr.onload=()=>{ if(xhr.status===200){ document.getElementById('mainCard').style.display='none'; document.getElementById('successCard').style.display='block'; } else { document.getElementById('status').innerText="FAILED"; document.getElementById('submitBtn').disabled=false; } }; xhr.send(fd); };
+    runShiftLogic(); setInterval(runShiftLogic, 1000);
+</script>
+</body>
+</html>
