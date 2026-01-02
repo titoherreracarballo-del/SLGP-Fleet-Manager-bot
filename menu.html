@@ -1,120 +1,147 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="icon.jpg">
-    <link rel="icon" type="image/jpeg" href="icon.jpg">
-    <style>
-        body {
-            background-color: #0a0e17;
-            background-image: radial-gradient(circle at top right, #1a2a44, #0a0e17);
-            color: white; font-family: -apple-system, system-ui, sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 100vh; margin: 0; padding: 20px; text-align: center;
-        }
+const express = require('express');
+const multer = require('multer');
+const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+const stream = require('stream');
+
+const app = express();
+
+// --- 1. PERSISTENT VOLUME CONFIGURATION ---
+// Restoring connection to your Railway Volume for safe storage
+const VOLUME_PATH = '/app/meshcentral-data';
+const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
+
+// Ensure the directory exists in the volume
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const upload = multer({ dest: UPLOAD_DIR });
+
+// --- 2. MIDDLEWARE ---
+// Explicitly serve static files like icons and images
+app.use(express.static(__dirname)); 
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+// --- 3. NAVIGATION ROUTES (Fixes code showing on screen) ---
+// These routes tell the server EXACTLY which file to show
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'menu.html'));
+});
+
+app.get('/video', (req, res) => {
+    res.sendFile(path.join(__dirname, 'video.html'));
+});
+
+app.get('/report', (req, res) => {
+    res.sendFile(path.join(__dirname, 'report.html'));
+});
+
+// --- 4. AUTHENTICATION (Using Railway Variables) ---
+let auth;
+try {
+    auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(process.env.GCP_SA_KEY),
+        scopes: ['https://www.googleapis.com/auth/drive.file'],
+    });
+    console.log("SUCCESS: GCP Service Account Authenticated.");
+} catch (err) { 
+    console.error("CRITICAL: Auth Failed. Check GCP_SA_KEY."); 
+}
+
+// =========================================================
+// SECTION A: ORIGINAL VIDEO LOGIC (WORKING - SEPARATE)
+// =========================================================
+const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+
+app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).send('No video file.');
+        const drive = google.drive({ version: 'v3', auth });
+        const { driverName, vin, inspectionType } = req.body;
+        const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+
+        // Create stream from file on Railway Volume
+        await drive.files.create({
+            resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
+            fields: 'id', supportsAllDrives: true
+        });
+
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(200).send('Video Saved to Original Volume');
+    } catch (error) {
+        res.status(500).send(`Video Failure: ${error.message}`);
+    }
+});
+
+// =========================================================
+// SECTION B: NEW REPORT LOGIC (SEPARATE)
+// =========================================================
+const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+
+app.post('/submit-report', async (req, res) => {
+    const data = req.body;
+    try {
+        const drive = google.drive({ version: 'v3', auth });
         
-        /* LOGO BADGE STYLE */
-        .logo-container { 
-            background: white; 
-            padding: 15px 25px; 
-            border-radius: 20px; 
-            margin-bottom: 30px; 
-            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3); 
-            display: inline-block;
-        }
-        .logo-container img { 
-            width: 100%; 
-            max-width: 250px; 
-            display: block; 
-        }
-        
-        /* BUTTON CONTAINER */
-        .menu-btn {
-            display: flex; 
-            flex-direction: column; 
-            width: 100%; 
-            max-width: 320px; 
-            margin-bottom: 25px; 
-            border-radius: 18px; 
-            text-decoration: none;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.4); 
-            padding: 0; 
-            background: rgba(255, 255, 255, 0.05); 
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden; 
-        }
-        .menu-btn:active { transform: scale(0.97); }
+        // 1. Create unique folder in reporting destination
+        const folder = await drive.files.create({
+            resource: { 
+                name: `${data.driverName} - ${data.priorityLevel.toUpperCase()}`, 
+                mimeType: 'application/vnd.google-apps.folder', 
+                parents: [REPORT_DRIVE_ID] 
+            },
+            fields: 'id'
+        });
+        const subFolderId = folder.data.id;
 
-        /* IMAGE BOX */
-        .btn-img-box { 
-            width: 100%; 
-            height: 180px; 
-            overflow: hidden; 
-        }
-        .btn-img { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            display: block; 
+        // 2. Upload any photos included in the report
+        const allPhotos = [...data.highPhotos, ...data.lowPhotos, ...data.edvPhotos, ...data.mphPhotos, ...data.accidentPhotos];
+        for (let photo of allPhotos) {
+            const buffer = Buffer.from(photo.data, 'base64');
+            const bs = new stream.PassThrough();
+            bs.end(buffer);
+            await drive.files.create({
+                resource: { name: photo.name, parents: [subFolderId] },
+                media: { mimeType: 'image/jpeg', body: bs }
+            });
         }
 
-        /* LABEL STYLE */
-        .btn-label {
-            padding: 15px; 
-            font-size: 16px; 
-            font-weight: 800; 
-            color: white;
-            text-transform: uppercase; 
-            letter-spacing: 1px;
-        }
-        
-        /* COLOR BARS */
-        .lbl-video { border-bottom: 4px solid #0066ff; }
-        .lbl-issue { border-bottom: 4px solid #ff9900; }
-        .lbl-accident { border-bottom: 4px solid #ff4444; }
-        .lbl-insurance { border-bottom: 4px solid #00cc66; } 
+        // 3. Generate Summary PDF
+        const doc = await PDFDocument.create();
+        const page = doc.addPage([600, 800]);
+        const font = await doc.embedFont(StandardFonts.Helvetica);
+        page.drawText(`SLGP REPORT: ${data.priorityLevel.toUpperCase()}`, { x: 50, y: 750, size: 18, font });
+        page.drawText(`Driver: ${data.driverName}`, { x: 50, y: 720, size: 12, font });
 
-        .footer { margin-top: 40px; font-size: 11px; color: #444; }
-    </style>
-</head>
-<body>
-    <div class="logo-container">
-        <img src="Final-01.jpg" alt="SLGP Logo">
-    </div>
+        const pdfPath = path.join(UPLOAD_DIR, `summary-${Date.now()}.pdf`);
+        fs.writeFileSync(pdfPath, await doc.save());
 
-    <a href="/video" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
-        </div>
-        <div class="btn-label lbl-video">Pre & Post Fleet Vids</div>
-    </a>
+        // 4. Send Routing Emails
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
 
-    <a href="/report?mode=issue" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
-        </div>
-        <div class="btn-label lbl-issue">Report Issue</div>
-    </a>
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: (data.priorityLevel === 'accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'],
+            subject: `REPORT: ${data.priorityLevel.toUpperCase()} - ${data.driverName}`,
+            text: `Files Link: https://drive.google.com/drive/folders/${subFolderId}`,
+            attachments: [{ filename: 'Summary.pdf', path: pdfPath }]
+        });
 
-    <a href="/report?mode=accident" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
-        </div>
-        <div class="btn-label lbl-accident">Accident/Incident Report</div>
-    </a>
+        fs.unlinkSync(pdfPath);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
-    <a href="/report?mode=insurance" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
-        </div>
-        <div class="btn-label lbl-insurance">Insurance Cards</div>
-    </a>
-
-    <div class="footer">SLGP Fleet Portal v6.2</div>
-</body>
-</html>
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, '0.0.0.0', () => console.log(`SYSTEMS ONLINE: Port ${PORT}`));
