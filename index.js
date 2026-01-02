@@ -8,28 +8,39 @@ const nodemailer = require('nodemailer');
 const { PDFDocument } = require('pdf-lib');
 
 const app = express();
-// Using /tmp/ is standard for Railway to avoid permission issues
+// Use /tmp/ to avoid Railway write-access errors
 const upload = multer({ dest: '/tmp/' });
 
-// --- AUTHENTICATION (Uses Railway Variables Only) ---
+// --- AUTHENTICATION (Uses Railway Variable ONLY) ---
 let auth;
 try {
-    // Directly parsing the Railway environment variable
     const credentials = JSON.parse(process.env.GCP_SA_KEY);
     auth = new google.auth.GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
-    console.log("SUCCESS: Authenticated via Railway Variable.");
+    console.log("SUCCESS: GCP Service Account Authenticated.");
 } catch (err) {
-    console.error("CRITICAL: GCP_SA_KEY is missing or invalid JSON.");
+    console.error("CRITICAL ERROR: GCP_SA_KEY is missing or invalid.");
 }
 
-app.use(express.static(__dirname));
+// --- MIDDLEWARE ---
+app.use(express.static(__dirname)); //
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// --- ROUTE 1: ORIGINAL VIDEO LOGIC ---
+// --- NAVIGATION ROUTES (FIXES "CANNOT GET /") ---
+// This tells the server to show your menu when someone visits your site
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'menu.html'));
+});
+
+app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
+app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
+
+// =========================================================
+// SECTION 1: ORIGINAL VIDEO LOGIC (RESTORED)
+// =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -40,7 +51,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
 
-        // Upload to ORIGINAL folder destination
         await drive.files.create({
             resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
@@ -54,7 +64,9 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// --- ROUTE 2: NEW INCIDENT REPORT LOGIC ---
+// =========================================================
+// SECTION 2: NEW INCIDENT REPORT LOGIC (SEPARATE)
+// =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 
 app.post('/submit-report', async (req, res) => {
@@ -62,15 +74,13 @@ app.post('/submit-report', async (req, res) => {
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // Create unique sub-folder in REPORTING folder destination
-        const folderName = `${data.driverName} - ${new Date().toLocaleDateString()}`;
+        const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
             fields: 'id'
         });
         const subFolderId = folder.data.id;
 
-        // Generate PDF Report
         const doc = await PDFDocument.create();
         const page = doc.addPage([600, 800]);
         page.drawText(`SLGP INCIDENT REPORT: ${data.driverName}`, { x: 50, y: 750, size: 18 });
@@ -79,7 +89,6 @@ app.post('/submit-report', async (req, res) => {
         const pdfPath = path.join('/tmp', `report-${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, pdfBytes);
 
-        // Routing to different emails based on report type
         const recipients = (data.priorityLevel === 'accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] 
             : ['slgpfleetmanager@gmail.com'];
