@@ -31,7 +31,7 @@
         display: flex; justify-content: center; min-height: 100vh;
     }
 
-    .container { width: 100%; max-width: 480px; margin-top: 10px; position: relative; } /* Slightly wider for maps */
+    .container { width: 100%; max-width: 480px; margin-top: 10px; position: relative; }
     
     .logo-container { text-align: center; margin-bottom: 20px; }
     .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
@@ -58,7 +58,7 @@
     }
     textarea { min-height: 100px; resize: vertical; }
 
-    /* --- PILL BUTTONS (Matching Toggle Style) --- */
+    /* --- PILL BUTTONS --- */
     .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .pill {
         flex: 1 1 calc(50% - 8px); padding: 14px;
@@ -313,7 +313,7 @@ window.selectPriority = function(type) {
   if (type === "mph") setTimeout(captureGPS_mph, 500);
 };
 
-// --- GPS LOGIC ---
+// --- GPS LOGIC (With Satellite Toggle) ---
 function getSmartLocation(statusId, latId, lngId, mapId, mapVar, isAccident) {
     var status = document.getElementById(statusId);
     status.textContent = "⏳ Locating...";
@@ -342,9 +342,22 @@ function successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident) {
     document.getElementById(lngId).textContent = lng.toFixed(5);
 
     if (window[mapVar]) window[mapVar].remove();
-    var map = L.map(mapId).setView([lat, lng], 16);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© OpenStreetMap' }).addTo(map);
-    L.marker([lat, lng]).addTo(map).bindPopup("You").openPopup();
+    
+    // DEFINE LAYERS (STREET vs SATELLITE)
+    var streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© OpenStreetMap' });
+    var satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: 'Tiles © Esri' });
+
+    var map = L.map(mapId, {
+        center: [lat, lng],
+        zoom: 18,
+        layers: [streetLayer] // Default to street
+    });
+    
+    // ADD TOGGLE CONTROL
+    var baseMaps = { "Street Map": streetLayer, "Satellite": satelliteLayer };
+    L.control.layers(baseMaps).addTo(map);
+
+    L.marker([lat, lng]).addTo(map).bindPopup("Your Location").openPopup();
     
     setTimeout(() => { map.invalidateSize(); }, 500);
     window[mapVar] = map;
