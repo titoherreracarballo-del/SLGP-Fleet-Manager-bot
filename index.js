@@ -1,9 +1,8 @@
 /**
- * SLGP FLEET PORTAL - MASTER SERVER v8.1 (FINAL FIX)
- * --------------------------------------------------
- * 1. Fixed Folder Permissions (Uses the NEW shared folder).
- * 2. Matches your HTML's '/upload-to-google-drive' route exactly.
- * 3. Includes "Crash Prevention" if modules are missing.
+ * SLGP FLEET PORTAL - UNIFIED SERVER
+ * ----------------------------------
+ * SECTION A: OLD WORKING VIDEO LOGIC (Strictly preserved)
+ * SECTION B: NEW INCIDENT REPORT LOGIC (Added separately)
  */
 
 const express = require('express');
@@ -12,211 +11,184 @@ const { google } = require('googleapis');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
-const stream = require('stream');
-
-// --- CRON JOB SETUP (Safe Mode) ---
-let cron;
-try {
-    cron = require('node-cron');
-} catch (e) {
-    console.warn("WARNING: 'node-cron' not installed. Daily reports will be skipped.");
-}
-
+const cron = require('node-cron');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const stream = require('stream');
 
 const app = express();
 
-// --- CONFIGURATION ---
-// CRITICAL FIX: Using the NEW Folder ID that you shared with the robot today.
-const PARENT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy'; 
-
-const EMAIL_USER = 'strategiclogisticsgroupllc@gmail.com'; 
-const EMAIL_PASS = 'wnSx-72@!'; // REPLACE WITH REAL APP PASSWORD
-const EMAIL_TO_FLEET = 'slgpfleetmanager@gmail.com';
-const LOG_FILE = path.join(__dirname, 'submission_log.json');
-const KEY_FILE_PATH = path.join(__dirname, 'credentials.json');
-
-// --- UPLOAD STORAGE ---
-// Using /tmp/ is required for Railway/Cloud reliability
+// --- SHARED CONFIGURATION ---
+// We use /tmp/ because Railway allows writing there without crashing
 const upload = multer({ 
     dest: '/tmp/', 
     limits: { fileSize: 1024 * 1024 * 1024 } // 1GB Limit
 });
+
+const EMAIL_USER = process.env.EMAIL_USER || 'strategiclogisticsgroupllc@gmail.com';
+const EMAIL_PASS = process.env.EMAIL_PASS || 'wnSx-72@!'; // Check your App Password!
+
+// --- AUTHENTICATION HELPER (Works for BOTH) ---
+// This prioritizes your OLD method (Environment Variable) but keeps a fallback.
+function getDriveClient() {
+    let auth;
+    // 1. Try the OLD WAY (Railway Variable)
+    if (process.env.GCP_SA_KEY) {
+        try {
+            const credentials = JSON.parse(process.env.GCP_SA_KEY);
+            auth = new google.auth.GoogleAuth({
+                credentials,
+                scopes: ['https://www.googleapis.com/auth/drive.file'],
+            });
+        } catch (e) { console.error("GCP_SA_KEY Error:", e); }
+    }
+    // 2. Try the NEW WAY (File)
+    if (!auth && fs.existsSync(path.join(__dirname, 'credentials.json'))) {
+        auth = new google.auth.GoogleAuth({
+            keyFile: path.join(__dirname, 'credentials.json'),
+            scopes: ['https://www.googleapis.com/auth/drive.file'],
+        });
+    }
+    
+    if (!auth) {
+        console.error("CRITICAL: No Google Auth found. Check GCP_SA_KEY or credentials.json");
+        return null;
+    }
+    return google.drive({ version: 'v3', auth });
+}
 
 // --- MIDDLEWARE ---
 app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '100mb' })); 
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- LOGGING ---
+// --- ROUTES (MENU) ---
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
+app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
+app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
+
+
+// ============================================================================
+// SECTION A: OLD WORKING VIDEO LOGIC (PRESERVED)
+// ============================================================================
+
+// 1. Config specific to Old Logic
+const VIDEO_FOLDER_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+const LOG_FILE = path.join(__dirname, 'submission_log.json');
+
+// 2. Logging Helpers (From Old Code)
 function loadLogs() {
-    try {
-        if (fs.existsSync(LOG_FILE)) return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
-    } catch (e) { console.error("Log Read Error:", e); }
+    try { if (fs.existsSync(LOG_FILE)) return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')); } catch (e) {}
     return [];
 }
-
 function saveLog(entry) {
     const logs = loadLogs();
     logs.push(entry);
     try { fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2)); } catch (e) {}
 }
 
-// --- GOOGLE AUTH HELPER ---
-function getDriveClient() {
-    const auth = new google.auth.GoogleAuth({
-        keyFile: KEY_FILE_PATH,
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-    return google.drive({ version: 'v3', auth });
-}
-
-// =========================================================
-// 1. PAGE ROUTES
-// =========================================================
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
-app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
-
-
-// =========================================================
-// 2. VIDEO UPLOAD (MATCHES YOUR HTML EXACTLY)
-// =========================================================
+// 3. The Route (Matches your HTML exactly)
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
-    console.log("Received Video Upload Request...");
-
-    // 1. Basic Validation
-    if (!req.file) {
-        console.error("Error: No file received.");
-        return res.status(400).send('No file received.');
-    }
+    console.log("OLD LOGIC: Received Video Upload...");
+    
+    if (!req.file) return res.status(400).send('No file received.');
     const { driverName, vin, inspectionType } = req.body;
 
     try {
         const drive = getDriveClient();
-        
-        // 2. Create Filename
+        if (!drive) throw new Error("Auth Failed");
+
         const now = new Date();
         const timeStringFile = now.toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
         const timeStringLog = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
         const dateStringLog = now.toISOString().split('T')[0];
         const finalFileName = `${driverName}_${vin}_${inspectionType}_${timeStringFile}.mp4`;
 
-        console.log(`Uploading: ${finalFileName} (${req.file.size} bytes)`);
-
-        // 3. Create Subfolder (Optional, but keeps things clean)
-        // We put the video directly in the Main Folder (PARENT_FOLDER_ID) to match old behavior
+        // Upload to Old Folder
         const response = await drive.files.create({
-            resource: { 
-                name: finalFileName, 
-                parents: [PARENT_FOLDER_ID] 
-            },
-            media: { 
-                mimeType: 'video/mp4', 
-                body: fs.createReadStream(req.file.path) 
-            },
+            resource: { name: finalFileName, parents: [VIDEO_FOLDER_ID] },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id, webViewLink'
         });
 
         console.log(`SYNC SUCCESS: ${finalFileName}`);
-
-        // 4. Save Log
         saveLog({ date: dateStringLog, time: timeStringLog, driverName, vin, inspectionType, fileName: finalFileName });
 
-        // 5. Send Email
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: EMAIL_USER, pass: EMAIL_PASS }
-        });
-
+        // Email Fleet Manager
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_PASS } });
         await transporter.sendMail({
             from: EMAIL_USER,
-            to: EMAIL_TO_FLEET,
+            to: 'slgpfleetmanager@gmail.com',
             subject: `🎥 Video: ${driverName} (${inspectionType})`,
-            text: `Driver: ${driverName}\nVIN: ${vin}\nType: ${inspectionType}\n\nVideo Link: ${response.data.webViewLink}`
+            text: `Driver: ${driverName}\nVIN: ${vin}\nType: ${inspectionType}\n\nLink: ${response.data.webViewLink}`
         });
 
-        // Cleanup
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
         res.status(200).send('Upload Successful');
 
     } catch (error) {
-        console.error("UPLOAD FAILED:", error.message);
+        console.error("Video Upload Error:", error);
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        // Return the exact error to the browser so we can see it
         res.status(500).send(`Upload Failed: ${error.message}`);
     }
 });
 
+// 4. Cron Jobs (From Old Code)
+async function generateDailyReport(typeFilter, reportTitle) {
+    const logs = loadLogs();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const relevantLogs = logs.filter(e => e.date === todayStr && e.inspectionType && e.inspectionType.toLowerCase().includes(typeFilter));
 
-// =========================================================
-// 3. DAILY REPORTS (CRON)
-// =========================================================
-// Only runs if node-cron was successfully installed
-if (cron) {
-    async function generateDailyReport(typeFilter, reportTitle) {
-        console.log(`Generating ${reportTitle}...`);
-        const logs = loadLogs();
-        const todayStr = new Date().toISOString().split('T')[0];
-        
-        const relevantLogs = logs.filter(entry => {
-            return entry.date === todayStr && entry.inspectionType && entry.inspectionType.toLowerCase().includes(typeFilter);
+    if (relevantLogs.length === 0) return;
+
+    let content = `DAILY REPORT: ${reportTitle}\nDATE: ${todayStr}\n\n`;
+    relevantLogs.forEach((log, i) => content += `${i+1}. ${log.driverName} (${log.vin}) - ${log.time}\n`);
+    const reportPath = path.join(__dirname, `${reportTitle}_${todayStr}.txt`);
+    fs.writeFileSync(reportPath, content);
+
+    try {
+        const drive = getDriveClient();
+        await drive.files.create({
+            resource: { name: `${reportTitle}_${todayStr}.txt`, parents: [VIDEO_FOLDER_ID] },
+            media: { mimeType: 'text/plain', body: fs.createReadStream(reportPath) }
         });
-
-        if (relevantLogs.length === 0) return;
-
-        let reportContent = `FLEET REPORT: ${reportTitle}\nDATE: ${todayStr}\n-----------------------------------\n\n`;
-        relevantLogs.forEach((log, index) => {
-            reportContent += `${index + 1}. Driver: ${log.driverName}\n   VIN: ${log.vin}\n   Time: ${log.time}\n   File: ${log.fileName}\n\n`;
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_PASS } });
+        await transporter.sendMail({
+            from: EMAIL_USER, to: 'slgpfleetmanager@gmail.com', subject: `${reportTitle}`, attachments: [{ path: reportPath }]
         });
-
-        const reportPath = path.join(__dirname, `${reportTitle}_${todayStr}.txt`);
-        fs.writeFileSync(reportPath, reportContent);
-
-        try {
-            const drive = getDriveClient();
-            await drive.files.create({
-                resource: { name: `${reportTitle}_${todayStr}.txt`, parents: [PARENT_FOLDER_ID] },
-                media: { mimeType: 'text/plain', body: fs.createReadStream(reportPath) }
-            });
-            
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: { user: EMAIL_USER, pass: EMAIL_PASS }
-            });
-            await transporter.sendMail({
-                from: EMAIL_USER,
-                to: EMAIL_TO_FLEET,
-                subject: `${reportTitle} - ${todayStr}`,
-                text: "Daily report attached.",
-                attachments: [{ path: reportPath }]
-            });
-        } catch (e) { console.error("Report Error:", e); }
-    }
-
-    cron.schedule('0 12 * * *', () => { generateDailyReport('pre', 'DAILY_PRECHECK_REPORT'); }, { timezone: "America/New_York" });
-    cron.schedule('30 23 * * *', () => { generateDailyReport('post', 'DAILY_POSTCHECK_REPORT'); }, { timezone: "America/New_York" });
+    } catch (e) { console.error("Cron Error:", e); }
 }
 
+cron.schedule('0 12 * * *', () => generateDailyReport('pre', 'DAILY_PRECHECK_REPORT'), { timezone: "America/New_York" });
+cron.schedule('30 23 * * *', () => generateDailyReport('post', 'DAILY_POSTCHECK_REPORT'), { timezone: "America/New_York" });
 
-// =========================================================
-// 4. INCIDENT / MAINTENANCE REPORTING (PDF)
-// =========================================================
+
+// ============================================================================
+// SECTION B: NEW INCIDENT REPORT LOGIC (ADDED SEPARATELY)
+// ============================================================================
+
+// 1. Config specific to New Logic
+const REPORT_FOLDER_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy'; // The new folder you shared
+const EMAIL_FLEET = 'slgpfleetmanager@gmail.com';
+const EMAIL_ACCIDENT = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
+
+// 2. The Route (Used by report.html)
 app.post('/submit-report', async (req, res) => {
-    console.log("Received Incident Report...");
+    console.log("NEW LOGIC: Received Incident Report...");
     const data = req.body;
 
     try {
         const drive = getDriveClient();
+        if (!drive) throw new Error("Auth Failed");
+
+        // Create Subfolder in NEW Drive Folder
         const folderName = `${data.driverName} - ${new Date().toLocaleDateString().replace(/\//g, '-')}`;
         const folder = await drive.files.create({
-            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [PARENT_FOLDER_ID] },
+            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_FOLDER_ID] },
             fields: 'id'
         });
-        const reportFolderId = folder.data.id;
+        const subFolderId = folder.data.id;
 
+        // Upload Helper
         let photoLinks = [];
         const uploadImage = async (imgObj, type) => {
             if (!imgObj || !imgObj.data) return;
@@ -224,7 +196,7 @@ app.post('/submit-report', async (req, res) => {
             const bs = new stream.PassThrough();
             bs.end(buffer);
             const photo = await drive.files.create({
-                resource: { name: `${type}_${imgObj.name}`, parents: [reportFolderId] },
+                resource: { name: `${type}_${imgObj.name}`, parents: [subFolderId] },
                 media: { mimeType: 'image/jpeg', body: bs },
                 fields: 'webViewLink'
             });
@@ -237,25 +209,19 @@ app.post('/submit-report', async (req, res) => {
         if (data.mphPhotos) await uploadImage(data.mphPhotos, 'MPH');
         if (data.accidentPhotos) await uploadImage(data.accidentPhotos, 'Accident');
 
+        // Generate PDF
         const pdfPath = await generatePDF(data, photoLinks);
-        
-        let recipients = [];
-        if (data.priorityLevel === 'accident') {
-            recipients = ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'];
-        } else {
-            recipients = [EMAIL_TO_FLEET];
-        }
 
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: EMAIL_USER, pass: EMAIL_PASS }
-        });
+        // Smart Routing
+        let recipients = (data.priorityLevel === 'accident') ? EMAIL_ACCIDENT : [EMAIL_FLEET];
+        let subject = (data.priorityLevel === 'accident') ? `🚨 ACCIDENT: ${data.driverName}` : `🛠️ Maintenance: ${data.driverName}`;
 
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_PASS } });
         await transporter.sendMail({
             from: EMAIL_USER,
             to: recipients,
-            subject: `🚨 Report: ${data.priorityLevel.toUpperCase()} - ${data.driverName}`,
-            text: `New Report from ${data.driverName}.\nType: ${data.priorityLevel}\nFolder: https://drive.google.com/drive/folders/${reportFolderId}`,
+            subject: subject,
+            text: `Report Type: ${data.priorityLevel}\nFiles: https://drive.google.com/drive/folders/${subFolderId}`,
             attachments: [{ filename: 'Report.pdf', path: pdfPath }]
         });
 
@@ -268,15 +234,17 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
+// 3. PDF Helper (New Logic)
 async function generatePDF(data, photoLinks) {
     const doc = await PDFDocument.create();
     const page = doc.addPage([600, 800]);
     const font = await doc.embedFont(StandardFonts.Helvetica);
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     let y = 750;
-    const drawText = (text) => { page.drawText(text, { x: 50, y, size: 12, font, color: rgb(0, 0, 0) }); y -= 20; };
+    const drawText = (text, f=font) => { page.drawText(text, { x: 50, y, size: 12, font: f }); y -= 20; };
 
-    drawText(`SLGP REPORT - ${data.priorityLevel.toUpperCase()}`);
-    drawText(`Date: ${new Date().toLocaleString()}`);
+    drawText(`SLGP REPORT: ${data.priorityLevel.toUpperCase()}`, bold);
+    y -= 10;
     drawText(`Driver: ${data.driverName}`);
     if(data.vinLast4) drawText(`VIN: ${data.vinLast4}`);
     y -= 20;
@@ -284,7 +252,7 @@ async function generatePDF(data, photoLinks) {
     if (data.priorityLevel === 'accident') {
         drawText(`Statement: ${data.accidentStatement}`);
         drawText(`Police Report: ${data.policeReportNumber}`);
-        drawText(`Case #: ${data.lmetCaseNumber}`);
+        drawText(`Case: ${data.lmetCaseNumber}`);
         if(data.affidavitSignature) {
             y -= 40;
             const sig = await doc.embedPng(Buffer.from(data.affidavitSignature, 'base64'));
@@ -294,17 +262,17 @@ async function generatePDF(data, photoLinks) {
     } else {
         if(data.highIssues) drawText(`Issue: ${data.highIssues}`);
         if(data.lowIssues) drawText(`Issue: ${data.lowIssues}`);
+        if(data.edvIssues) drawText(`Issue: ${data.edvIssues}`);
     }
 
     y -= 20;
-    drawText("Photos Attached (See Drive Folder)");
+    drawText("Attached Photos:", bold);
     photoLinks.forEach(p => drawText(`- ${p.name}`));
 
     const filePath = path.join(__dirname, `report-${Date.now()}.pdf`);
-    const pdfBytes = await doc.save();
-    fs.writeFileSync(filePath, pdfBytes);
+    fs.writeFileSync(filePath, await doc.save());
     return filePath;
 }
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => { console.log(`SLGP SERVER v8.1 LIVE ON PORT: ${PORT}`); });
+app.listen(PORT, '0.0.0.0', () => console.log(`SLGP UNIFIED SERVER LIVE ON PORT ${PORT}`));
