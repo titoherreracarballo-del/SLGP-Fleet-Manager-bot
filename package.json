@@ -1,7 +1,6 @@
 {
   "name": "slgp-fleet-portal",
   "version": "1.0.0",
-  "description": "Fleet Management Portal",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,7 +10,8 @@
     "multer": "^1.4.5-lts.1",
     "googleapis": "^126.0.1",
     "nodemailer": "^6.9.5",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "node-cron": "^3.0.0" 
   },
   "engines": {
     "node": "18.x"
