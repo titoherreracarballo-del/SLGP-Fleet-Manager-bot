@@ -31,7 +31,7 @@
 
     .container { width: 100%; max-width: 480px; margin-top: 10px; position: relative; }
     
-    /* LOGO BADGE STYLE (Matches Menu) */
+    /* LOGO BADGE STYLE */
     .logo-container { 
         background: white; 
         padding: 15px 25px; 
@@ -114,18 +114,15 @@
           <p style="text-align:center; color:var(--text-dim); margin-bottom:20px;">
               Please select the vehicle type to view the insurance card.
           </p>
-          
           <button onclick="openCard('amazon')" class="pill" style="width:100%; padding:20px; font-size:14px; margin-bottom:15px; background:linear-gradient(135deg, #0066ff, #0044cc); color:white; border:none; text-align:center;">
               🚙 AMAZON BRANDED VAN
           </button>
-          
           <button onclick="openCard('hertz')" class="pill" style="width:100%; padding:20px; font-size:14px; background:linear-gradient(135deg, #ff9900, #cc7a00); color:white; border:none; text-align:center;">
               🚗 HERTZ RENTAL (WHITE)
           </button>
       </div>
 
       <form id="reportForm" onsubmit="submitForm(event)">
-        
         <h2>1. Driver Info</h2>
         <div class="form-group"><label>Driver Full Name *</label><input type="text" id="driverName" placeholder="Enter Full Name" required></div>
         <div style="display:flex; gap:10px;">
@@ -134,31 +131,31 @@
         </div>
         <div class="form-group"><label>Last 4 of VIN *</label><input type="tel" id="vinLast4" placeholder="0000" maxlength="4" pattern="\d*" required></div>
 
-        <h2 id="typeHeader">2. Select Issue Type</h2>
+        <h2 id="typeHeader">2. Issue Type & Priority</h2>
         <div class="pill-row">
           <div class="pill" id="pill-high" onclick="selectPriority('high')">High Priority</div>
           <div class="pill" id="pill-edv" onclick="selectPriority('edv')">EDV Issue</div>
           <div class="pill" id="pill-low" onclick="selectPriority('low')">Low Priority</div>
           <div class="pill" id="pill-mph" onclick="selectPriority('mph')">Road MPH Error</div>
-          <div class="pill" id="pill-accident" onclick="selectPriority('accident')">Accident</div>
+          <div class="pill" id="pill-accident" onclick="selectPriority('accident')">Accident / Incident</div>
         </div>
 
         <div id="section-high" class="section">
-          <h2>High Priority</h2>
+          <h2>High Priority Issues</h2>
           <div class="pill-row" id="highIssues"></div>
           <label>Notes</label><textarea id="highNotes" placeholder="Describe the issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="highPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-edv" class="section">
-          <h2>EDV Specific</h2>
+          <h2>EDV Issues</h2>
           <div class="pill-row" id="edvIssues"></div>
           <label>Notes</label><textarea id="edvNotes" placeholder="Describe EDV issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 8)</label><input type="file" id="edvPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-low" class="section">
-          <h2>Low Priority</h2>
+          <h2>Low Priority Issues</h2>
           <div class="pill-row" id="lowIssues"></div>
           <label>Notes</label><textarea id="lowNotes" placeholder="Describe issue..."></textarea>
           <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="lowPhotos" multiple accept="image/*" style="width:100%;"></div>
@@ -175,7 +172,7 @@
         </div>
 
         <div id="section-accident" class="section">
-          <h2>Accident Report</h2>
+          <h2>Accident / Incident Type</h2>
           <div class="pill-row" id="accidentTypes"></div>
           
           <div id="weatherBox" class="weather-box" style="display:none;">
@@ -185,23 +182,30 @@
           <div class="gps-info">GPS: <span id="gpsStatus">Ready</span><br><span id="gpsLat">--</span>, <span id="gpsLng">--</span></div>
           <div id="accidentMap" class="mapBox"></div>
 
-          <label>Statement *</label><textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
+          <label>Incident / Accident Statement *</label>
+          <textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
           
-          <label>Police Report #</label><input type="text" id="policeReportNumber">
-          <label>Case # (LMET/EMT)</label><input type="text" id="lmetCaseNumber">
+          <label>Police Report #</label>
+          <input type="text" id="policeReportNumber">
+          
+          <label>LMET / EMT Case #</label>
+          <input type="text" id="lmetCaseNumber">
 
-          <div class="photo-box"><label>Upload Scene Photos (Max 8)</label><input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;"></div>
+          <div class="photo-box">
+              <label>Upload Photos (up to 8)</label>
+              <input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;">
+          </div>
 
-          <h2>Affidavit</h2>
-          <p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I certify the information above is true.</p>
-          <label>Sign Below (Finger)</label>
+          <h2>Employee Affidavit</h2>
+          <p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I declare that the information provided is true and complete.</p>
+          <label>Affidavit Signature *</label>
           <canvas id="affidavitPad" width="350" height="150"></canvas>
           <div class="pill" onclick="clearSig()" style="margin-top:5px; background:rgba(255,255,255,0.1);">Clear Signature</div>
         </div>
 
         <h2>Submit</h2>
         <div class="form-group"><label>Type Full Name to Sign *</label><input type="text" id="typedSignatureName" required></div>
-        <div class="ack-box"><input type="checkbox" id="acknowledge"><span>I acknowledge all required tasks have been completed. *</span></div>
+        <div class="ack-box"><input type="checkbox" id="acknowledge"><span>I acknowledge completion. *</span></div>
         <input type="hidden" id="signatureTimestamp">
         <button id="submitBtn" type="submit">SUBMIT REPORT</button>
       </form>
@@ -216,63 +220,31 @@
 </div>
 
 <script>
-// --- FULL RESTORED LISTS ---
+// --- FULLY RESTORED LISTS FROM SCREENSHOTS ---
 var HIGH_LIST = [
-    "Brakes squealing or grinding",
-    "Tire blowout / extreme wear",
-    "Steering column loose",
-    "Vehicle will not start",
-    "Burning smell",
-    "Fluid leak",
-    "Sliding door off track",
-    "Rear van door will not open",
-    "Headlight bulb out",
-    "Taillight bulb out",
-    "Turn signal bulb out",
-    "Backup camera no image",
-    "Phone mount broken",
-    "Low DEF light on",
-    "Flat tire",
-    "Power bank not working",
-    "Charger cable needs replaced",
-    "Gas card missing",
-    "Dog deterrent missing",
-    "Broken key",
-    "Work phone damaged",
-    "AVI Grounded",
-    "Missing license plate",
-    "Missing temp tag",
-    "Package spill",
-    "Missing windshield wiper",
-    "Other (describe)"
+    "Brakes squealing or grinding", "Tire blowout / extreme wear", "Steering column loose", "Vehicle will not start", 
+    "Burning smell", "Fluid leak", "Sliding door off track", "Rear van door will not open", "Headlight bulb out", 
+    "Taillight bulb out", "Turn signal bulb out", "Backup camera no image", "Phone mount broken", "Low DEF light on", 
+    "Flat tire", "Power bank not working", "Charger cable needs replaced", "Gas card missing", "Dog deterrent missing", 
+    "Broken key", "Work phone damaged", "AVI Grounded", "Missing license plate", "Missing temp tag", "Package spill", 
+    "Missing windshield wiper"
 ];
 
 var EDV_LIST = [
-    "EDV key fob battery low",
-    "EDV not charging",
-    "EDV warning light (describe)",
-    "Bulkhead door not opening",
-    "Rear cargo door not opening",
-    "Severe dent",
-    "Minor dent",
-    "Severe damages",
-    "Broken light fixture",
-    "Broken mirror",
-    "Broken windshield",
-    "Other (describe)"
+    "EDV key fob battery low", "EDV not charging", "EDV warning light (describe)", "Bulkhead door not opening", 
+    "Rear cargo door not opening", "Severe dent", "Minor dent", "Severe damages", "Broken light fixture", 
+    "Broken mirror", "Broken windshield", "Other (describe)"
 ];
 
 var LOW_LIST = [
-    "Light scratches",
-    "Interior dirty",
-    "Door closes but sensor says open",
-    "Seat does not adjust",
-    "Radio not working",
-    "QR code faded",
-    "Other"
+    "Light scratches", "Interior dirty", "Door closes but sensor says open", "Seat does not adjust", 
+    "Radio not working", "QR code faded", "Other"
 ];
 
-var ACCIDENT_LIST = ["Slip / Trip / Fall","Dog Bite","Customer Altercation","Unsafe Situation","Vehicle Accident","Other"];
+var ACCIDENT_LIST = [
+    "Slip / Trip / Fall", "Dog Bite", "Customer Altercation", "Unsafe Situation", "Vehicle Accident", "Other"
+];
+
 var accidentMap, mphMap, sigCanvas, sigCtx, drawing = false, isSubmitting = false;
 
 window.onload = function() {
@@ -300,7 +272,7 @@ window.onload = function() {
       document.getElementById('pill-accident').style.display = 'none';
   } 
   else if(mode === 'accident') {
-      document.getElementById('pageTitle').innerText = "ACCIDENT REPORT";
+      document.getElementById('pageTitle').innerText = "ACCIDENT/INCIDENT REPORT";
       document.getElementById('pill-high').style.display = 'none';
       document.getElementById('pill-low').style.display = 'none';
       document.getElementById('pill-edv').style.display = 'none';
@@ -324,12 +296,13 @@ window.loadPills = function(containerId, list) {
 };
 
 window.selectPriority = function(type) {
-  ["high","edv","low","mph","accident","insurance"].forEach(function(s) {
+  ["high","edv","low","mph","accident"].forEach(function(s) {
     document.getElementById("pill-"+s).classList.remove("selected");
     document.getElementById("section-"+s).style.display = "none";
   });
   document.getElementById("pill-"+type).classList.add("selected");
   document.getElementById("section-"+type).style.display = "block";
+  // Trigger Maps
   if (type === "accident") setTimeout(captureGPS_accident, 500);
   if (type === "mph") setTimeout(captureGPS_mph, 500);
 };
