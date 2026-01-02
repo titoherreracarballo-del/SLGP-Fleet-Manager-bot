@@ -31,8 +31,15 @@
 
     .container { width: 100%; max-width: 480px; margin-top: 10px; position: relative; }
     
+    /* --- LOGO FIX --- */
     .logo-container { text-align: center; margin-bottom: 20px; }
-    .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
+    .logo-container img { 
+        width: 100%; 
+        max-width: 250px; 
+        border-radius: 12px;
+        /* This filter blends the white JPG into the dark background */
+        filter: invert(0.88) hue-rotate(180deg) brightness(1.2) contrast(1.1) drop-shadow(0 0 15px rgba(0, 102, 255, 0.5));
+    }
 
     .card {
         background: var(--card-bg); backdrop-filter: blur(20px);
