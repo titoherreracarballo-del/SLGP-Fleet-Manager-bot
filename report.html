@@ -6,16 +6,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
     :root { --brand-blue: #0066ff; --brand-dark: #0a0e17; --card-bg: rgba(255, 255, 255, 0.05); }
-    body { font-family: sans-serif; background-color: var(--brand-dark); color: white; margin: 0; padding: 15px; display: flex; justify-content: center; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--brand-dark); color: white; margin: 0; padding: 15px; display: flex; justify-content: center; }
     .container { width: 100%; max-width: 480px; }
     .card { background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 25px; margin-top: 20px; }
-    h2 { color: var(--brand-blue); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; font-size: 16px; }
+    h2 { color: var(--brand-blue); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; font-size: 16px; margin-top: 20px; }
     input, textarea { width: 100%; padding: 15px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; margin-bottom: 10px; box-sizing: border-box; }
-    .pill { padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; text-align: center; margin-bottom: 10px; cursor: pointer; }
-    .pill.selected { background: var(--brand-blue); }
+    .pill { padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; text-align: center; margin-bottom: 10px; cursor: pointer; transition: 0.2s; }
+    .pill.selected { background: var(--brand-blue); box-shadow: 0 0 10px rgba(0, 102, 255, 0.5); }
     .section { display: none; }
-    #submitBtn { background: var(--brand-blue); color: white; border: none; padding: 18px; width: 100%; border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 20px; }
-    canvas { background: white; border-radius: 10px; width: 100%; border: 2px solid var(--brand-blue); }
+    #submitBtn { background: var(--brand-blue); color: white; border: none; padding: 18px; width: 100%; border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 20px; cursor: pointer; }
+    
+    /* SIGNATURE CANVAS STYLE */
+    canvas { background: white; border-radius: 10px; width: 100%; height: 150px; border: 2px solid var(--brand-blue); touch-action: none; }
+    
+    /* GPS STATUS TEXT */
+    #gpsStatus { font-size: 12px; color: #00cc66; margin-bottom: 15px; display: none; }
 </style>
 </head>
 <body>
@@ -31,6 +36,7 @@
 
     <div class="card" id="reportForm">
         <h1 id="pageTitle" style="text-align:center;">REPORT</h1>
+        <div id="gpsStatus">📍 Location Acquired</div>
         
         <form onsubmit="submitForm(event)">
             <label>Driver Name</label><input type="text" id="driverName" required>
@@ -50,9 +56,14 @@
 
             <div id="section-accident" class="section">
                 <h2>Accident Statement</h2>
-                <textarea id="accidentStatement" placeholder="What happened?"></textarea>
-                <label>Signature</label>
-                <canvas id="affidavitPad" width="300" height="150"></canvas>
+                <textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
+                
+                <h2>Signature</h2>
+                <p style="font-size:11px; color:#aaa;">Sign inside the box below:</p>
+                <canvas id="affidavitPad"></canvas>
+                <button type="button" onclick="clearSig()" style="padding:5px; margin-bottom:10px; background:#444; color:white; border:none; border-radius:4px;">Clear Signature</button>
+                
+                <h2>Photos</h2>
                 <input type="file" id="accidentPhotos" multiple accept="image/*">
             </div>
 
@@ -63,28 +74,50 @@
 
 <script>
     let priority = 'high';
-    const urlParams = new URLSearchParams(window.location.search);
-    const mode = urlParams.get('mode');
+    let currentLat = "0.00";
+    let currentLng = "0.00";
+    
+    // --- INITIALIZATION ---
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
 
-    // MODE SWITCHING LOGIC
-    if (mode === 'insurance') {
-        document.getElementById('reportForm').style.display = 'none';
-        document.getElementById('insuranceView').style.display = 'block';
-    } else if (mode === 'accident') {
-        setPriority('accident');
-        document.getElementById('prioritySelector').style.display = 'none';
-        document.getElementById('pageTitle').innerText = "ACCIDENT REPORT";
-    } else {
-        setPriority('high');
-        document.getElementById('pill-accident').style.display = 'none';
-    }
+        // Mode Switching
+        if (mode === 'insurance') {
+            document.getElementById('reportForm').style.display = 'none';
+            document.getElementById('insuranceView').style.display = 'block';
+        } else if (mode === 'accident') {
+            setPriority('accident');
+            document.getElementById('prioritySelector').style.display = 'none';
+            document.getElementById('pageTitle').innerText = "ACCIDENT REPORT";
+        } else {
+            setPriority('high');
+            document.getElementById('pill-accident').style.display = 'none';
+        }
 
-    // UPDATED FUNCTION: POINTS TO LOCAL GITHUB FILES
+        // Auto-Fetch GPS
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                currentLat = pos.coords.latitude.toFixed(6);
+                currentLng = pos.coords.longitude.toFixed(6);
+                const status = document.getElementById('gpsStatus');
+                status.innerText = `📍 GPS Locked: ${currentLat}, ${currentLng}`;
+                status.style.display = 'block';
+            }, err => {
+                console.warn("GPS Denied");
+                document.getElementById('gpsStatus').innerText = "⚠️ GPS Access Denied";
+                document.getElementById('gpsStatus').style.color = "red";
+                document.getElementById('gpsStatus').style.display = 'block';
+            });
+        }
+        
+        // Init Signature Pad
+        initCanvas();
+    };
+
     function openCard(type) {
-        const urls = {
-            amazon: "/amazon.pdf",
-            hertz: "/hertz.pdf"
-        };
+        // Uses local files for instant loading
+        const urls = { amazon: "/amazon.pdf", hertz: "/hertz.pdf" };
         window.open(urls[type], "_blank");
     }
 
@@ -98,7 +131,55 @@
         if(pill) pill.classList.add('selected');
     }
 
-    // IMAGE PROCESSING
+    // --- SIGNATURE LOGIC (Makes the canvas drawable) ---
+    let canvas, ctx, isDrawing = false;
+
+    function initCanvas() {
+        canvas = document.getElementById('affidavitPad');
+        // Set actual pixel width to match display width for sharpness
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        ctx = canvas.getContext('2d');
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 2;
+
+        // Touch Events
+        canvas.addEventListener('touchstart', startDraw, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('touchend', stopDraw);
+        // Mouse Events
+        canvas.addEventListener('mousedown', startDraw);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDraw);
+    }
+
+    function startDraw(e) {
+        isDrawing = true;
+        ctx.beginPath();
+        const {x, y} = getPos(e);
+        ctx.moveTo(x, y);
+        e.preventDefault();
+    }
+
+    function draw(e) {
+        if(!isDrawing) return;
+        const {x, y} = getPos(e);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        e.preventDefault();
+    }
+
+    function stopDraw() { isDrawing = false; }
+    function clearSig() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    // --- SUBMISSION LOGIC ---
     const b64 = (id) => new Promise(resolve => {
         const inp = document.getElementById(id);
         if (!inp || !inp.files.length) return resolve([]);
@@ -109,14 +190,13 @@
         }))).then(resolve);
     });
 
-    // SUBMISSION
     async function submitForm(e) {
         e.preventDefault();
         const btn = document.getElementById('submitBtn');
         btn.disabled = true; btn.innerText = "SENDING...";
         
-        const canvas = document.getElementById('affidavitPad');
-        const sigData = canvas ? canvas.toDataURL('image/png').split(',')[1] : null;
+        // Capture Signature
+        const sigData = canvas.toDataURL('image/png').split(',')[1];
 
         const payload = {
             driverName: document.getElementById('driverName').value,
@@ -125,7 +205,8 @@
             highNotes: document.getElementById('highNotes').value,
             accidentStatement: document.getElementById('accidentStatement').value,
             affidavitSignature: sigData,
-            gpsLat: "0.00", gpsLng: "0.00", // Placeholder for geolocation
+            gpsLat: currentLat, // Sends actual GPS
+            gpsLng: currentLng,
             highPhotos: await b64('highPhotos'),
             accidentPhotos: await b64('accidentPhotos'),
             lowPhotos: [], edvPhotos: [], mphPhotos: []
