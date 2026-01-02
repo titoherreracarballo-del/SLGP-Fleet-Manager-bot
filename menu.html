@@ -18,29 +18,53 @@
         }
         .logo { width: 280px; margin-bottom: 30px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
         
+        /* UPDATED BUTTON CONTAINER */
         .menu-btn {
-            display: block; /* Standard block for full images */
+            display: flex;
+            flex-direction: column; /* Stacks image on top of text */
             width: 100%; max-width: 320px; 
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             border-radius: 18px; 
             text-decoration: none;
             transition: transform 0.2s, box-shadow 0.2s;
             box-shadow: 0 15px 40px rgba(0,0,0,0.4); 
-            padding: 0; /* Remove padding so image touches edges */
-            background: transparent; /* No background color needed */
-            border: none; /* Let the image define the edge */
-            overflow: hidden; /* Keeps corners rounded */
+            padding: 0; 
+            background: rgba(255, 255, 255, 0.05); /* Background for text area */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden; 
         }
         
         .menu-btn:active { transform: scale(0.97); }
 
-        /* IMAGE STYLING */
+        /* NEW: IMAGE BOX (Enforces Uniform Height) */
+        .btn-img-box {
+            width: 100%;
+            height: 180px; /* FIXED HEIGHT for all buttons */
+            overflow: hidden;
+        }
+
+        /* UPDATED IMAGE STYLE */
         .btn-img {
             width: 100%;       
-            height: auto;      
-            display: block;    /* Removes tiny gap at bottom of images */
-            border-radius: 18px;
+            height: 100%;      
+            object-fit: cover; /* Fills the box perfectly without stretching */
+            display: block;
         }
+
+        /* NEW: LABEL STYLE */
+        .btn-label {
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 800;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* COLOR-CODED BOTTOM BARS */
+        .lbl-video { border-bottom: 4px solid #0066ff; }
+        .lbl-issue { border-bottom: 4px solid #ff9900; }
+        .lbl-accident { border-bottom: 4px solid #ff4444; }
 
         .footer { margin-top: 40px; font-size: 11px; color: #444; }
     </style>
@@ -49,17 +73,26 @@
     <img src="Final-01.jpg" alt="SLGP Logo" class="logo">
 
     <a href="/video" class="menu-btn">
-        <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Daily Video Check">
+        <div class="btn-img-box">
+            <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Daily Video Check">
+        </div>
+        <div class="btn-label lbl-video">Daily Video Check</div>
     </a>
 
     <a href="/report?mode=issue" class="menu-btn">
-        <img src="Report An Issue.jpg" class="btn-img" alt="Report Issue">
+        <div class="btn-img-box">
+            <img src="Report An Issue.jpg" class="btn-img" alt="Report Issue">
+        </div>
+        <div class="btn-label lbl-issue">Report Issue</div>
     </a>
 
     <a href="/report?mode=accident" class="menu-btn">
-        <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Report Accident">
+        <div class="btn-img-box">
+            <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Report Accident">
+        </div>
+        <div class="btn-label lbl-accident">Report Accident</div>
     </a>
 
-    <div class="footer">SLGP Fleet Portal v5.5</div>
+    <div class="footer">SLGP Fleet Portal v5.6</div>
 </body>
 </html>
