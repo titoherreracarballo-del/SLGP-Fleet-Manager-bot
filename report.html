@@ -1,141 +1,121 @@
-const express = require('express');
-const multer = require('multer');
-const { google } = require('googleapis');
-const path = require('path');
-const fs = require('fs');
-const nodemailer = require('nodemailer');
-const { PDFDocument, StandardFonts } = require('pdf-lib');
-const stream = require('stream');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SLGP Reporting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+    :root { --brand-blue: #0066ff; --brand-dark: #0a0e17; --card-bg: rgba(255, 255, 255, 0.05); --text-main: #ffffff; --text-dim: #a0a0a0; --border-color: rgba(255, 255, 255, 0.1); --input-bg: rgba(0, 0, 0, 0.4); }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--brand-dark); color: var(--text-main); margin: 0; padding: 15px; display: flex; justify-content: center; min-height: 100vh; }
+    .container { width: 100%; max-width: 480px; position: relative; }
+    .logo-container { background: white; padding: 15px; border-radius: 20px; margin-bottom: 20px; text-align: center; }
+    .logo-container img { width: 100%; max-width: 200px; }
+    .card { background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--border-color); border-radius: 28px; padding: 25px; }
+    h2 { font-size: 16px; color: var(--brand-blue); text-transform: uppercase; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin: 25px 0 15px 0; }
+    label { display: block; font-size: 10px; font-weight: 700; color: var(--brand-blue); margin-bottom: 8px; text-transform: uppercase; }
+    input[type="text"], input[type="tel"], textarea { width: 100%; padding: 16px; background: var(--input-bg); border: 1.5px solid var(--border-color); border-radius: 12px; color: white; font-size: 16px; box-sizing: border-box; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .pill { flex: 1 1 calc(50% - 8px); padding: 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-dim); text-align: center; font-size: 11px; cursor: pointer; }
+    .pill.selected { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); }
+    .section { display: none; }
+    .mapBox { width: 100%; height: 250px; border-radius: 14px; margin-top: 10px; }
+    canvas { background: white; border-radius: 12px; width: 100%; touch-action: none; border: 2px solid var(--brand-blue); }
+    #submitBtn { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border: none; padding: 18px; border-radius: 14px; width: 100%; font-weight: 800; cursor: pointer; margin-top: 25px; }
+</style>
+</head>
+<body>
 
-const app = express();
+<div class="container">
+    <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
+    <a href="/" style="color: var(--text-dim); text-decoration: none; font-size: 12px;">← Back to Menu</a>
 
-// --- VOLUME CONFIGURATION ---
-const VOLUME_PATH = '/app/meshcentral-data';
-const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    <div class="card" id="mainCard">
+        <h1 style="text-align:center; font-size:18px;">REPORTING TOOL</h1>
+        
+        <form id="reportForm" onsubmit="submitForm(event)">
+            <h2>1. Driver Info</h2>
+            <label>Driver Full Name *</label><input type="text" id="driverName" required>
+            <label>Last 4 of VIN *</label><input type="tel" id="vinLast4" maxlength="4" required>
+
+            <h2>2. Priority</h2>
+            <div class="pill-row">
+                <div class="pill" id="pill-high" onclick="selectPriority('high')">High Priority</div>
+                <div class="pill" id="pill-accident" onclick="selectPriority('accident')">Accident</div>
+            </div>
+
+            <div id="section-high" class="section">
+                <h2>High Priority</h2>
+                <textarea id="highNotes" placeholder="Describe issue..."></textarea>
+                <input type="file" id="highPhotos" multiple accept="image/*">
+            </div>
+
+            <div id="section-accident" class="section">
+                <h2>Accident Details</h2>
+                <div id="accidentMap" class="mapBox"></div>
+                <textarea id="accidentStatement" placeholder="Exactly what happened..."></textarea>
+                <input type="file" id="accidentPhotos" multiple accept="image/*">
+                <label>Signature</label>
+                <canvas id="affidavitPad" width="350" height="150"></canvas>
+            </div>
+
+            <button id="submitBtn" type="submit">SUBMIT REPORT</button>
+        </form>
+    </div>
+</div>
+
+<script>
+let priority = 'high';
+const b64 = (id) => new Promise(resolve => {
+    const input = document.getElementById(id);
+    if (!input || !input.files.length) return resolve([]);
+    const promises = Array.from(input.files).map(file => new Promise(res => {
+        const reader = new FileReader();
+        reader.onload = (e) => res({ name: file.name, data: e.target.result.split(',')[1] });
+        reader.readAsDataURL(file);
+    }));
+    Promise.all(promises).then(resolve);
+});
+
+function selectPriority(type) {
+    priority = type;
+    document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+    document.getElementById(`section-${type}`).style.display = 'block';
+    document.getElementById(`pill-${type}`).classList.add('selected');
 }
 
-// Separate multer for video handling
-const upload = multer({ dest: UPLOAD_DIR });
+async function submitForm(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = "SENDING...";
 
-// --- MIDDLEWARE ---
-app.use(express.static(__dirname)); 
-app.use(express.json({ limit: '100mb' })); // Higher limit for multiple report photos
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+    const payload = {
+        driverName: document.getElementById('driverName').value,
+        vinLast4: document.getElementById('vinLast4').value,
+        priorityLevel: priority,
+        highNotes: document.getElementById('highNotes').value || '',
+        accidentStatement: document.getElementById('accidentStatement').value || '',
+        gpsLat: "0.0", gpsLng: "0.0",
+        // Empty arrays for unused fields to prevent server errors
+        highPhotos: await b64('highPhotos'),
+        lowPhotos: [], edvPhotos: [], mphPhotos: [],
+        accidentPhotos: await b64('accidentPhotos')
+    };
 
-// --- NAVIGATION (Fixes "Cannot GET /") ---
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
-app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-app.get('/report', (req, res) => res.sendFile(path.join(__dirname, 'report.html')));
-
-// --- SHARED AUTH (Railway Variable) ---
-let auth;
-try {
-    auth = new google.auth.GoogleAuth({
-        credentials: JSON.parse(process.env.GCP_SA_KEY),
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-} catch (err) { console.error("CRITICAL: GCP_SA_KEY Auth Failed."); }
-
-// =========================================================
-// SECTION A: ORIGINAL VIDEO LOGIC (RESTORED)
-// =========================================================
-const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
-
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).send('No video file.');
-        const drive = google.drive({ version: 'v3', auth });
-        const { driverName, vin, inspectionType } = req.body;
-        const finalFileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
-
-        await drive.files.create({
-            resource: { name: finalFileName, parents: [VIDEO_DRIVE_ID] },
-            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
-            fields: 'id', supportsAllDrives: true
-        });
-
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(200).send('Video Saved to Original Volume');
-    } catch (error) {
-        res.status(500).send(`Video Fail: ${error.message}`);
-    }
-});
-
-// =========================================================
-// SECTION B: NEW REPORT LOGIC (SEPARATE)
-// =========================================================
-const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
-
-app.post('/submit-report', async (req, res) => {
-    const data = req.body;
-    try {
-        const drive = google.drive({ version: 'v3', auth });
-        
-        // 1. Create a subfolder for this specific report
-        const folder = await drive.files.create({
-            resource: { 
-                name: `${data.driverName} - ${data.priorityLevel.toUpperCase()}`, 
-                mimeType: 'application/vnd.google-apps.folder', 
-                parents: [REPORT_DRIVE_ID] 
-            },
-            fields: 'id'
-        });
-        const subFolderId = folder.data.id;
-
-        // 2. Upload Report Photos to that subfolder
-        const allPhotos = [...data.highPhotos, ...data.lowPhotos, ...data.edvPhotos, ...data.mphPhotos, ...data.accidentPhotos];
-        for (let photo of allPhotos) {
-            const buffer = Buffer.from(photo.data, 'base64');
-            const bs = new stream.PassThrough();
-            bs.end(buffer);
-            await drive.files.create({
-                resource: { name: photo.name, parents: [subFolderId] },
-                media: { mimeType: 'image/jpeg', body: bs }
-            });
-        }
-
-        // 3. Generate the PDF Document
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([600, 800]);
-        const font = await doc.embedFont(StandardFonts.Helvetica);
-        let y = 750;
-
-        const draw = (text) => { page.drawText(text, { x: 50, y, size: 12, font }); y -= 20; };
-        draw(`SLGP INCIDENT REPORT: ${data.priorityLevel.toUpperCase()}`);
-        draw(`Driver: ${data.driverName}`);
-        draw(`VIN Last 4: ${data.vinLast4}`);
-        draw(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
-        draw(`----------------------------------`);
-        if (data.accidentStatement) draw(`Statement: ${data.accidentStatement}`);
-        if (data.highNotes) draw(`Maintenance Notes: ${data.highNotes}`);
-
-        const pdfPath = path.join(UPLOAD_DIR, `report-${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, await doc.save());
-
-        // 4. Send Email
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: (data.priorityLevel === 'accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'],
-            subject: `REPORT: ${data.priorityLevel.toUpperCase()} - ${data.driverName}`,
-            text: `View all files here: https://drive.google.com/drive/folders/${subFolderId}`,
-            attachments: [{ filename: 'Summary.pdf', path: pdfPath }]
-        };
-
-        await transporter.sendMail(mailOptions);
-        fs.unlinkSync(pdfPath);
-        res.json({ success: true });
-    } catch (error) {
-        console.error("REPORT ERROR:", error.message);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`SYSTEMS ONLINE: Port ${PORT}`));
+    fetch('/submit-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) alert("Report Sent!");
+        else alert("Error: " + data.error);
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = "SUBMIT REPORT"; });
+}
+</script>
+</body>
+</html>
