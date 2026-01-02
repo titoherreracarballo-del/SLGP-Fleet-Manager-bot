@@ -20,12 +20,12 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- 3. NAVIGATION (UPDATED TO FIX LINKS) ---
-// Note: Ensure your main menu file is named 'index.html'. If it is named 'menu.html', change the line below.
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html'))); 
+// --- 3. NAVIGATION ---
+// FIX: Pointing back to 'menu.html' as per your original setup
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'menu.html'))); 
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// *** THIS IS THE FIX FOR YOUR "NOT FOUND" ERROR ***
+// ROUTE: Handle Issue & Accident Reports
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     if (mode === 'issue') {
@@ -33,7 +33,13 @@ app.get('/report', (req, res) => {
     } else if (mode === 'accident') {
         res.sendFile(path.join(__dirname, 'accident-report.html'));
     } else {
-        res.status(404).send('Error: Report type not found. Please return to the menu.');
+        // If the user goes to /report without a mode, try to show the old report.html if it exists, 
+        // otherwise show an error.
+        if (fs.existsSync(path.join(__dirname, 'report.html'))) {
+             res.sendFile(path.join(__dirname, 'report.html'));
+        } else {
+             res.status(404).send('Error: Report type not specified.');
+        }
     }
 });
 
@@ -67,7 +73,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 });
 
 // =========================================================
-// SECTION B: REPORT ENGINE (UPGRADED FOR NEW UI)
+// SECTION B: REPORT ENGINE
 // =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 
@@ -76,7 +82,7 @@ app.post('/submit-report', async (req, res) => {
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // 1. Create Folder: "Driver Name - Report Type"
+        // 1. Create Folder
         const folderName = `${data.driverName} - ${data.reportType}`;
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
@@ -97,7 +103,7 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // 3. Generate Detailed PDF
+        // 3. Generate PDF
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -105,34 +111,30 @@ app.post('/submit-report', async (req, res) => {
         let y = 750;
 
         const draw = (txt, size = 12, isBold = false) => { 
-            if (y < 50) { page = doc.addPage([600, 800]); y = 750; } // New page if full
+            if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
             page.drawText(txt || '', { x: 50, y, size, font: isBold ? boldFont : font }); 
             y -= 20; 
         };
 
-        // --- PDF HEADER ---
+        // PDF Content
         draw('SLGP VEHICLE ASSISTANCE REPORT', 18, true);
         y -= 10;
         draw(`Type: ${data.reportType}`, 14, true);
         draw(`Driver: ${data.driverName}`);
         draw(`Date: ${data.date}   Time: ${data.time}`);
-        draw(`VIN: ${data.vinLast4}`);
-        draw(`GPS: ${data.gpsLat}, ${data.gpsLng}`);
+        draw(`VIN: ${data.vinLast4 || 'N/A'}`);
+        draw(`GPS: ${data.gpsLat || 'N/A'}, ${data.gpsLng || 'N/A'}`);
         draw('------------------------------------------------------');
         y -= 10;
 
-        // --- DYNAMIC CONTENT ---
-        
-        // Incident / Accident Specifics
         if (data.reportType === 'Accident / Incident') {
             draw('INCIDENT DETAILS:', 14, true);
-            draw(`Sub-Type: ${data.subType}`);
-            draw(`Weather: ${data.weather}`);
-            draw(`Police Report #: ${data.policeReport || 'N/A'}`);
-            draw(`LMET Case #: ${data.lmetCase || 'N/A'}`);
+            draw(`Sub-Type: ${data.subType || 'N/A'}`);
+            draw(`Weather: ${data.weather || 'N/A'}`);
+            draw(`Police Report: ${data.policeReport || 'N/A'}`);
+            draw(`LMET Case: ${data.lmetCase || 'N/A'}`);
             y -= 10;
             draw('STATEMENT:', 12, true);
-            // Simple word wrap
             const words = (data.statement || '').split(' ');
             let line = '';
             for (let word of words) {
@@ -141,33 +143,22 @@ app.post('/submit-report', async (req, res) => {
             }
             draw(line);
             y -= 20;
-        } 
-        // MPH Error Specifics
-        else if (data.reportType === 'Road MPH Error') {
-            draw('LOCATION DETAILS:', 14, true);
-            draw(`Street: ${data.addressStreet}`);
-            draw(`City: ${data.addressCity}`);
-            draw(`State: ${data.addressState}`);
-            y -= 10;
-        }
-        // Maintenance / EDV Specifics
-        else {
+        } else {
             draw('REPORTED ISSUES:', 14, true);
             if (data.tags && data.tags.length > 0) {
                 data.tags.forEach(tag => draw(`[x] ${tag}`));
             }
-            if (data.otherDescription) {
-                draw(`Other Notes: ${data.otherDescription}`);
-            }
+            if (data.otherDescription) draw(`Other Notes: ${data.otherDescription}`);
         }
 
-        // --- SIGNATURE ---
         y -= 20;
         draw('------------------------------------------------------');
         if (data.signature) {
-            const sigImg = await doc.embedPng(Buffer.from(data.signature, 'base64'));
-            page.drawImage(sigImg, { x: 50, y: y - 80, width: 200, height: 60 });
-            y -= 90;
+            try {
+                const sigImg = await doc.embedPng(Buffer.from(data.signature, 'base64'));
+                page.drawImage(sigImg, { x: 50, y: y - 80, width: 200, height: 60 });
+                y -= 90;
+            } catch (e) { console.log('Signature Error', e); }
         }
         draw(`Signed: ${data.driverName}`);
         draw(`Timestamp: ${new Date().toLocaleString()}`);
@@ -175,7 +166,7 @@ app.post('/submit-report', async (req, res) => {
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // 4. Email Routing
+        // 4. Email
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -190,7 +181,7 @@ app.post('/submit-report', async (req, res) => {
             from: process.env.EMAIL_USER,
             to: recipients,
             subject: `REPORT: ${data.reportType} - ${data.driverName}`,
-            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nView Photos & Files: https://drive.google.com/drive/folders/${subFolderId}`,
+            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nFiles: https://drive.google.com/drive/folders/${subFolderId}`,
             attachments: [{ filename: 'Report_Summary.pdf', path: pdfPath }]
         });
 
