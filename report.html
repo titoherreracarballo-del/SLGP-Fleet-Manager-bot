@@ -2,24 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SLGP Report Issue</title>
+<title>SLGP Reporting</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-    /* --- SHARED THEME VARIABLES (Same as Video Page) --- */
+    /* --- SHARED THEME (Glassmorphism) --- */
     :root {
         --brand-blue: #0066ff;
         --brand-dark: #0a0e17;
         --card-bg: rgba(255, 255, 255, 0.05);
         --text-main: #ffffff;
         --text-dim: #a0a0a0;
-        --success-green: #4ade80;
-        --error-red: #ff4444;
-        --input-bg: rgba(0, 0, 0, 0.4);
         --border-color: rgba(255, 255, 255, 0.1);
+        --input-bg: rgba(0, 0, 0, 0.4);
     }
 
     body {
@@ -37,12 +35,9 @@
     .logo-container img { width: 100%; max-width: 280px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
 
     .card {
-        background: var(--card-bg);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--border-color);
-        border-radius: 28px;
-        padding: 25px;
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        background: var(--card-bg); backdrop-filter: blur(20px);
+        border: 1px solid var(--border-color); border-radius: 28px;
+        padding: 25px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
     }
 
     h2 { font-size: 16px; font-weight: 800; text-align: center; margin: 25px 0 15px 0; letter-spacing: 1px; color: var(--brand-blue); text-transform: uppercase; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
@@ -53,12 +48,11 @@
     input[type="text"], input[type="tel"], textarea {
         width: 100%; padding: 16px; background: var(--input-bg);
         border: 1.5px solid var(--border-color); border-radius: 12px;
-        color: white; font-size: 16px; box-sizing: border-box;
-        font-family: inherit;
+        color: white; font-size: 16px; box-sizing: border-box; font-family: inherit;
     }
     textarea { min-height: 100px; resize: vertical; }
 
-    /* --- PILL BUTTONS --- */
+    /* PILL BUTTONS */
     .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .pill {
         flex: 1 1 calc(50% - 8px); padding: 14px;
@@ -67,51 +61,28 @@
         text-align: center; transition: all 0.3s; text-transform: uppercase; font-size: 11px; cursor: pointer;
     }
     .pill.selected {
-        background: linear-gradient(135deg, #0066ff, #0044cc) !important;
-        color: white !important;
-        box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6);
-        border: 1px solid var(--brand-blue) !important;
+        background: linear-gradient(135deg, #0066ff, #0044cc) !important; color: white !important;
+        box-shadow: 0 4px 15px rgba(0, 102, 255, 0.6); border: 1px solid var(--brand-blue) !important;
     }
 
-    /* --- SECTIONS & SPECIAL ELEMENTS --- */
     .section { display: none; animation: fadeIn 0.3s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    .photo-box {
-        background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15);
-        border-radius: 14px; padding: 20px; text-align: center; margin-top: 15px;
-    }
+    .photo-box { background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 14px; padding: 20px; text-align: center; margin-top: 15px; }
     
-    .mapBox {
-        width: 100%; height: 250px; border-radius: 14px; border: 2px solid var(--border-color);
-        margin-top: 10px; overflow: hidden; z-index: 1;
-    }
+    .mapBox { width: 100%; height: 250px; border-radius: 14px; border: 2px solid var(--border-color); margin-top: 10px; overflow: hidden; z-index: 1; }
     
-    canvas {
-        background: rgba(255, 255, 255, 0.95); border-radius: 12px;
-        margin-top: 10px; width: 100%; touch-action: none; border: 2px solid var(--brand-blue);
-    }
+    canvas { background: rgba(255, 255, 255, 0.95); border-radius: 12px; margin-top: 10px; width: 100%; touch-action: none; border: 2px solid var(--brand-blue); }
 
-    .ack-box {
-        display: flex; align-items: center; background: rgba(0, 102, 255, 0.1);
-        border: 1px solid var(--brand-blue); padding: 15px; border-radius: 12px; margin-top: 20px;
-    }
+    .ack-box { display: flex; align-items: center; background: rgba(0, 102, 255, 0.1); border: 1px solid var(--brand-blue); padding: 15px; border-radius: 12px; margin-top: 20px; }
     .ack-box input { width: 20px; height: 20px; margin-right: 15px; accent-color: var(--brand-blue); }
     .ack-box span { font-size: 11px; font-weight: 600; }
 
     .gps-info { font-size: 10px; color: var(--text-dim); margin-top: 5px; text-align: right; font-family: monospace; }
     
-    .weather-box {
-        background: linear-gradient(135deg, #1a2a44, #0a0e17); border: 1px solid var(--border-color);
-        padding: 15px; border-radius: 12px; margin-top: 15px; font-size: 12px; color: var(--brand-blue);
-    }
+    .weather-box { background: linear-gradient(135deg, #1a2a44, #0a0e17); border: 1px solid var(--border-color); padding: 15px; border-radius: 12px; margin-top: 15px; font-size: 12px; color: var(--brand-blue); }
 
-    #submitBtn {
-        background: linear-gradient(135deg, #0066ff, #0044cc);
-        color: white; border: none; padding: 18px; border-radius: 14px;
-        width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase;
-        letter-spacing: 1.2px; cursor: pointer; margin-top: 25px;
-    }
+    #submitBtn { background: linear-gradient(135deg, #0066ff, #0044cc); color: white; border: none; padding: 18px; border-radius: 14px; width: 100%; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; cursor: pointer; margin-top: 25px; }
     #submitBtn:disabled { opacity: 0.5; filter: grayscale(1); }
 
     .back-link { text-decoration: none; color: var(--text-dim); font-size: 12px; display: block; margin-bottom: 10px; font-weight: 600; }
@@ -122,33 +93,23 @@
 <body>
 
 <div class="container">
-  <div class="logo-container">
-    <img src="Final-01.jpg" alt="SLGP Logo">
-  </div>
+  <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
   
   <a href="/" class="back-link">← Back to Menu</a>
 
   <div class="card" id="mainCard">
+      <h1 id="pageTitle" style="text-align:center; font-size:18px; margin-top:0;">REPORTING TOOL</h1>
+      
       <form id="reportForm" onsubmit="submitForm(event)">
         <h2>1. Driver Info</h2>
-        <div class="form-group">
-            <label>Driver Full Name *</label>
-            <input type="text" id="driverName" placeholder="Enter Full Name" required>
-        </div>
+        <div class="form-group"><label>Driver Full Name *</label><input type="text" id="driverName" placeholder="Enter Full Name" required></div>
         <div style="display:flex; gap:10px;">
-            <div style="flex:1;">
-                <label>Date</label><input type="text" id="autoDate" disabled style="opacity:0.6;">
-            </div>
-            <div style="flex:1;">
-                <label>Time</label><input type="text" id="autoTime" disabled style="opacity:0.6;">
-            </div>
+            <div style="flex:1;"><label>Date</label><input type="text" id="autoDate" disabled style="opacity:0.6;"></div>
+            <div style="flex:1;"><label>Time</label><input type="text" id="autoTime" disabled style="opacity:0.6;"></div>
         </div>
-        <div class="form-group">
-            <label>Last 4 of VIN *</label>
-            <input type="tel" id="vinLast4" placeholder="0000" maxlength="4" pattern="\d*" required>
-        </div>
+        <div class="form-group"><label>Last 4 of VIN *</label><input type="tel" id="vinLast4" placeholder="0000" maxlength="4" pattern="\d*" required></div>
 
-        <h2>2. Select Issue Type</h2>
+        <h2 id="typeHeader">2. Select Issue Type</h2>
         <div class="pill-row">
           <div class="pill" id="pill-high" onclick="selectPriority('high')">High Priority</div>
           <div class="pill" id="pill-edv" onclick="selectPriority('edv')">EDV Issue</div>
@@ -159,36 +120,21 @@
         </div>
 
         <div id="section-high" class="section">
-          <h2>High Priority</h2>
-          <div class="pill-row" id="highIssues"></div>
-          <label>Notes</label>
-          <textarea id="highNotes" placeholder="Describe the issue..."></textarea>
-          <div class="photo-box">
-              <label>Upload Photos (Max 5)</label>
-              <input type="file" id="highPhotos" multiple accept="image/*" style="width:100%;">
-          </div>
+          <h2>High Priority</h2><div class="pill-row" id="highIssues"></div>
+          <label>Notes</label><textarea id="highNotes" placeholder="Describe the issue..."></textarea>
+          <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="highPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-edv" class="section">
-          <h2>EDV Specific</h2>
-          <div class="pill-row" id="edvIssues"></div>
-          <label>Notes</label>
-          <textarea id="edvNotes" placeholder="Describe EDV issue..."></textarea>
-          <div class="photo-box">
-              <label>Upload Photos (Max 8)</label>
-              <input type="file" id="edvPhotos" multiple accept="image/*" style="width:100%;">
-          </div>
+          <h2>EDV Specific</h2><div class="pill-row" id="edvIssues"></div>
+          <label>Notes</label><textarea id="edvNotes" placeholder="Describe EDV issue..."></textarea>
+          <div class="photo-box"><label>Upload Photos (Max 8)</label><input type="file" id="edvPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-low" class="section">
-          <h2>Low Priority</h2>
-          <div class="pill-row" id="lowIssues"></div>
-          <label>Notes</label>
-          <textarea id="lowNotes" placeholder="Describe issue..."></textarea>
-          <div class="photo-box">
-              <label>Upload Photos (Max 5)</label>
-              <input type="file" id="lowPhotos" multiple accept="image/*" style="width:100%;">
-          </div>
+          <h2>Low Priority</h2><div class="pill-row" id="lowIssues"></div>
+          <label>Notes</label><textarea id="lowNotes" placeholder="Describe issue..."></textarea>
+          <div class="photo-box"><label>Upload Photos (Max 5)</label><input type="file" id="lowPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-mph" class="section">
@@ -196,70 +142,35 @@
           <label>Street Name *</label><input type="text" id="mphRoadName">
           <label>City *</label><input type="text" id="mphCity">
           <label>State *</label><input type="text" id="mphState">
-          
-          <div class="gps-info">
-              GPS: <span id="gpsStatus_mph">Ready</span><br>
-              <span id="gpsLat_mph">--</span>, <span id="gpsLng_mph">--</span>
-          </div>
+          <div class="gps-info">GPS: <span id="gpsStatus_mph">Ready</span><br><span id="gpsLat_mph">--</span>, <span id="gpsLng_mph">--</span></div>
           <div id="map_mph" class="mapBox"></div>
-
-          <div class="photo-box">
-              <label>Upload Photo of MPH Sign *</label>
-              <input type="file" id="mphPhotos" multiple accept="image/*" style="width:100%;">
-          </div>
+          <div class="photo-box"><label>Upload Photo of MPH Sign *</label><input type="file" id="mphPhotos" multiple accept="image/*" style="width:100%;"></div>
         </div>
 
         <div id="section-accident" class="section">
-          <h2>Accident Report</h2>
-          <div class="pill-row" id="accidentTypes"></div>
-          
-          <div id="weatherBox" class="weather-box" style="display:none;">
-            <b>Current Conditions:</b><br><span id="weatherText">Fetching...</span>
-          </div>
-
-          <div class="gps-info">
-              GPS: <span id="gpsStatus">Ready</span><br>
-              <span id="gpsLat">--</span>, <span id="gpsLng">--</span>
-          </div>
+          <h2>Accident Report</h2><div class="pill-row" id="accidentTypes"></div>
+          <div id="weatherBox" class="weather-box" style="display:none;"><b>Conditions:</b><br><span id="weatherText">Fetching...</span></div>
+          <div class="gps-info">GPS: <span id="gpsStatus">Ready</span><br><span id="gpsLat">--</span>, <span id="gpsLng">--</span></div>
           <div id="accidentMap" class="mapBox"></div>
-
-          <label>Statement *</label>
-          <textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
-          
+          <label>Statement *</label><textarea id="accidentStatement" placeholder="Describe exactly what happened..."></textarea>
           <label>Police Report #</label><input type="text" id="policeReportNumber">
           <label>Case # (LMET/EMT)</label><input type="text" id="lmetCaseNumber">
-
-          <div class="photo-box">
-              <label>Upload Scene Photos (Max 8)</label>
-              <input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;">
-          </div>
-
-          <h2>Affidavit</h2>
-          <p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I certify the information above is true.</p>
-          <label>Sign Below (Finger)</label>
-          <canvas id="affidavitPad" width="350" height="150"></canvas>
+          <div class="photo-box"><label>Scene Photos (Max 8)</label><input type="file" id="accidentPhotos" multiple accept="image/*" style="width:100%;"></div>
+          <h2>Affidavit</h2><p style="font-size:11px; color:var(--text-dim); margin-bottom:10px;">I certify the information above is true.</p>
+          <label>Sign Below</label><canvas id="affidavitPad" width="350" height="150"></canvas>
           <div class="pill" onclick="clearSig()" style="margin-top:5px; background:rgba(255,255,255,0.1);">Clear Signature</div>
         </div>
 
         <div id="section-insurance" class="section">
-          <h2>Insurance Card</h2>
-          <p style="font-size:12px; text-align:center; color:var(--text-dim);">Tap to view/download card</p>
-          <label><input type="radio" name="insCard" value="amazon" style="width:auto;"> Amazon Branded Van</label>
-          <label><input type="radio" name="insCard" value="hertz" style="width:auto;"> Hertz White Rental</label>
+          <h2>Insurance Card</h2><p style="font-size:12px; text-align:center; color:var(--text-dim);">Tap to view</p>
+          <label><input type="radio" name="insCard" value="amazon" style="width:auto;"> Amazon Branded</label>
+          <label><input type="radio" name="insCard" value="hertz" style="width:auto;"> Hertz White</label>
           <button type="button" class="pill" onclick="openInsurancePopup()" style="width:100%; margin-top:15px; background:var(--brand-blue); color:white;">OPEN CARD</button>
         </div>
 
         <h2>Submit</h2>
-        <div class="form-group">
-            <label>Type Full Name to Sign *</label>
-            <input type="text" id="typedSignatureName" required>
-        </div>
-
-        <div class="ack-box">
-          <input type="checkbox" id="acknowledge">
-          <span>I acknowledge all required tasks have been completed and information is accurate. *</span>
-        </div>
-
+        <div class="form-group"><label>Type Full Name to Sign *</label><input type="text" id="typedSignatureName" required></div>
+        <div class="ack-box"><input type="checkbox" id="acknowledge"><span>I acknowledge all required tasks have been completed. *</span></div>
         <input type="hidden" id="signatureTimestamp">
         <button id="submitBtn" type="submit">SUBMIT REPORT</button>
       </form>
@@ -267,17 +178,16 @@
 
   <div class="card" id="successMessage">
     <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
-    <h2>REPORT RECEIVED</h2>
-    <p style="font-size:13px; color:var(--text-dim); line-height:1.5;">Your report has been securely logged and emailed to Fleet Management.</p>
-    <button onclick="location.reload()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">Return to Start</button>
+    <h2>RECEIVED</h2><p style="font-size:13px; color:var(--text-dim);">Report securely logged and emailed.</p>
+    <button onclick="location.href='/'" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 12px 25px; border-radius: 10px; margin-top: 20px;">Return to Menu</button>
   </div>
 </div>
 
 <script>
-// VARIABLES & LISTS
-var HIGH_LIST = ["Brakes squealing/grinding","Tire blowout","Vehicle won't start","Burning smell","Fluid leak","Other"];
+// LISTS
+var HIGH_LIST = ["Brakes squealing","Tire blowout","Vehicle won't start","Burning smell","Fluid leak","Other"];
 var LOW_LIST = ["Light scratches","Interior dirty","Radio broken","QR code faded","Other"];
-var EDV_LIST = ["EDV key fob battery","EDV not charging","EDV warning light","Severe damages","Broken mirror","Other"];
+var EDV_LIST = ["EDV key battery","EDV not charging","EDV warning light","Severe damages","Broken mirror","Other"];
 var ACCIDENT_LIST = ["Slip/Trip/Fall","Dog Bite","Altercation","Unsafe Situation","Vehicle Accident","Other"];
 var accidentMap, mphMap, sigCanvas, sigCtx, drawing = false, isSubmitting = false;
 
@@ -291,6 +201,25 @@ window.onload = function() {
   loadPills("edvIssues", EDV_LIST);
   loadPills("accidentTypes", ACCIDENT_LIST);
   setupCanvas();
+  
+  // --- SMART TAB LOGIC ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const mode = urlParams.get('mode');
+  
+  if(mode === 'issue') {
+      document.getElementById('pageTitle').innerText = "MAINTENANCE REPORT";
+      document.getElementById('pill-accident').style.display = 'none';
+      document.getElementById('pill-insurance').style.display = 'none';
+  } 
+  else if(mode === 'accident') {
+      document.getElementById('pageTitle').innerText = "ACCIDENT REPORT";
+      document.getElementById('pill-high').style.display = 'none';
+      document.getElementById('pill-low').style.display = 'none';
+      document.getElementById('pill-edv').style.display = 'none';
+      document.getElementById('pill-mph').style.display = 'none';
+      // Auto-select
+      selectPriority('accident');
+  }
 };
 
 window.loadPills = function(containerId, list) {
@@ -313,97 +242,74 @@ window.selectPriority = function(type) {
   if (type === "mph") setTimeout(captureGPS_mph, 500);
 };
 
-// --- GPS LOGIC (With Satellite Toggle) ---
+// --- GPS LOGIC + SATELLITE TOGGLE ---
 function getSmartLocation(statusId, latId, lngId, mapId, mapVar, isAccident) {
     var status = document.getElementById(statusId);
     status.textContent = "⏳ Locating...";
-    
     navigator.geolocation.getCurrentPosition(
         (pos) => successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident),
         (err) => {
-            console.warn("High accuracy failed, trying low...", err);
             status.textContent = "⚠️ Retrying...";
             navigator.geolocation.getCurrentPosition(
                 (pos) => successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident),
-                (finalErr) => { status.textContent = "❌ GPS Failed"; },
+                (finalErr) => { status.textContent = "❌ Failed"; },
                 { enableHighAccuracy: false, timeout: 10000 }
             );
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
+        }, { enableHighAccuracy: true, timeout: 5000 }
     );
 }
 
 function successGPS(pos, statusId, latId, lngId, mapId, mapVar, isAccident) {
-    var lat = pos.coords.latitude; 
-    var lng = pos.coords.longitude;
-    
+    var lat = pos.coords.latitude; var lng = pos.coords.longitude;
     document.getElementById(statusId).textContent = "✅ Locked";
     document.getElementById(latId).textContent = lat.toFixed(5);
     document.getElementById(lngId).textContent = lng.toFixed(5);
-
+    
     if (window[mapVar]) window[mapVar].remove();
     
-    // DEFINE LAYERS (STREET vs SATELLITE)
-    var streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© OpenStreetMap' });
-    var satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: 'Tiles © Esri' });
-
-    var map = L.map(mapId, {
-        center: [lat, lng],
-        zoom: 18,
-        layers: [streetLayer] // Default to street
-    });
+    // LAYERS
+    var street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '© OpenStreetMap' });
+    var sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: 'Tiles © Esri' });
     
-    // ADD TOGGLE CONTROL
-    var baseMaps = { "Street Map": streetLayer, "Satellite": satelliteLayer };
-    L.control.layers(baseMaps).addTo(map);
-
-    L.marker([lat, lng]).addTo(map).bindPopup("Your Location").openPopup();
+    var map = L.map(mapId, { center: [lat, lng], zoom: 18, layers: [street] });
+    L.control.layers({ "Street": street, "Satellite": sat }).addTo(map);
     
+    L.marker([lat, lng]).addTo(map).bindPopup("You").openPopup();
     setTimeout(() => { map.invalidateSize(); }, 500);
     window[mapVar] = map;
-
+    
     if (isAccident) {
         fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
-        .then(r => r.json())
-        .then(wx => {
+        .then(r => r.json()).then(wx => {
             document.getElementById("weatherBox").style.display="block";
             document.getElementById("weatherText").textContent = `${wx.current_weather.temperature}°F | Wind: ${wx.current_weather.windspeed} mph`;
         });
     }
 }
-
 window.captureGPS_accident = function() { getSmartLocation("gpsStatus", "gpsLat", "gpsLng", "accidentMap", "accidentMap", true); };
 window.captureGPS_mph = function() { getSmartLocation("gpsStatus_mph", "gpsLat_mph", "gpsLng_mph", "map_mph", "mphMap", false); };
 
-// --- INSURANCE LOGIC ---
+// --- MISC ---
 window.openInsurancePopup = function() {
   var rad = document.querySelector("input[name='insCard']:checked"); if (!rad) { alert("Select vehicle type"); return; }
   var url = (rad.value === "amazon") ? "https://drive.google.com/file/d/1RiLwgYSCdNgxrEB0ypRpcchuKfCxiTIv/view?usp=drive_link" : "https://drive.google.com/file/d/1ZoWnRZlCwB-YMBv_QaUAP-TQ5LWQhnK8/view?usp=drive_link";
   window.open(url, "_blank");
 };
 
-// --- SIGNATURE PAD ---
 window.setupCanvas = function() {
   sigCanvas = document.getElementById("affidavitPad"); if (!sigCanvas) return;
   sigCtx = sigCanvas.getContext("2d"); sigCtx.lineWidth = 3; sigCtx.strokeStyle = "#0066ff";
-  
-  // Mouse
   sigCanvas.onmousedown = function(e) { drawing = true; sigCtx.beginPath(); sigCtx.moveTo(e.offsetX, e.offsetY); };
   sigCanvas.onmousemove = function(e) { if (drawing) { sigCtx.lineTo(e.offsetX, e.offsetY); sigCtx.stroke(); } };
   sigCanvas.onmouseup = function() { drawing = false; };
-  
-  // Touch
-  function getTouchPos(canvasDom, touchEvent) {
-    var rect = canvasDom.getBoundingClientRect();
-    return { x: touchEvent.touches[0].clientX - rect.left, y: touchEvent.touches[0].clientY - rect.top };
-  }
+  function getTouchPos(canvasDom, touchEvent) { var rect = canvasDom.getBoundingClientRect(); return { x: touchEvent.touches[0].clientX - rect.left, y: touchEvent.touches[0].clientY - rect.top }; }
   sigCanvas.addEventListener("touchstart", function(e) { e.preventDefault(); drawing = true; var pos = getTouchPos(sigCanvas, e); sigCtx.beginPath(); sigCtx.moveTo(pos.x, pos.y); }, {passive:false});
   sigCanvas.addEventListener("touchmove", function(e) { e.preventDefault(); if(!drawing) return; var pos = getTouchPos(sigCanvas, e); sigCtx.lineTo(pos.x, pos.y); sigCtx.stroke(); }, {passive:false});
   sigCanvas.addEventListener("touchend", function() { drawing = false; }, false);
 };
 window.clearSig = function() { if(sigCtx) sigCtx.clearRect(0,0,sigCanvas.width, sigCanvas.height); };
 
-// --- IMAGE COMPRESSION ---
+// --- SUBMIT ---
 var b64 = function(id) {
   return new Promise(function(resolve) {
     var input = document.getElementById(id); if (!input || !input.files.length) { resolve([]); return; }
@@ -411,14 +317,11 @@ var b64 = function(id) {
     for (var i = 0; i < files.length; i++) {
       (function(file) {
         var p = new Promise(function(res) {
-          var reader = new FileReader();
-          reader.onload = function(event) {
-            var img = new Image();
-            img.onload = function() {
+          var reader = new FileReader(); reader.onload = function(event) {
+            var img = new Image(); img.onload = function() {
               var canvas = document.createElement("canvas"); var width = img.width, height = img.height;
               if (width > height) { if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; } } else { if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; } }
-              canvas.width = width; canvas.height = height;
-              var ctx = canvas.getContext("2d"); ctx.drawImage(img, 0, 0, width, height);
+              canvas.width = width; canvas.height = height; var ctx = canvas.getContext("2d"); ctx.drawImage(img, 0, 0, width, height);
               res({name: file.name, data: canvas.toDataURL("image/jpeg", 0.7).split(",")[1]});
             }; img.src = event.target.result;
           }; reader.readAsDataURL(file);
@@ -428,16 +331,12 @@ var b64 = function(id) {
   });
 };
 
-// --- SUBMIT LOGIC ---
 window.submitForm = function(e) {
-  e.preventDefault();
-  var btn = document.getElementById("submitBtn");
+  e.preventDefault(); var btn = document.getElementById("submitBtn");
   if (isSubmitting) return;
-  if (!document.getElementById("acknowledge").checked) { alert("Please check the acknowledgment box."); return; }
-  if (document.getElementById("typedSignatureName").value.length < 3) { alert("Please type your full name to sign."); return; }
-  
-  isSubmitting = true;
-  btn.disabled = true; btn.textContent = "UPLOADING REPORT...";
+  if (!document.getElementById("acknowledge").checked) { alert("Check acknowledgment box."); return; }
+  if (document.getElementById("typedSignatureName").value.length < 3) { alert("Type name to sign."); return; }
+  isSubmitting = true; btn.disabled = true; btn.textContent = "SENDING...";
   
   var priority = "high";
   var sections = ["high","edv","low","mph","accident","insurance"];
@@ -468,27 +367,13 @@ window.submitForm = function(e) {
 
   Promise.all([b64("highPhotos"), b64("lowPhotos"), b64("edvPhotos"), b64("mphPhotos"), b64("accidentPhotos")]).then(function(results) {
     payload.highPhotos = results[0]; payload.lowPhotos = results[1]; payload.edvPhotos = results[2]; payload.mphPhotos = results[3]; payload.accidentPhotos = results[4];
-    
-    fetch('/submit-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
+    fetch('/submit-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            document.getElementById("mainCard").style.display = "none";
-            document.getElementById("successMessage").style.display = "block";
-            window.scrollTo(0,0);
-        } else {
-            alert("Error: " + (data.error || "Unknown"));
-            btn.disabled = false; isSubmitting = false; btn.textContent = "SUBMIT REPORT";
-        }
+        if (data.success) { document.getElementById("mainCard").style.display = "none"; document.getElementById("successMessage").style.display = "block"; window.scrollTo(0,0); } 
+        else { alert("Error: " + (data.error || "Unknown")); btn.disabled = false; isSubmitting = false; btn.textContent = "SUBMIT REPORT"; }
     })
-    .catch(error => {
-        alert("Connection Error. Please try again.");
-        btn.disabled = false; isSubmitting = false; btn.textContent = "SUBMIT REPORT";
-    });
+    .catch(error => { alert("Connection Error. Try again."); btn.disabled = false; isSubmitting = false; btn.textContent = "SUBMIT REPORT"; });
   });
 };
 </script>
