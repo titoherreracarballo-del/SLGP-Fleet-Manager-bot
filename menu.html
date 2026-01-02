@@ -17,58 +17,49 @@
             min-height: 100vh; margin: 0; padding: 20px; text-align: center;
         }
         .logo { width: 280px; margin-bottom: 30px; filter: drop-shadow(0 0 15px rgba(0, 102, 255, 0.4)); }
-        h1 { font-size: 18px; margin-bottom: 25px; letter-spacing: 1px; color: #0066ff; text-transform: uppercase; }
         
         .menu-btn {
-            display: flex; align-items: center; justify-content: flex-start;
-            width: 100%; max-width: 320px; padding: 15px 25px; margin-bottom: 15px;
-            border-radius: 16px; text-decoration: none; font-weight: 800; font-size: 15px;
-            text-transform: uppercase; transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3); position: relative; overflow: hidden;
-            box-sizing: border-box;
-            background-color: rgba(255, 255, 255, 0.05); /* Fallback background */
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-
-        .menu-btn:active { transform: scale(0.96); }
-
-        /* IMAGE ICON STYLING */
-        .btn-icon {
-            width: 40px;       /* Slightly larger for your custom JPGs */
-            height: 40px;      
-            margin-right: 20px; 
-            object-fit: contain; 
-            border-radius: 6px; /* Softens the corners of your JPGs */
+            display: block; /* Standard block for full images */
+            width: 100%; max-width: 320px; 
+            margin-bottom: 20px;
+            border-radius: 18px; 
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4); 
+            padding: 0; /* Remove padding so image touches edges */
+            background: transparent; /* No background color needed */
+            border: none; /* Let the image define the edge */
+            overflow: hidden; /* Keeps corners rounded */
         }
         
-        /* Custom Colors for Borders/Glows */
-        .btn-video { border-color: #0055aa; background: linear-gradient(135deg, #0066ff, #0044cc); }
-        .btn-issue { border-color: #aa6600; background: linear-gradient(135deg, #ff9900, #cc7a00); }
-        .btn-accident { border-color: #aa0000; background: linear-gradient(135deg, #ff4444, #cc0000); }
+        .menu-btn:active { transform: scale(0.97); }
+
+        /* IMAGE STYLING */
+        .btn-img {
+            width: 100%;       
+            height: auto;      
+            display: block;    /* Removes tiny gap at bottom of images */
+            border-radius: 18px;
+        }
 
         .footer { margin-top: 40px; font-size: 11px; color: #444; }
     </style>
 </head>
 <body>
     <img src="Final-01.jpg" alt="SLGP Logo" class="logo">
-    <h1>Select Action</h1>
 
-    <a href="/video" class="menu-btn btn-video">
-        <img src="Pre & Post Fleet Vids.jpg" class="btn-icon" alt="Video">
-        <span>Daily Video Check</span>
+    <a href="/video" class="menu-btn">
+        <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Daily Video Check">
     </a>
 
-    <a href="/report?mode=issue" class="menu-btn btn-issue">
-        <img src="Report An Issue.jpg" class="btn-icon" alt="Issue">
-        <span>Report Issue</span>
+    <a href="/report?mode=issue" class="menu-btn">
+        <img src="Report An Issue.jpg" class="btn-img" alt="Report Issue">
     </a>
 
-    <a href="/report?mode=accident" class="menu-btn btn-accident">
-        <img src="Accident or Incident Reporting.jpg" class="btn-icon" alt="Accident">
-        <span>Report Accident</span>
+    <a href="/report?mode=accident" class="menu-btn">
+        <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Report Accident">
     </a>
 
-    <div class="footer">SLGP Fleet Portal v5.4</div>
+    <div class="footer">SLGP Fleet Portal v5.5</div>
 </body>
 </html>
