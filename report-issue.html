@@ -74,10 +74,15 @@
         /* Readonly VIN Display */
         input[readonly] {
             background-color: #1a202c; 
-            color: #4ade80; /* Green Text for success */
             font-weight: bold;
             cursor: not-allowed;
             border-color: #2d3748;
+            color: #4ade80; /* Default Green (Gas/Electric) */
+        }
+        
+        /* DIESEL MODE (Red Text) */
+        input[readonly].diesel-mode {
+            color: #ef4444 !important; /* Bright Red */
         }
 
         /* --- CATEGORY TABS --- */
@@ -123,16 +128,19 @@
         }
         .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
         
-        /* capture="environment" forces rear camera on mobile */
         #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
         
         .camera-icon { width: 40px; height: 40px; fill: #cbd5e1; margin-bottom: 10px; }
         .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; }
         .camera-sub { font-size: 10px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* --- MAP --- */
+        /* --- MAP & LOCATION --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
         
+        #gpsStatus {
+            font-size: 11px; color: #4ade80; margin-top: 5px; text-align: right; display: none;
+        }
+
         /* --- HIDDEN NOTES --- */
         #otherNotesContainer { display: none; margin-top: 20px; animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -161,7 +169,7 @@
     <div class="form-group row-split">
         <div class="half-width">
             <label>Last 4 of VIN</label>
-            <input type="number" id="vinInput" placeholder="e.g. 7867" onkeyup="checkVin()">
+            <input type="text" id="vinInput" placeholder="e.g. W123 or 5678" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
         </div>
         <div class="half-width">
             <label>Vehicle Type</label>
@@ -219,10 +227,13 @@
     </div>
 
     <div id="mph" class="section">
-        <label>Road / Location Details</label>
-        <input type="text" id="street" placeholder="Street Name" style="margin-bottom:10px;">
-        <input type="text" id="city" placeholder="City" style="margin-bottom:10px;">
-        <input type="text" id="state" placeholder="State">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label>Road / Location Details</label>
+            <span id="gpsStatus">◎ GPS LOCKED</span>
+        </div>
+        <input type="text" id="street" placeholder="Auto-Detecting Street..." style="margin-bottom:10px;">
+        <input type="text" id="city" placeholder="Auto-Detecting City..." style="margin-bottom:10px;">
+        <input type="text" id="state" placeholder="Auto-Detecting State...">
         <div id="map"></div>
     </div>
 
@@ -251,65 +262,33 @@
     // 1. Timestamp
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // 2. VIN DATABASE (Based on your Screenshot)
+    // 2. VIN DATABASE
     const vinDatabase = {
-        // GAS VANS (CDV, XL, LARGE)
         "1051": "Extra Large Van (Gas)",
         "5490": "CDV 16ft (Gas)",
         "9488": "Extra Large Van (Gas)",
-        "7097": "CDV 12ft (Gas)",
-        "5311": "CDV 16ft (Gas)",
-        "3010": "Extra Large Van (Gas)",
-        "1587": "CDV 16ft (Gas)",
-        "5344": "Extra Large Van (Gas)",
-        "2347": "CDV 14ft (Gas)",
-        "0890": "Extra Large Van (Gas)",
-        "6880": "CDV 12ft (Gas)",
-        "1853": "Extra Large Van (Gas)",
-        "7373": "Extra Large Van (Gas)",
-        "0876": "Extra Large Van (Gas)",
-        "8786": "Extra Large Van (Gas)",
-        "6907": "CDV 12ft (Gas)",
-        "0213": "Large Van (Gas)",
-        "8929": "Extra Large Van (Gas)",
-        "1295": "CDV 12ft (Gas)",
-        "9651": "Extra Large Van (Gas)",
-        "6265": "CDV 16ft (Gas)",
-        "6188": "CDV 14ft (Gas)",
-        "3754": "Extra Large Van (Gas)",
-        "1288": "CDV 12ft (Gas)",
-        "5691": "Extra Large Van (Gas)",
-        "6864": "CDV 12ft (Gas)",
-        "7403": "Extra Large Van (Gas)",
-
-        // ELECTRIC (RIVIAN EDV)
         "7867": "Rivian MEDIUM (Electric)",
         "7871": "Rivian MEDIUM (Electric)",
-        "9412": "Rivian MEDIUM (Electric)",
-        "7866": "Rivian MEDIUM (Electric)",
-        "7865": "Rivian MEDIUM (Electric)",
-        "7860": "Rivian MEDIUM (Electric)",
-        "9418": "Rivian MEDIUM (Electric)",
-        "7863": "Rivian MEDIUM (Electric)",
-        "7859": "Rivian MEDIUM (Electric)",
-        "7857": "Rivian MEDIUM (Electric)"
+        "9412": "Rivian MEDIUM (Electric)"
     };
 
     function checkVin() {
-        const vin = document.getElementById('vinInput').value;
+        let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
-
+        typeBox.classList.remove('diesel-mode');
+        
         if (vin.length === 4) {
+            if (vin.startsWith("W")) {
+                typeBox.value = "Mercedes (Diesel)";
+                typeBox.classList.add('diesel-mode'); 
+                setTab('high'); 
+                return;
+            }
             if (vinDatabase[vin]) {
                 const vehicle = vinDatabase[vin];
-                typeBox.value = vehicle; // Show detected vehicle
-                
-                // Smart Switch: If Rivian, go to EDV tab. Else go to High Priority.
-                if(vehicle.toLowerCase().includes("rivian")) {
-                    setTab('edv');
-                } else {
-                    setTab('high');
-                }
+                typeBox.value = vehicle; 
+                if(vehicle.toLowerCase().includes("rivian")) { setTab('edv'); } 
+                else { setTab('high'); }
             } else {
                 typeBox.value = "Unknown Vehicle";
             }
@@ -318,8 +297,9 @@
         }
     }
 
-    // 3. Tab Logic
+    // 3. Tab & GPS Logic
     let activeTab = 'high';
+    
     function setTab(id) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -329,9 +309,46 @@
         document.querySelectorAll('.tab-btn')[index].classList.add('active');
         document.getElementById(id).classList.add('active');
         activeTab = id;
-
-        if(id === 'mph') { setTimeout(() => { map.invalidateSize(); }, 100); }
         checkForOther();
+
+        // ---------------- GPS LOGIC ----------------
+        if(id === 'mph') {
+            setTimeout(() => { map.invalidateSize(); }, 100);
+            
+            // Start Geolocation
+            if (navigator.geolocation) {
+                document.getElementById('street').placeholder = "Locating...";
+                document.getElementById('gpsStatus').style.display = "block";
+                
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+
+                    // Update Map
+                    map.setView([lat, lng], 18);
+                    L.marker([lat, lng]).addTo(map).bindPopup("Your Location").openPopup();
+
+                    // Reverse Geocode (OpenStreetMap Nominatim)
+                    try {
+                        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+                        const data = await response.json();
+                        
+                        if(data.address) {
+                            document.getElementById('street').value = data.address.road || "";
+                            document.getElementById('city').value = data.address.city || data.address.town || "";
+                            document.getElementById('state').value = data.address.state || "";
+                        }
+                        document.getElementById('gpsStatus').innerText = "✓ GPS AUTO-FILLED";
+                    } catch (err) {
+                        console.error("Geocoding failed", err);
+                        document.getElementById('street').placeholder = "Could not auto-fill. Please type.";
+                    }
+                }, (err) => {
+                    alert("Location access denied. Please type address manually.");
+                });
+            }
+        }
+        // -------------------------------------------
     }
 
     // 4. Selection Logic
@@ -357,7 +374,7 @@
     var map = L.map('map').setView([39.82, -98.58], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // 6. Photo Logic (Live Camera Only)
+    // 6. Photo Logic
     const photoInput = document.getElementById('photoInput');
     let photos = [];
     photoInput.addEventListener('change', function(e) {
@@ -365,7 +382,7 @@
         if(files.length > 0) {
             document.querySelector('.camera-title').innerText = `${files.length} PHOTOS CAPTURED`;
             document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
-            document.querySelector('.camera-sub').style.color = "#4ade80"; // Turn Green
+            document.querySelector('.camera-sub').style.color = "#4ade80"; 
             document.querySelector('.camera-icon').style.fill = '#4ade80';
             
             files.forEach(file => {
