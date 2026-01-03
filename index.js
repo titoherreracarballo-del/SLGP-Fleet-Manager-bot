@@ -13,8 +13,7 @@ const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
 // --- MIDDLEWARE ---
 app.use(express.json());
-// Serve static files from the CURRENT directory (Root)
-app.use(express.static(__dirname));
+app.use(express.static(__dirname)); // Serve files from Root
 
 // --- AUTHENTICATION ---
 const auth = new google.auth.GoogleAuth({
@@ -44,12 +43,12 @@ function getTodayFolderName() {
     return `${dayName} ${monthName} ${dayNum}${suffix(dayNum)}`;
 }
 
-// --- HELPER: FIND/CREATE DRIVE FOLDER ---
+// --- HELPER: FIND/CREATE DRIVE FOLDER (WITH FAILSAFE) ---
 async function getDailyFolderId(drive) {
-    const folderName = getTodayFolderName();
-    const query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and '${PARENT_FOLDER_ID}' in parents and trashed=false`;
-    
     try {
+        const folderName = getTodayFolderName();
+        const query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and '${PARENT_FOLDER_ID}' in parents and trashed=false`;
+        
         const res = await drive.files.list({ q: query, fields: 'files(id, name)', spaces: 'drive' });
 
         if (res.data.files.length > 0) {
@@ -66,37 +65,20 @@ async function getDailyFolderId(drive) {
             return folder.data.id;
         }
     } catch (error) {
-        console.error('Error finding folder:', error);
-        throw error;
+        // --- FAILSAFE ---
+        // If we can't create a folder (permission error), use the PARENT ID instead of failing.
+        console.error('Folder creation failed (Permissions?), uploading to Parent Folder instead.');
+        return PARENT_FOLDER_ID;
     }
 }
 
-// --- EXPLICIT ROUTES (MATCHING YOUR FILENAMES) ---
+// --- ROUTES (Matched to your File Names) ---
 
-// 1. Home Page -> Points to 'menu.html'
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'menu.html'));
-});
-
-// 2. Video Page
-app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video.html'));
-});
-
-// 3. Report Issue Page
-app.get('/report-issue', (req, res) => {
-    res.sendFile(path.join(__dirname, 'report-issue.html'));
-});
-
-// 4. Accident Report Page -> Points to 'accident - report.html' (with spaces)
-app.get('/accident-report', (req, res) => {
-    res.sendFile(path.join(__dirname, 'accident - report.html'));
-});
-
-// 5. Insurance Page
-app.get('/insurance', (req, res) => {
-    res.sendFile(path.join(__dirname, 'insurance.html'));
-});
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'menu.html')); });
+app.get('/video', (req, res) => { res.sendFile(path.join(__dirname, 'video.html')); });
+app.get('/report-issue', (req, res) => { res.sendFile(path.join(__dirname, 'report-issue.html')); });
+app.get('/accident-report', (req, res) => { res.sendFile(path.join(__dirname, 'accident - report.html')); });
+app.get('/insurance', (req, res) => { res.sendFile(path.join(__dirname, 'insurance.html')); });
 
 // --- UPLOAD LOGIC ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -105,7 +87,9 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (!req.file) return res.status(400).send('No video file uploaded.');
 
         const drive = google.drive({ version: 'v3', auth });
-        const dailyFolderId = await getDailyFolderId(drive);
+        
+        // Try to get Daily Folder, fallback to Parent if it fails
+        const targetFolderId = await getDailyFolderId(drive);
         
         const timestamp = new Date().toLocaleTimeString().replace(/:/g, '-');
         const fileName = `${inspectionType} - ${driverName} - ${vin} - ${timestamp}.mp4`;
@@ -113,7 +97,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const bufferStream = new stream.PassThrough();
         bufferStream.end(req.file.buffer);
 
-        const fileMetadata = { name: fileName, parents: [dailyFolderId] };
+        const fileMetadata = { name: fileName, parents: [targetFolderId] };
         const media = { mimeType: req.file.mimetype, body: bufferStream };
 
         const response = await drive.files.create({ resource: fileMetadata, media: media, fields: 'id' });
@@ -135,7 +119,6 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-// --- START SERVER ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
