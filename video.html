@@ -110,6 +110,14 @@
         }
         video { width: 100%; height: 100%; object-fit: cover; }
         
+        /* TIMER OVERLAY */
+        #timer-display {
+            position: absolute; top: 20px; right: 20px;
+            background-color: rgba(0,0,0,0.6); padding: 5px 12px;
+            border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px;
+            border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20;
+        }
+        
         .controls {
             position: absolute; bottom: 20px; left: 0; right: 0; 
             display: flex; justify-content: center; gap: 20px; z-index: 10;
@@ -162,6 +170,7 @@
     </div>
 
     <div class="video-box">
+        <div id="timer-display">00:00</div>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
         
@@ -271,20 +280,17 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- ENHANCED VIDEO LOGIC (FORCED HIGH BITRATE) ---
+    // --- VIDEO & TIMER LOGIC ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
+    let timerInterval;
+    let seconds = 0;
     
     async function startCamera() {
         try {
-            // STRICTLY REQUEST 1080P
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: "environment", 
-                    width: { min: 1920, ideal: 1920 }, 
-                    height: { min: 1080, ideal: 1080 } 
-                }, 
+                video: { facingMode: "environment", width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, 
                 audio: true 
             });
             document.getElementById('preview').srcObject = stream;
@@ -294,25 +300,39 @@
     startCamera();
     autoSelectInspection(); 
 
+    // --- TIMER FUNCTIONS ---
+    function startTimer() {
+        seconds = 0;
+        document.getElementById('timer-display').style.display = 'block';
+        document.getElementById('timer-display').innerText = "00:00";
+        timerInterval = setInterval(() => {
+            seconds++;
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+        document.getElementById('timer-display').style.display = 'none';
+    }
+
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
             const stream = document.getElementById('preview').srcObject;
             
-            // --- NEW: Force High Bitrate for High Quality ---
             const options = {
-                mimeType: 'video/webm;codecs=vp9', // Preferred codec
-                videoBitsPerSecond: 8000000        // 8 Mbps (HD Quality)
+                mimeType: 'video/webm;codecs=vp9', 
+                videoBitsPerSecond: 8000000 
             };
-            
-            // Fallback if browser doesn't support VP9
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                delete options.mimeType; // Let browser choose, but keep bitrate
-            }
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) delete options.mimeType;
 
             mediaRecorder = new MediaRecorder(stream, options);
             
             mediaRecorder.ondataavailable = e => chunks.push(e.data);
             mediaRecorder.onstop = () => {
+                stopTimer(); // Stop timer
                 videoBlob = new Blob(chunks, { type: 'video/mp4' });
                 const videoURL = URL.createObjectURL(videoBlob);
                 document.getElementById('preview').style.display = 'none';
@@ -326,6 +346,7 @@
             };
 
             mediaRecorder.start();
+            startTimer(); // Start timer
             document.getElementById('btn-record').classList.add('recording');
             document.getElementById('btn-stop').style.display = 'flex';
             document.getElementById('status').innerText = "Recording... Walk around vehicle.";
