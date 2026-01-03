@@ -54,7 +54,6 @@
         /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         
-        /* NEW SPLIT LAYOUT FOR VIN */
         .row-split { display: flex; gap: 10px; }
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
@@ -158,10 +157,10 @@
         </div>
     </div>
 
-    <label>Inspection Type</label>
+    <label>Inspection Type (Auto-Selected)</label>
     <div class="type-grid">
-        <button class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
-        <button class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
+        <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
+        <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
     </div>
 
     <div class="video-box">
@@ -181,7 +180,18 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // 1. VIN DATABASE (Cleaned names, same as Report page)
+    // 1. AUTO-SELECT INSPECTION TYPE BASED ON TIME
+    function autoSelectInspection() {
+        const hour = new Date().getHours();
+        // If it's before 1:00 PM (13:00), default to Pre-Trip. Otherwise, Post-Trip.
+        if (hour < 13) {
+            selectType('Pre-Trip');
+        } else {
+            selectType('Post-Trip');
+        }
+    }
+
+    // 2. VIN DATABASE
     const vinDatabase = {
         // --- DIESEL (GREEN) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
@@ -263,17 +273,20 @@
         }
     }
 
-    // 2. INSPECTION TYPE LOGIC
+    // 3. INSPECTION TYPE LOGIC
     let inspectionType = '';
     function selectType(type) {
         inspectionType = type;
-        document.querySelectorAll('.type-btn').forEach(btn => {
-            btn.classList.remove('selected');
-            if(btn.innerText === type) btn.classList.add('selected');
-        });
+        
+        // Visual Update
+        document.getElementById('btn-pre').classList.remove('selected');
+        document.getElementById('btn-post').classList.remove('selected');
+        
+        if(type === 'Pre-Trip') document.getElementById('btn-pre').classList.add('selected');
+        if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // 3. VIDEO LOGIC
+    // 4. VIDEO LOGIC
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
@@ -281,13 +294,17 @@
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 1280, height: 720 }, 
+                // FORCE 1080P RESOLUTION
+                video: { facingMode: "environment", width: 1920, height: 1080 }, 
                 audio: true 
             });
             document.getElementById('preview').srcObject = stream;
         } catch (err) { alert("Camera Error: " + err.message); }
     }
+    
+    // Init functions
     startCamera();
+    autoSelectInspection(); // Runs on load
 
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
@@ -320,7 +337,7 @@
         document.getElementById('btn-record').classList.remove('recording');
     }
 
-    // 4. SUBMIT LOGIC
+    // 5. SUBMIT LOGIC (Untouched, sends to same Google Drive endpoint)
     async function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value; // Using NEW ID
