@@ -71,24 +71,29 @@ async function getDailyFolderId(drive) {
     }
 }
 
-// --- EXPLICIT ROUTES (Pointing to ROOT directory) ---
+// --- EXPLICIT ROUTES (MATCHING YOUR FILENAMES) ---
 
+// 1. Home Page -> Points to 'menu.html'
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'menu.html'));
 });
 
+// 2. Video Page
 app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
+// 3. Report Issue Page
 app.get('/report-issue', (req, res) => {
     res.sendFile(path.join(__dirname, 'report-issue.html'));
 });
 
+// 4. Accident Report Page -> Points to 'accident - report.html' (with spaces)
 app.get('/accident-report', (req, res) => {
-    res.sendFile(path.join(__dirname, 'accident-report.html'));
+    res.sendFile(path.join(__dirname, 'accident - report.html'));
 });
 
+// 5. Insurance Page
 app.get('/insurance', (req, res) => {
     res.sendFile(path.join(__dirname, 'insurance.html'));
 });
