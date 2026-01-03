@@ -8,12 +8,12 @@
     <style>
         /* --- THEME SETTINGS --- */
         :root {
-            --bg-body: #0F1115;       /* Deepest Navy */
-            --bg-card: #161B28;       /* Card Background */
-            --bg-input: #0b0d12;      /* Input Background */
-            --primary-blue: #2563EB;  /* Bright Blue */
+            --bg-body: #0F1115;       
+            --bg-card: #161B28;       
+            --bg-input: #0b0d12;      
+            --primary-blue: #2563EB;  
             --primary-glow: rgba(37, 99, 235, 0.4);
-            --text-label: #3B82F6;    /* Neon Blue Text */
+            --text-label: #3B82F6;    
             --text-white: #ffffff;
             --text-gray: #94a3b8;
             --border-color: #2d3748;
@@ -57,17 +57,25 @@
         /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         
+        /* ADJUSTED LAYOUT FOR LONG NAMES */
         .row-split { display: flex; gap: 15px; }
-        .half-width { flex: 1; }
+        
+        /* VIN Box = Smaller (30%) */
+        .vin-col { flex: 0.4; min-width: 80px; } 
+        
+        /* Vehicle Type Box = Larger (70%) */
+        .type-col { flex: 1.6; }
 
         label {
             color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
             text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
+            white-space: nowrap; /* Prevents label wrapping */
         }
         input, textarea {
             width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
-            padding: 16px; border-radius: var(--radius); font-size: 16px; box-sizing: border-box; outline: none;
+            padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
             transition: border-color 0.2s;
+            text-overflow: ellipsis; /* Handles extremely long text gracefully */
         }
         input:focus, textarea:focus { border-color: var(--text-label); }
 
@@ -77,22 +85,13 @@
             font-weight: bold;
             cursor: not-allowed;
             border-color: #2d3748;
-            color: #6b7280; /* Default Gray until detected */
+            color: #6b7280; 
         }
         
-        /* --- FUEL TYPE COLORS --- */
-        input[readonly].gas-mode {
-            color: #ef4444 !important; /* RED for Gas 87 */
-            border-color: #ef4444;
-        }
-        input[readonly].diesel-mode {
-            color: #4ade80 !important; /* GREEN for Diesel */
-            border-color: #4ade80;
-        }
-        input[readonly].electric-mode {
-            color: #ffffff !important; /* WHITE for Electric */
-            border-color: #ffffff;
-        }
+        /* Auto-Fix Colors */
+        input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
+        input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
+        input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
 
         /* --- CATEGORY TABS --- */
         .tabs {
@@ -108,13 +107,13 @@
             box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
         }
 
-        /* --- MODERN LIST BUTTONS --- */
+        /* --- LIST BUTTONS --- */
         .section { display: none; }
         .section.active { display: block; }
         .list-options { display: flex; flex-direction: column; gap: 10px; }
 
         .list-btn {
-            width: 100%; text-align: left;
+            width: 100%; display: flex; align-items: center; gap: 15px; text-align: left;
             background-color: rgba(255, 255, 255, 0.03);
             border: 1px solid #334155; color: #E2E8F0;
             padding: 16px 20px; border-radius: var(--radius);
@@ -127,6 +126,10 @@
             color: white; box-shadow: 0 4px 15px var(--primary-glow); transform: translateY(-1px);
         }
         .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
+
+        /* Icons */
+        .opt-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; fill: #94a3b8; }
+        .list-btn.selected .opt-icon { fill: white; } 
 
         /* --- CAMERA BOX --- */
         .camera-box {
@@ -171,12 +174,12 @@
     </div>
 
     <div class="form-group row-split">
-        <div class="half-width">
-            <label>Last 4 of VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1051 or W123" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
+        <div class="vin-col">
+            <label>Last 4 VIN</label>
+            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
         </div>
-        <div class="half-width">
-            <label>Vehicle Type</label>
+        <div class="type-col">
+            <label>Vehicle Service Type</label>
             <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
         </div>
     </div>
@@ -191,8 +194,8 @@
 
     <div id="high" class="section active">
         <div class="list-options">
-            <button class="list-btn">Brakes Squealing / Grinding</button>
-            <button class="list-btn">Tire Blowout / Extreme Wear</button>
+            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-6h-2v4h2v-4z"/></svg> Brakes Squealing / Grinding</button>
+            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> Tire Blowout / Extreme Wear</button>
             <button class="list-btn">Steering Column Loose</button>
             <button class="list-btn">Vehicle Will Not Start</button>
             <button class="list-btn">Burning Smell / Fluid Leak</button>
@@ -266,68 +269,93 @@
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
     // ----------------------------------------------------
-    //  VIN DATABASE (Updated with Fuel Logic)
+    //  FULL VIN DATABASE (From your Screenshot)
     // ----------------------------------------------------
     const vinDatabase = {
-        // --- DIESEL (GREEN TEXT) ---
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        // --- DIESEL (GREEN) ---
+        "9488": { type: "Standard Parcel - Extra Large Van - US", fuel: "diesel" },
+        "0213": { type: "Standard Parcel - Large Van", fuel: "diesel" },
+        "8929": { type: "Standard Parcel - Extra Large Van - US", fuel: "diesel" },
+        "5691": { type: "Standard Parcel - Extra Large Van - US", fuel: "diesel" },
 
-        // --- ELECTRIC (WHITE TEXT) ---
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        // --- ELECTRIC (WHITE) ---
+        "7867": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27867":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" }, // Full 5 check
+        "27871":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7871": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "29412":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "9412": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27866":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7866": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27865":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7865": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27860":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7860": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "29418":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "9418": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27863":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7863": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27859":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7859": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "27857":{ type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
+        "7857": { type: "Standard Parcel Electric - Rivian MEDIUM", fuel: "electric" },
 
-        // --- GAS (RED TEXT) ---
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "5490": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "7097": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "5311": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1587": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "2347": { type: "CDV 14ft (Gas)", fuel: "gas" },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6880": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6907": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "1295": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6265": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "6188": { type: "CDV 14ft (Gas)", fuel: "gas" },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1288": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "6864": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
+        // --- GAS (RED) ---
+        "1051": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "5490": { type: "Standard Parcel - Custom Delivery Van 16ft", fuel: "gas" },
+        "7097": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "5311": { type: "Standard Parcel - Custom Delivery Van 16ft", fuel: "gas" },
+        "3010": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "1587": { type: "Standard Parcel - Custom Delivery Van 16ft", fuel: "gas" },
+        "5344": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "3344": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" }, // Typo safety
+        "2347": { type: "Standard Parcel - Custom Delivery Van 14ft", fuel: "gas" },
+        "0890": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "6880": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "1853": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "7373": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "0876": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "8786": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "6907": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "1295": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "9651": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "6265": { type: "Standard Parcel - Custom Delivery Van 16ft", fuel: "gas" },
+        "6188": { type: "Standard Parcel - Custom Delivery Van 14ft", fuel: "gas" },
+        "3754": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "1288": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "6864": { type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "7403": { type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "87373":{ type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "50876":{ type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "28786":{ type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "136907":{type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "138929":{type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "141295":{type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "49651":{ type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "46265":{ type: "Standard Parcel - Custom Delivery Van 16ft", fuel: "gas" },
+        "46188":{ type: "Standard Parcel - Custom Delivery Van 14ft", fuel: "gas" },
+        "503754":{type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "141288":{type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "145691":{type: "Standard Parcel - Extra Large Van - US", fuel: "gas" },
+        "136864":{type: "Standard Parcel - Custom Delivery Van 12ft", fuel: "gas" },
+        "587403":{type: "Standard Parcel - Extra Large Van - US", fuel: "gas" }
     };
 
     function checkVin() {
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
         
-        // Clear all previous color classes
         typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
         
-        if (vin.length === 4) {
-            // 1. Manual Override: If user types a W (e.g. W123) -> Diesel (Green)
+        if (vin.length >= 4) {
+            // Check Database using last 4 or full entry
+            let found = vinDatabase[vin];
+            
+            // Also try to match just the last 4 digits if user types more
+            if(!found && vin.length > 4) {
+                found = vinDatabase[vin.slice(-4)];
+            }
+
             if (vin.startsWith("W")) {
                 typeBox.value = "Mercedes (Diesel)";
                 typeBox.classList.add('diesel-mode'); 
@@ -335,20 +363,17 @@
                 return;
             }
 
-            // 2. Database Lookup
-            if (vinDatabase[vin]) {
-                const vehicle = vinDatabase[vin];
-                typeBox.value = vehicle.type; 
+            if (found) {
+                typeBox.value = found.type; 
                 
-                // Color Coding Logic
-                if (vehicle.fuel === 'diesel') {
-                    typeBox.classList.add('diesel-mode'); // Green
+                if (found.fuel === 'diesel') {
+                    typeBox.classList.add('diesel-mode');
                     setTab('high');
-                } else if (vehicle.fuel === 'electric') {
-                    typeBox.classList.add('electric-mode'); // White
+                } else if (found.fuel === 'electric') {
+                    typeBox.classList.add('electric-mode');
                     setTab('edv');
-                } else if (vehicle.fuel === 'gas') {
-                    typeBox.classList.add('gas-mode'); // Red
+                } else if (found.fuel === 'gas') {
+                    typeBox.classList.add('gas-mode');
                     setTab('high');
                 }
             } else {
