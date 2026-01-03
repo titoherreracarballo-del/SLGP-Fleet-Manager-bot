@@ -57,7 +57,6 @@
         /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         
-        /* Flex row for VIN and Vehicle Type side-by-side */
         .row-split { display: flex; gap: 15px; }
         .half-width { flex: 1; }
 
@@ -71,14 +70,14 @@
             transition: border-color 0.2s;
         }
         input:focus, textarea:focus { border-color: var(--text-label); }
-        
-        /* Readonly input style (Vehicle Type) */
+
+        /* Readonly VIN Display */
         input[readonly] {
             background-color: #1a202c; 
-            color: #4ade80; /* Green text when populated */
+            color: #4ade80; /* Green Text for success */
             font-weight: bold;
-            border-color: #2d3748;
             cursor: not-allowed;
+            border-color: #2d3748;
         }
 
         /* --- CATEGORY TABS --- */
@@ -95,10 +94,9 @@
             box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
         }
 
-        /* --- LIST OPTIONS --- */
+        /* --- MODERN LIST BUTTONS --- */
         .section { display: none; }
         .section.active { display: block; }
-        
         .list-options { display: flex; flex-direction: column; gap: 10px; }
 
         .list-btn {
@@ -116,7 +114,7 @@
         }
         .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
 
-        /* --- CAMERA BOX --- */
+        /* --- CAMERA BOX (FORCED LIVE CAPTURE) --- */
         .camera-box {
             border: 2px dashed #4b5563; border-radius: 16px; height: 140px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -124,10 +122,13 @@
             position: relative; overflow: hidden; transition: border-color 0.2s;
         }
         .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
+        
+        /* capture="environment" forces rear camera on mobile */
         #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+        
         .camera-icon { width: 40px; height: 40px; fill: #cbd5e1; margin-bottom: 10px; }
         .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .camera-sub { font-size: 10px; font-weight: 700; color: #4ade80; text-transform: uppercase; letter-spacing: 0.5px; }
+        .camera-sub { font-size: 10px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* --- MAP --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
@@ -160,7 +161,7 @@
     <div class="form-group row-split">
         <div class="half-width">
             <label>Last 4 of VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1234" maxlength="4" onkeyup="checkVin()">
+            <input type="number" id="vinInput" placeholder="e.g. 7867" onkeyup="checkVin()">
         </div>
         <div class="half-width">
             <label>Vehicle Type</label>
@@ -231,14 +232,14 @@
     </div>
 
     <div class="form-group" style="margin-top: 25px;">
-        <label>1080P CAMERA EVIDENCE</label>
+        <label>LIVE CAMERA (NO UPLOADS)</label>
         <div class="camera-box">
             <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
             <svg class="camera-icon" viewBox="0 0 24 24">
                 <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
             </svg>
-            <div class="camera-title">TAP TO START HD CAMERA</div>
-            <div class="camera-sub">FORCES 1080p RESOLUTION</div>
+            <div class="camera-title">TAP TO START CAMERA</div>
+            <div class="camera-sub">GALLERY ACCESS DISABLED</div>
         </div>
     </div>
 
@@ -250,12 +251,48 @@
     // 1. Timestamp
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // 2. VIN Lookup Logic (Mock Database)
+    // 2. VIN DATABASE (Based on your Screenshot)
     const vinDatabase = {
-        "1234": { type: "Rivian EDV 700", category: "edv" },
-        "5678": { type: "Ford Transit (CDV)", category: "high" },
-        "9999": { type: "Step Van (Cargo)", category: "high" },
-        "1111": { type: "Ram ProMaster", category: "low" }
+        // GAS VANS (CDV, XL, LARGE)
+        "1051": "Extra Large Van (Gas)",
+        "5490": "CDV 16ft (Gas)",
+        "9488": "Extra Large Van (Gas)",
+        "7097": "CDV 12ft (Gas)",
+        "5311": "CDV 16ft (Gas)",
+        "3010": "Extra Large Van (Gas)",
+        "1587": "CDV 16ft (Gas)",
+        "5344": "Extra Large Van (Gas)",
+        "2347": "CDV 14ft (Gas)",
+        "0890": "Extra Large Van (Gas)",
+        "6880": "CDV 12ft (Gas)",
+        "1853": "Extra Large Van (Gas)",
+        "7373": "Extra Large Van (Gas)",
+        "0876": "Extra Large Van (Gas)",
+        "8786": "Extra Large Van (Gas)",
+        "6907": "CDV 12ft (Gas)",
+        "0213": "Large Van (Gas)",
+        "8929": "Extra Large Van (Gas)",
+        "1295": "CDV 12ft (Gas)",
+        "9651": "Extra Large Van (Gas)",
+        "6265": "CDV 16ft (Gas)",
+        "6188": "CDV 14ft (Gas)",
+        "3754": "Extra Large Van (Gas)",
+        "1288": "CDV 12ft (Gas)",
+        "5691": "Extra Large Van (Gas)",
+        "6864": "CDV 12ft (Gas)",
+        "7403": "Extra Large Van (Gas)",
+
+        // ELECTRIC (RIVIAN EDV)
+        "7867": "Rivian MEDIUM (Electric)",
+        "7871": "Rivian MEDIUM (Electric)",
+        "9412": "Rivian MEDIUM (Electric)",
+        "7866": "Rivian MEDIUM (Electric)",
+        "7865": "Rivian MEDIUM (Electric)",
+        "7860": "Rivian MEDIUM (Electric)",
+        "9418": "Rivian MEDIUM (Electric)",
+        "7863": "Rivian MEDIUM (Electric)",
+        "7859": "Rivian MEDIUM (Electric)",
+        "7857": "Rivian MEDIUM (Electric)"
     };
 
     function checkVin() {
@@ -265,11 +302,10 @@
         if (vin.length === 4) {
             if (vinDatabase[vin]) {
                 const vehicle = vinDatabase[vin];
-                typeBox.value = vehicle.type; // Populate Field
+                typeBox.value = vehicle; // Show detected vehicle
                 
-                // Optional: Auto-Switch Tab based on vehicle type
-                // If it's an EDV, switch to EDV tab. Otherwise default to High Priority.
-                if(vehicle.category === 'edv') {
+                // Smart Switch: If Rivian, go to EDV tab. Else go to High Priority.
+                if(vehicle.toLowerCase().includes("rivian")) {
                     setTab('edv');
                 } else {
                     setTab('high');
@@ -321,14 +357,15 @@
     var map = L.map('map').setView([39.82, -98.58], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // 6. Photo Logic
+    // 6. Photo Logic (Live Camera Only)
     const photoInput = document.getElementById('photoInput');
     let photos = [];
     photoInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
         if(files.length > 0) {
-            document.querySelector('.camera-title').innerText = `${files.length} PHOTOS ATTACHED`;
-            document.querySelector('.camera-sub').innerText = "READY FOR UPLOAD";
+            document.querySelector('.camera-title').innerText = `${files.length} PHOTOS CAPTURED`;
+            document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
+            document.querySelector('.camera-sub').style.color = "#4ade80"; // Turn Green
             document.querySelector('.camera-icon').style.fill = '#4ade80';
             
             files.forEach(file => {
@@ -360,7 +397,7 @@
         }
 
         if(!driverName) { alert("Please enter Driver Name"); return; }
-        if(!vin || vin.length < 4) { alert("Please enter Last 4 of VIN"); return; }
+        if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
         if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
         
         const anyOther = selectedTags.some(t => t.includes("Other"));
