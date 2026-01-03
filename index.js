@@ -10,15 +10,12 @@ const upload = multer();
 const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Your Folder ID
 const KEY_FILE_PATH = './service-account.json'; 
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
-const PORT = process.env.PORT || 8080; // Changed to 8080 or environment port
+const PORT = process.env.PORT || 8080;
 
 // --- MIDDLEWARE ---
 app.use(express.json());
-
-// IMPORTANT: Serves files from the ROOT directory since your HTML files 
-// (menu.html, video.html, etc.) are in the same folder as index.js
+// Serve static files (CSS, Images, Scripts) from the ROOT folder
 app.use(express.static(__dirname)); 
-
 
 // --- AUTHENTICATION ---
 const auth = new google.auth.GoogleAuth({
@@ -77,70 +74,55 @@ async function getDailyFolderId(drive) {
 
 // --- SECURITY: VIDEO LOCK LOGIC ---
 const checkVideoLock = (req, res, next) => {
-    // LOCKED STATUS: Set to true to lock the video functionality
-    const isLocked = true; 
+    // UPDATE: Set to 'false' so the tab opens. Set to 'true' to lock it again later.
+    const isLocked = false; 
 
     if (isLocked) {
         console.log("Video Page Access Attempt: BLOCKED (Locked State)");
-        // Redirects back to the main menu if they try to access video
+        // This redirect causes the "respring" (Refresh) effect if locked
         res.redirect('/');
     } else {
         next();
     }
 };
 
-// --- ROUTES (MATCHING YOUR EXACT FILENAMES) ---
+// --- ROUTES ---
 
 // 1. Home / Menu
-// Serving 'menu.html' as the main entry point
 app.get('/', (req, res) => { 
     res.sendFile(path.join(__dirname, 'menu.html')); 
 });
 
-// 2. Video (LOCKED)
+// 2. Video Route (Now Unlocked)
 app.get('/video', checkVideoLock, (req, res) => { 
     res.sendFile(path.join(__dirname, 'video.html')); 
 });
 
-// 3. Smart Report Handler (Fixes "Cannot GET /report")
+// 3. Smart Report Handler
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-
     if (mode === 'accident') {
-        // ERROR FIX: Matches "accident - report.html" exactly
         res.sendFile(path.join(__dirname, 'accident - report.html'));
     } else if (mode === 'issue') {
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } else if (mode === 'insurance') {
         res.sendFile(path.join(__dirname, 'insurance.html'));
     } else {
-        // Default fallback
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     }
 });
 
 // 4. Direct Links (Backwards Compatibility)
-app.get('/report-issue', (req, res) => { 
-    res.sendFile(path.join(__dirname, 'report-issue.html')); 
-});
-app.get('/accident-report', (req, res) => { 
-    res.sendFile(path.join(__dirname, 'accident - report.html')); 
-});
-app.get('/insurance', (req, res) => { 
-    res.sendFile(path.join(__dirname, 'insurance.html')); 
-});
+app.get('/report-issue', (req, res) => { res.sendFile(path.join(__dirname, 'report-issue.html')); });
+app.get('/accident-report', (req, res) => { res.sendFile(path.join(__dirname, 'accident - report.html')); });
+app.get('/insurance', (req, res) => { res.sendFile(path.join(__dirname, 'insurance.html')); });
 
 
-// --- GOOGLE DRIVE UPLOAD ---
+// --- UPLOAD LOGIC ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
         const { driverName, vin, inspectionType } = req.body;
-        
-        // Basic validation
-        if (!req.file) {
-            console.error("Upload failed: No file received");
-            return res.status(400).send('No video file uploaded.');
-        }
+        if (!req.file) return res.status(400).send('No video file uploaded.');
 
         const drive = google.drive({ version: 'v3', auth });
         const targetFolderId = await getDailyFolderId(drive);
@@ -154,24 +136,22 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const fileMetadata = { name: fileName, parents: [targetFolderId] };
         const media = { mimeType: req.file.mimetype, body: bufferStream };
 
-        console.log(`Starting upload: ${fileName}`);
         const response = await drive.files.create({ resource: fileMetadata, media: media, fields: 'id' });
 
-        console.log(`Upload Success! ID: ${response.data.id}`);
+        console.log(`Success! Video ID: ${response.data.id}`);
         res.status(200).send('Upload successful');
     } catch (error) {
-        console.error('Error uploading to Drive:', error);
+        console.error('Error uploading:', error);
         res.status(500).send('Error uploading to Drive');
     }
 });
 
 app.post('/submit-report', (req, res) => {
-    console.log('Report Data Received:', req.body);
+    console.log('Report Data:', req.body);
     res.json({ success: true });
 });
 
-// --- START SERVER ---
+// --- SERVER START ---
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-    console.log(`Files served from: ${__dirname}`);
 });
