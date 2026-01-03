@@ -7,21 +7,41 @@ const app = express();
 const upload = multer();
 
 // --- CONFIGURATION ---
-const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Your Folder ID
-const KEY_FILE_PATH = './service-account.json'; 
+const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Your Drive Folder ID
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 const PORT = process.env.PORT || 8080;
 
 // --- MIDDLEWARE ---
 app.use(express.json());
-// Serve static files (CSS, Images, Scripts) from the ROOT folder
+// Serve static files from the root directory
 app.use(express.static(__dirname)); 
 
-// --- AUTHENTICATION ---
-const auth = new google.auth.GoogleAuth({
-    keyFile: KEY_FILE_PATH,
-    scopes: SCOPES,
-});
+
+// --- AUTHENTICATION (RAILWAY FIX) ---
+// We try to read from the Env Variable 'GCP_SA_KEY' first.
+// If that doesn't exist, we fall back to a local file (for local testing).
+let auth;
+try {
+    if (process.env.GCP_SA_KEY) {
+        // Parse the JSON string from Railway Environment Variable
+        const credentials = JSON.parse(process.env.GCP_SA_KEY);
+        auth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: SCOPES,
+        });
+        console.log("Authentication: Using Environment Variable (Railway Mode)");
+    } else {
+        // Fallback for local testing if you have the file
+        auth = new google.auth.GoogleAuth({
+            keyFile: './service-account.json',
+            scopes: SCOPES,
+        });
+        console.log("Authentication: Using local file ./service-account.json");
+    }
+} catch (err) {
+    console.error("CRITICAL AUTH ERROR: Could not load Google Credentials.", err);
+}
+
 
 // --- HELPER: FOLDER NAMES ---
 function getTodayFolderName() {
@@ -74,12 +94,11 @@ async function getDailyFolderId(drive) {
 
 // --- SECURITY: VIDEO LOCK LOGIC ---
 const checkVideoLock = (req, res, next) => {
-    // UPDATE: Set to 'false' so the tab opens. Set to 'true' to lock it again later.
+    // CURRENT STATUS: UNLOCKED (false)
     const isLocked = false; 
 
     if (isLocked) {
-        console.log("Video Page Access Attempt: BLOCKED (Locked State)");
-        // This redirect causes the "respring" (Refresh) effect if locked
+        // Redirects to home if locked
         res.redirect('/');
     } else {
         next();
@@ -93,7 +112,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'menu.html')); 
 });
 
-// 2. Video Route (Now Unlocked)
+// 2. Video (Unlocked)
 app.get('/video', checkVideoLock, (req, res) => { 
     res.sendFile(path.join(__dirname, 'video.html')); 
 });
@@ -118,17 +137,30 @@ app.get('/accident-report', (req, res) => { res.sendFile(path.join(__dirname, 'a
 app.get('/insurance', (req, res) => { res.sendFile(path.join(__dirname, 'insurance.html')); });
 
 
-// --- UPLOAD LOGIC ---
+// --- GOOGLE DRIVE UPLOAD ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        const { driverName, vin, inspectionType } = req.body;
         if (!req.file) return res.status(400).send('No video file uploaded.');
+        
+        // Use the auth object we created at the top
+        if (!auth) {
+             return res.status(500).send('Server Error: Google Credentials not loaded. Check Railway Variables.');
+        }
 
         const drive = google.drive({ version: 'v3', auth });
+        
+        // Try to get Daily Folder, fallback to Parent
         const targetFolderId = await getDailyFolderId(drive);
         
+        const { driverName, vin, inspectionType } = req.body;
         const timestamp = new Date().toLocaleTimeString().replace(/:/g, '-');
-        const fileName = `${inspectionType} - ${driverName} - ${vin} - ${timestamp}.mp4`;
+        
+        // Safe variable handling
+        const safeDriverName = driverName || 'Driver';
+        const safeVin = vin || 'NoVIN';
+        const safeType = inspectionType || 'Video';
+
+        const fileName = `${safeType} - ${safeDriverName} - ${safeVin} - ${timestamp}.mp4`;
 
         const bufferStream = new stream.PassThrough();
         bufferStream.end(req.file.buffer);
@@ -142,7 +174,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         res.status(200).send('Upload successful');
     } catch (error) {
         console.error('Error uploading:', error);
-        res.status(500).send('Error uploading to Drive');
+        res.status(500).send('Error uploading to Drive: ' + error.message);
     }
 });
 
