@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accident Report - Fleet Health</title>
+    <title>Accident Report</title>
     <style>
-        /* --- THEME SETTINGS --- */
+        /* --- MATCHING THEME --- */
         :root {
             --bg-body: #0F1115;
             --bg-card: #161B28;
             --bg-input: #0b0d12;
-            --bg-button: #242c3d;
-            --primary-red: #EF4444;   /* RED for Accident */
+            --bg-btn: #242c3d;
+            --primary-blue: #2563EB;
+            --primary-red: #EF4444; /* Keep Red ONLY for header/submit urgency */
             --text-label: #3B82F6;
             --text-green: #4ade80;
             --radius: 12px;
@@ -20,307 +21,101 @@
         body {
             background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
             display: flex;
             justify-content: center;
             padding: 20px;
             margin: 0;
-            color: white;
             min-height: 100vh;
         }
 
         .container {
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             background-color: var(--bg-card);
             border-radius: 24px;
             padding: 24px;
             border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
-        /* --- HEADER --- */
-        .back-link {
-            color: #94a3b8;
-            text-decoration: none;
-            font-size: 14px;
-            display: inline-block;
-            margin-bottom: 20px;
-            transition: color 0.2s;
-        }
-        .back-link:hover { color: white; }
-
-        .timestamp {
-            color: var(--text-green);
-            text-align: center;
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 5px;
-            letter-spacing: 0.5px;
-        }
-
+        .back-link { color: #94a3b8; text-decoration: none; display: block; margin-bottom: 20px; }
+        .timestamp { color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
+        
         h1 {
-            color: var(--primary-red);
-            text-align: center;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin: 0 0 30px 0;
-            text-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+            color: var(--primary-red); /* Red for accident urgency */
+            text-align: center; font-size: 24px; font-weight: 900; 
+            text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px;
         }
 
-        /* --- FORMS --- */
         .form-group { margin-bottom: 20px; }
-
         label {
-            color: var(--text-label);
-            display: block;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            margin-bottom: 8px;
+            color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
+            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
         }
-
         input, textarea {
-            width: 100%;
-            background-color: var(--bg-input);
-            border: 1px solid #1f2937;
-            color: white;
-            padding: 16px;
-            border-radius: var(--radius);
-            font-size: 16px;
-            box-sizing: border-box;
-            outline: none;
-            font-family: inherit;
+            width: 100%; background-color: var(--bg-input); border: 1px solid #1f2937; color: white;
+            padding: 16px; border-radius: var(--radius); font-size: 16px; box-sizing: border-box; outline: none;
         }
+        input:focus, textarea:focus { border-color: var(--primary-red); }
 
-        input:focus, textarea:focus {
-            border-color: var(--primary-red);
-        }
-
-        /* --- BUTTONS --- */
         .btn-option {
-            width: 100%;
-            background-color: var(--bg-button);
-            border: 1px solid #374151;
-            color: #cbd5e1;
-            padding: 14px;
-            border-radius: var(--radius);
-            font-weight: 700;
-            font-size: 13px;
-            text-transform: uppercase;
-            cursor: pointer;
-            margin-bottom: 10px;
-            transition: background 0.2s;
+            width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
+            padding: 14px; border-radius: var(--radius); font-weight: 700; font-size: 13px;
+            text-transform: uppercase; cursor: pointer; margin-bottom: 10px; transition: all 0.2s;
         }
+        .btn-option:hover { background-color: #334155; }
+        .btn-option.selected { background-color: #1e293b; border-color: var(--text-label); color: white; }
 
-        .btn-option:hover { background-color: #334155; color: white; }
-        
-        .btn-option.selected {
-            background-color: #1e293b;
-            border-color: var(--text-label);
-            color: white;
-        }
-
-        .row-split { display: flex; gap: 10px; }
-        .row-split .btn-option { margin-bottom: 0; }
-
-        /* --- CAMERA BOX --- */
-        .camera-box {
-            border: 2px dashed #4b5563;
-            border-radius: 16px;
-            height: 110px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            background-color: rgba(255,255,255,0.02);
-            transition: border-color 0.2s;
-            position: relative;
-            overflow: hidden;
-        }
-        .camera-box:hover { border-color: var(--primary-red); }
-        
-        .camera-icon { width: 32px; height: 32px; fill: #64748b; margin-bottom: 5px; }
-        .camera-text { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-
-        /* Actual File Input (Hidden) */
-        #photoInput {
-            position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer;
-        }
-
-        /* --- SUBMIT BUTTON --- */
         .btn-submit {
-            width: 100%;
-            background-color: var(--primary-red);
-            color: white;
-            border: none;
-            padding: 18px;
-            font-size: 16px;
-            font-weight: 900;
-            text-transform: uppercase;
-            border-radius: var(--radius);
-            cursor: pointer;
-            margin-top: 10px;
+            width: 100%; background-color: var(--primary-red); color: white; border: none;
+            padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
+            text-transform: uppercase; margin-top: 10px; cursor: pointer;
             box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
-            transition: transform 0.1s;
         }
-        .btn-submit:active { transform: scale(0.98); }
-
     </style>
 </head>
 <body>
 
     <div class="container">
         <a href="/" class="back-link">← Back to Menu</a>
-        
-        <div class="timestamp" id="ts">Loading...</div>
+        <div class="timestamp">1/3/2026, 12:12:00 PM</div>
         <h1>Accident Report</h1>
 
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Enter Full Name">
+            <input type="text" placeholder="Name">
         </div>
 
         <div class="form-group">
             <label>Incident Type</label>
-            <div id="incidentTypeGroup">
-                <button class="btn-option" onclick="selectOpt(this, 'type')">Collision (Traffic)</button>
-                <button class="btn-option" onclick="selectOpt(this, 'type')">Parked / Hit & Run</button>
-                <button class="btn-option" onclick="selectOpt(this, 'type')">Theft / Vandalism</button>
-                <button class="btn-option" onclick="selectOpt(this, 'type')">Property Damage</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Third Party Involved?</label>
-            <div class="row-split" id="thirdPartyGroup">
-                <button class="btn-option selected" onclick="selectOpt(this, 'party')">No</button>
-                <button class="btn-option" onclick="selectOpt(this, 'party')">Yes</button>
-            </div>
+            <button class="btn-option">Collision</button>
+            <button class="btn-option">Parked / Hit & Run</button>
+            <button class="btn-option">Theft / Vandalism</button>
+            <button class="btn-option">Property Damage</button>
         </div>
 
         <div class="form-group">
             <label>Location</label>
-            <input type="text" id="location" placeholder="Street Address or Intersection">
+            <input type="text" placeholder="Address or Intersection">
         </div>
 
         <div class="form-group">
-            <label>Driver Statement</label>
-            <textarea id="statement" style="min-height: 100px;" placeholder="Briefly describe how the incident occurred..."></textarea>
+            <label>Statement</label>
+            <textarea style="min-height: 100px;" placeholder="Describe what happened..."></textarea>
         </div>
 
-        <div class="form-group">
-            <label>Required Photos</label>
-            <div class="camera-box">
-                <input type="file" id="photoInput" multiple accept="image/*">
-                <svg class="camera-icon" viewBox="0 0 24 24">
-                    <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                </svg>
-                <span class="camera-text" id="photoText">4 Sides + Scene Context</span>
-            </div>
-        </div>
-
-        <button class="btn-submit" onclick="submitForm()">Submit Accident Report</button>
+        <button class="btn-submit">Submit Accident Report</button>
     </div>
 
     <script>
-        // 1. Live Timestamp
-        document.getElementById('ts').innerText = new Date().toLocaleString();
-
-        // 2. Button Selection Logic
-        let selectedType = "";
-        let thirdParty = "No";
-
-        function selectOpt(btn, group) {
-            // Clear siblings
-            let parent = btn.parentElement;
-            let siblings = parent.getElementsByClassName('btn-option');
-            for (let s of siblings) s.classList.remove('selected');
-            
-            // Select clicked
-            btn.classList.add('selected');
-
-            if(group === 'type') selectedType = btn.innerText;
-            if(group === 'party') thirdParty = btn.innerText;
-        }
-
-        // 3. Photo Logic
-        const photoInput = document.getElementById('photoInput');
-        let photos = [];
-
-        photoInput.addEventListener('change', function(e) {
-            const files = Array.from(e.target.files);
-            if(files.length > 0) {
-                document.getElementById('photoText').innerText = `${files.length} Photos Selected`;
-                document.querySelector('.camera-icon').style.fill = '#4ade80'; // Turn green
-                
-                // Convert images to base64 for upload
-                files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        photos.push({
-                            name: file.name,
-                            data: evt.target.result.split(',')[1] // Get base64 content
-                        });
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
+        document.querySelectorAll('.btn-option').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Deselect siblings
+                this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+                this.classList.add('selected');
+            });
         });
-
-        // 4. Submit Logic
-        async function submitForm() {
-            const driverName = document.getElementById('driverName').value;
-            const location = document.getElementById('location').value;
-            const statement = document.getElementById('statement').value;
-
-            if(!driverName) { alert("Please enter Driver Name"); return; }
-            if(!selectedType) { alert("Please select Incident Type"); return; }
-
-            const payload = {
-                reportType: 'Accident / Incident',
-                driverName: driverName,
-                subType: selectedType,
-                statement: statement,
-                date: new Date().toLocaleDateString(),
-                time: new Date().toLocaleTimeString(),
-                gpsLat: "N/A", // Can add geolocation later
-                gpsLng: "N/A",
-                policeReport: thirdParty === 'Yes' ? "Yes" : "No",
-                lmetCase: location, // Using lmetCase field for location in PDF for now
-                photos: photos
-            };
-
-            const btn = document.querySelector('.btn-submit');
-            btn.innerText = "UPLOADING...";
-            btn.style.opacity = "0.7";
-
-            try {
-                const res = await fetch('/submit-report', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await res.json();
-                if(result.success) {
-                    alert("Accident Report Submitted Successfully!");
-                    window.location.href = '/';
-                } else {
-                    alert("Error: " + result.error);
-                    btn.innerText = "SUBMIT ACCIDENT REPORT";
-                    btn.style.opacity = "1";
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Network Error. Please try again.");
-                btn.innerText = "SUBMIT ACCIDENT REPORT";
-                btn.style.opacity = "1";
-            }
-        }
     </script>
 </body>
 </html>
