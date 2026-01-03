@@ -32,7 +32,6 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // 1. Home Menu
 app.get('/', (req, res) => {
-    // We look for 'menu.html' first, if not found, we try 'index.html'
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
         res.sendFile(path.join(__dirname, 'menu.html'));
     } else {
@@ -43,25 +42,21 @@ app.get('/', (req, res) => {
 // 2. Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// 3. Report Routing (Fixes "Not Found" and "Insurance" errors)
+// 3. Report Routing (UPDATED NAMES TO MATCH MANIFEST)
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     
     if (mode === 'issue') {
+        // Matches "report-issue.html" in your list
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } 
     else if (mode === 'accident') {
-        res.sendFile(path.join(__dirname, 'accident-report.html'));
+        // FIXED: Matches "accident - report.html" (with spaces)
+        res.sendFile(path.join(__dirname, 'accident - report.html'));
     } 
     else if (mode === 'insurance') {
-        // Placeholder for Insurance to prevent crash
-        res.send(`
-            <body style="background:#0F1115; color:white; font-family:sans-serif; text-align:center; padding:40px;">
-                <h1 style="color:#3B82F6;">INSURANCE UPLOAD</h1>
-                <p>This feature is coming soon.</p>
-                <a href="/" style="color:#4ade80; text-decoration:none; font-weight:bold;">&larr; Back to Menu</a>
-            </body>
-        `);
+        // FIXED: Matches "insurance.html" in your list
+        res.sendFile(path.join(__dirname, 'insurance.html'));
     } 
     else {
         res.status(404).send('Error: Unknown report type.');
@@ -71,7 +66,6 @@ app.get('/report', (req, res) => {
 // --- GOOGLE AUTH ---
 let auth;
 try {
-    // NOTE: Ensure your GCP_SA_KEY environment variable is valid and active!
     if (process.env.GCP_SA_KEY) {
         auth = new google.auth.GoogleAuth({
             credentials: JSON.parse(process.env.GCP_SA_KEY),
@@ -80,10 +74,7 @@ try {
     }
 } catch (err) { console.error("Auth Error:", err.message); }
 
-// --- VIDEO UPLOAD ENGINE ---
-
-// *** FIX APPLIED HERE: FORCE THE CORRECT SHARED DRIVE ID ***
-// We removed 'process.env.GDRIVE_FOLDER_ID' to prevent server config errors.
+// --- VIDEO UPLOAD ENGINE (LOCKED & WORKING) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -98,13 +89,13 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             resource: { name: filename, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id', 
-            supportsAllDrives: true // Required for Shared Drives
+            supportsAllDrives: true
         });
         
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Complete');
     } catch (error) { 
-        console.error("Upload Error:", error); // Added logging for debugging
+        console.error("Upload Error:", error);
         res.status(500).send(`Error: ${error.message}`); 
     }
 });
@@ -122,7 +113,7 @@ app.post('/submit-report', async (req, res) => {
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
             fields: 'id',
-            supportsAllDrives: true // Added safety flag for reports too
+            supportsAllDrives: true
         });
         const folderId = folder.data.id;
 
