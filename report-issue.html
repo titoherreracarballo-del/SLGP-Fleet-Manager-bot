@@ -83,6 +83,7 @@
         /* DIESEL MODE (Red Text) */
         input[readonly].diesel-mode {
             color: #ef4444 !important; /* Bright Red */
+            border-color: #ef4444;
         }
 
         /* --- CATEGORY TABS --- */
@@ -134,7 +135,7 @@
         .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; }
         .camera-sub { font-size: 10px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* --- MAP & LOCATION --- */
+        /* --- MAP --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
         
         #gpsStatus {
@@ -169,7 +170,7 @@
     <div class="form-group row-split">
         <div class="half-width">
             <label>Last 4 of VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. W123 or 5678" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
+            <input type="text" id="vinInput" placeholder="e.g. 9488" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
         </div>
         <div class="half-width">
             <label>Vehicle Type</label>
@@ -259,17 +260,60 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // 1. Timestamp
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // 2. VIN DATABASE
+    // ----------------------------------------------------
+    //  VIN DATABASE (EXTRACTED FROM YOUR UPLOADED IMAGES)
+    // ----------------------------------------------------
     const vinDatabase = {
-        "1051": "Extra Large Van (Gas)",
-        "5490": "CDV 16ft (Gas)",
-        "9488": "Extra Large Van (Gas)",
-        "7867": "Rivian MEDIUM (Electric)",
-        "7871": "Rivian MEDIUM (Electric)",
-        "9412": "Rivian MEDIUM (Electric)"
+        // --- DIESEL (MERCEDES) ---
+        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
+        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+
+        // --- ELECTRIC (RIVIAN) ---
+        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+
+        // --- GAS (FORD/RAM/OTHERS) ---
+        "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "5490": { type: "CDV 16ft (Gas)", fuel: "gas" },
+        "7097": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "5311": { type: "CDV 16ft (Gas)", fuel: "gas" },
+        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1587": { type: "CDV 16ft (Gas)", fuel: "gas" },
+        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "2347": { type: "CDV 14ft (Gas)", fuel: "gas" },
+        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6880": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6907": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "1295": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6265": { type: "CDV 16ft (Gas)", fuel: "gas" },
+        "6188": { type: "CDV 14ft (Gas)", fuel: "gas" },
+        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1288": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "6864": { type: "CDV 12ft (Gas)", fuel: "gas" },
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
     };
 
     function checkVin() {
@@ -278,17 +322,28 @@
         typeBox.classList.remove('diesel-mode');
         
         if (vin.length === 4) {
+            // 1. Manual Override: If user types a W (e.g. W123)
             if (vin.startsWith("W")) {
                 typeBox.value = "Mercedes (Diesel)";
                 typeBox.classList.add('diesel-mode'); 
                 setTab('high'); 
                 return;
             }
+
+            // 2. Database Lookup
             if (vinDatabase[vin]) {
                 const vehicle = vinDatabase[vin];
-                typeBox.value = vehicle; 
-                if(vehicle.toLowerCase().includes("rivian")) { setTab('edv'); } 
-                else { setTab('high'); }
+                typeBox.value = vehicle.type; 
+                
+                // Logic based on fuel type
+                if (vehicle.fuel === 'diesel') {
+                    typeBox.classList.add('diesel-mode');
+                    setTab('high');
+                } else if (vehicle.fuel === 'electric') {
+                    setTab('edv');
+                } else {
+                    setTab('high');
+                }
             } else {
                 typeBox.value = "Unknown Vehicle";
             }
@@ -297,9 +352,8 @@
         }
     }
 
-    // 3. Tab & GPS Logic
+    // --- TAB & GPS LOGIC ---
     let activeTab = 'high';
-    
     function setTab(id) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -311,47 +365,32 @@
         activeTab = id;
         checkForOther();
 
-        // ---------------- GPS LOGIC ----------------
         if(id === 'mph') {
             setTimeout(() => { map.invalidateSize(); }, 100);
-            
-            // Start Geolocation
             if (navigator.geolocation) {
                 document.getElementById('street').placeholder = "Locating...";
                 document.getElementById('gpsStatus').style.display = "block";
-                
                 navigator.geolocation.getCurrentPosition(async (pos) => {
                     const lat = pos.coords.latitude;
                     const lng = pos.coords.longitude;
-
-                    // Update Map
                     map.setView([lat, lng], 18);
-                    L.marker([lat, lng]).addTo(map).bindPopup("Your Location").openPopup();
-
-                    // Reverse Geocode (OpenStreetMap Nominatim)
+                    L.marker([lat, lng]).addTo(map);
                     try {
                         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
                         const data = await response.json();
-                        
                         if(data.address) {
                             document.getElementById('street').value = data.address.road || "";
                             document.getElementById('city').value = data.address.city || data.address.town || "";
                             document.getElementById('state').value = data.address.state || "";
                         }
                         document.getElementById('gpsStatus').innerText = "✓ GPS AUTO-FILLED";
-                    } catch (err) {
-                        console.error("Geocoding failed", err);
-                        document.getElementById('street').placeholder = "Could not auto-fill. Please type.";
-                    }
-                }, (err) => {
-                    alert("Location access denied. Please type address manually.");
+                    } catch (err) {}
                 });
             }
         }
-        // -------------------------------------------
     }
 
-    // 4. Selection Logic
+    // --- GENERAL LOGIC ---
     document.querySelectorAll('.list-btn').forEach(btn => {
         btn.addEventListener('click', function() { 
             this.classList.toggle('selected');
@@ -370,11 +409,9 @@
         }
     }
 
-    // 5. Map Init
     var map = L.map('map').setView([39.82, -98.58], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // 6. Photo Logic
     const photoInput = document.getElementById('photoInput');
     let photos = [];
     photoInput.addEventListener('change', function(e) {
@@ -395,7 +432,6 @@
         }
     });
 
-    // 7. Submit Logic
     async function submitForm() {
         const driverName = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
