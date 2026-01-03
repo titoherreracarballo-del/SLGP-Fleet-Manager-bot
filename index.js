@@ -10,10 +10,12 @@ const upload = multer();
 const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Your Folder ID
 const KEY_FILE_PATH = './service-account.json'; 
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const PORT = process.env.PORT || 3000;
 
 // --- MIDDLEWARE ---
 app.use(express.json());
-app.use(express.static(__dirname)); // Serve files from Root
+// Serve all files from root (CSS, JS, Images)
+app.use(express.static(__dirname)); 
 
 // --- AUTHENTICATION ---
 const auth = new google.auth.GoogleAuth({
@@ -66,23 +68,71 @@ async function getDailyFolderId(drive) {
         }
     } catch (error) {
         // --- FAILSAFE ---
-        // If we can't create a folder (permission error), use the PARENT ID instead of failing.
-        console.error('Folder creation failed (Permissions?), uploading to Parent Folder instead.');
+        // If folder creation fails, we just upload to the main parent folder so it still works.
+        console.error('Folder logic failed (Permissions?). Defaulting to Parent Folder.');
         return PARENT_FOLDER_ID;
     }
 }
 
-// --- ROUTES (Matched to your File Names) ---
+// --- SECURITY: VIDEO LOCK MIDDLEWARE ---
+const checkVideoLock = (req, res, next) => {
+    // Set this to TRUE to lock the video page.
+    const isLocked = true; 
 
+    if (isLocked) {
+        console.log("Access denied: Video page is locked.");
+        // You can redirect to home, or send a 403 Forbidden message
+        // res.status(403).send("<h1>This feature is currently locked.</h1><a href='/'>Go Back</a>");
+        
+        // OR: Redirect back to the main menu
+        res.redirect('/');
+    } else {
+        next();
+    }
+};
+
+// --- ROUTES ---
+
+// 1. Home
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'menu.html')); });
-app.get('/video', (req, res) => { res.sendFile(path.join(__dirname, 'video.html')); });
+
+// 2. Video (LOCKED)
+// We apply the 'checkVideoLock' middleware here.
+app.get('/video', checkVideoLock, (req, res) => { 
+    res.sendFile(path.join(__dirname, 'video.html')); 
+});
+
+// 3. THE FIX: Smart Report Route
+// This catches /report?mode=accident and serves the right file
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+
+    console.log(`Route Handler: Received request for mode: ${mode}`);
+
+    if (mode === 'accident') {
+        res.sendFile(path.join(__dirname, 'accident - report.html'));
+    } else if (mode === 'issue') {
+        res.sendFile(path.join(__dirname, 'report-issue.html'));
+    } else if (mode === 'insurance') {
+        res.sendFile(path.join(__dirname, 'insurance.html'));
+    } else {
+        // If no mode is found, default to report-issue or menu
+        res.sendFile(path.join(__dirname, 'report-issue.html'));
+    }
+});
+
+// Keep these as fallbacks in case old links still use them
 app.get('/report-issue', (req, res) => { res.sendFile(path.join(__dirname, 'report-issue.html')); });
 app.get('/accident-report', (req, res) => { res.sendFile(path.join(__dirname, 'accident - report.html')); });
 app.get('/insurance', (req, res) => { res.sendFile(path.join(__dirname, 'insurance.html')); });
 
-// --- UPLOAD LOGIC ---
+
+// --- UPLOAD LOGIC (Unchanged but Secured) ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
+        // OPTIONAL: Uncomment next line if you want to prevent uploads when locked
+        // if (true) return res.status(403).send("Uploads are currently locked.");
+
         const { driverName, vin, inspectionType } = req.body;
         if (!req.file) return res.status(400).send('No video file uploaded.');
 
@@ -119,7 +169,7 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+// --- SERVER START ---
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
