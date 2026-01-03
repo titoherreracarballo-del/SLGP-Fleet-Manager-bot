@@ -59,7 +59,7 @@
         }
 
         h1 {
-            color: var(--primary-red); /* Red Header */
+            color: var(--primary-red);
             text-align: center;
             font-size: 24px;
             font-weight: 900;
@@ -96,7 +96,7 @@
         }
 
         input:focus, textarea:focus {
-            border-color: var(--primary-red); /* Red Focus Border */
+            border-color: var(--primary-red);
         }
 
         /* --- BUTTONS --- */
@@ -138,13 +138,20 @@
             cursor: pointer;
             background-color: rgba(255,255,255,0.02);
             transition: border-color 0.2s;
+            position: relative;
+            overflow: hidden;
         }
         .camera-box:hover { border-color: var(--primary-red); }
         
         .camera-icon { width: 32px; height: 32px; fill: #64748b; margin-bottom: 5px; }
         .camera-text { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* --- SUBMIT BUTTON (RED) --- */
+        /* Actual File Input (Hidden) */
+        #photoInput {
+            position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+        }
+
+        /* --- SUBMIT BUTTON --- */
         .btn-submit {
             width: 100%;
             background-color: var(--primary-red);
@@ -167,49 +174,153 @@
 <body>
 
     <div class="container">
-        <a href="index.html" class="back-link">← Back to Menu</a>
+        <a href="/" class="back-link">← Back to Menu</a>
         
-        <div class="timestamp">1/2/2026, 6:48:10 PM</div>
+        <div class="timestamp" id="ts">Loading...</div>
         <h1>Accident Report</h1>
 
         <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" id="driverName" placeholder="Enter Full Name">
+        </div>
+
+        <div class="form-group">
             <label>Incident Type</label>
-            <button class="btn-option selected">Collision (Traffic)</button>
-            <button class="btn-option">Parked / Hit & Run</button>
-            <button class="btn-option">Theft / Vandalism</button>
-            <button class="btn-option">Property Damage</button>
+            <div id="incidentTypeGroup">
+                <button class="btn-option" onclick="selectOpt(this, 'type')">Collision (Traffic)</button>
+                <button class="btn-option" onclick="selectOpt(this, 'type')">Parked / Hit & Run</button>
+                <button class="btn-option" onclick="selectOpt(this, 'type')">Theft / Vandalism</button>
+                <button class="btn-option" onclick="selectOpt(this, 'type')">Property Damage</button>
+            </div>
         </div>
 
         <div class="form-group">
             <label>Third Party Involved?</label>
-            <div class="row-split">
-                <button class="btn-option">No</button>
-                <button class="btn-option selected">Yes</button>
+            <div class="row-split" id="thirdPartyGroup">
+                <button class="btn-option selected" onclick="selectOpt(this, 'party')">No</button>
+                <button class="btn-option" onclick="selectOpt(this, 'party')">Yes</button>
             </div>
         </div>
 
         <div class="form-group">
             <label>Location</label>
-            <input type="text" placeholder="Street Address or Intersection">
+            <input type="text" id="location" placeholder="Street Address or Intersection">
         </div>
 
         <div class="form-group">
             <label>Driver Statement</label>
-            <textarea style="min-height: 100px;" placeholder="Briefly describe how the incident occurred..."></textarea>
+            <textarea id="statement" style="min-height: 100px;" placeholder="Briefly describe how the incident occurred..."></textarea>
         </div>
 
         <div class="form-group">
             <label>Required Photos</label>
             <div class="camera-box">
+                <input type="file" id="photoInput" multiple accept="image/*">
                 <svg class="camera-icon" viewBox="0 0 24 24">
                     <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
                 </svg>
-                <span class="camera-text">4 Sides + Scene Context</span>
+                <span class="camera-text" id="photoText">4 Sides + Scene Context</span>
             </div>
         </div>
 
-        <button class="btn-submit">Submit Accident Report</button>
+        <button class="btn-submit" onclick="submitForm()">Submit Accident Report</button>
     </div>
 
+    <script>
+        // 1. Live Timestamp
+        document.getElementById('ts').innerText = new Date().toLocaleString();
+
+        // 2. Button Selection Logic
+        let selectedType = "";
+        let thirdParty = "No";
+
+        function selectOpt(btn, group) {
+            // Clear siblings
+            let parent = btn.parentElement;
+            let siblings = parent.getElementsByClassName('btn-option');
+            for (let s of siblings) s.classList.remove('selected');
+            
+            // Select clicked
+            btn.classList.add('selected');
+
+            if(group === 'type') selectedType = btn.innerText;
+            if(group === 'party') thirdParty = btn.innerText;
+        }
+
+        // 3. Photo Logic
+        const photoInput = document.getElementById('photoInput');
+        let photos = [];
+
+        photoInput.addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            if(files.length > 0) {
+                document.getElementById('photoText').innerText = `${files.length} Photos Selected`;
+                document.querySelector('.camera-icon').style.fill = '#4ade80'; // Turn green
+                
+                // Convert images to base64 for upload
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        photos.push({
+                            name: file.name,
+                            data: evt.target.result.split(',')[1] // Get base64 content
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+        });
+
+        // 4. Submit Logic
+        async function submitForm() {
+            const driverName = document.getElementById('driverName').value;
+            const location = document.getElementById('location').value;
+            const statement = document.getElementById('statement').value;
+
+            if(!driverName) { alert("Please enter Driver Name"); return; }
+            if(!selectedType) { alert("Please select Incident Type"); return; }
+
+            const payload = {
+                reportType: 'Accident / Incident',
+                driverName: driverName,
+                subType: selectedType,
+                statement: statement,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString(),
+                gpsLat: "N/A", // Can add geolocation later
+                gpsLng: "N/A",
+                policeReport: thirdParty === 'Yes' ? "Yes" : "No",
+                lmetCase: location, // Using lmetCase field for location in PDF for now
+                photos: photos
+            };
+
+            const btn = document.querySelector('.btn-submit');
+            btn.innerText = "UPLOADING...";
+            btn.style.opacity = "0.7";
+
+            try {
+                const res = await fetch('/submit-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await res.json();
+                if(result.success) {
+                    alert("Accident Report Submitted Successfully!");
+                    window.location.href = '/';
+                } else {
+                    alert("Error: " + result.error);
+                    btn.innerText = "SUBMIT ACCIDENT REPORT";
+                    btn.style.opacity = "1";
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Network Error. Please try again.");
+                btn.innerText = "SUBMIT ACCIDENT REPORT";
+                btn.style.opacity = "1";
+            }
+        }
+    </script>
 </body>
 </html>
