@@ -6,7 +6,7 @@
     <title>Report Issue</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
-        /* --- THEME (Matches Fleet Health Check) --- */
+        /* --- THEME SETTINGS --- */
         :root {
             --bg-body: #0F1115;       
             --bg-card: #161B28;       
@@ -14,7 +14,9 @@
             --primary-blue: #2563EB;  
             --primary-glow: rgba(37, 99, 235, 0.4);
             --text-label: #3B82F6;    
-            --text-green: #4ade80;    
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
+            --border-color: #2d3748;
             --radius: 12px;
         }
 
@@ -39,12 +41,11 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
-        /* --- HEADER --- */
         .back-link {
-            color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
+            color: var(--text-gray); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
         }
         .timestamp {
-            color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px;
+            color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px;
         }
         h1 {
             color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; 
@@ -52,19 +53,18 @@
             text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
 
-        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         label {
             color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
             text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
         }
         input, textarea {
-            width: 100%; background-color: var(--bg-input); border: 1px solid #1f2937; color: white;
+            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
             padding: 16px; border-radius: var(--radius); font-size: 16px; box-sizing: border-box; outline: none;
         }
         input:focus, textarea:focus { border-color: var(--text-label); }
 
-        /* --- TABS --- */
+        /* TABS */
         .tabs {
             display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px;
         }
@@ -78,51 +78,52 @@
             box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
         }
 
-        /* --- NEW "OUTLINE" BUTTON STYLE --- */
+        /* LIST STYLE OPTIONS */
         .section { display: none; }
         .section.active { display: block; }
-        .grid-options { display: flex; flex-wrap: wrap; gap: 8px; }
         
-        .pill-btn {
-            background-color: transparent; 
-            border: 1px solid #3B82F6; /* Bright Blue Border */
-            color: #3B82F6;            /* Blue Text */
-            padding: 10px 14px; 
-            border-radius: 20px; 
-            font-size: 12px; font-weight: 700;
-            cursor: pointer; 
-            transition: all 0.2s; 
-            flex-grow: 1; text-align: center;
-        }
-        
-        .pill-btn:hover { background-color: rgba(59, 130, 246, 0.1); }
-        
-        .pill-btn.selected {
-            background-color: var(--primary-blue); 
-            color: white; 
-            box-shadow: 0 0 10px var(--primary-glow);
+        .list-options { display: flex; flex-direction: column; gap: 10px; }
+
+        .list-btn {
+            width: 100%; text-align: left;
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid #334155; color: #E2E8F0;
+            padding: 16px 20px; border-radius: var(--radius);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease; position: relative;
         }
 
-        /* --- CAMERA BOX --- */
+        .list-btn:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.1); }
+
+        .list-btn.selected {
+            background-color: var(--primary-blue); border-color: var(--primary-blue);
+            color: white; box-shadow: 0 4px 15px var(--primary-glow); transform: translateY(-1px);
+        }
+        .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
+
+        /* HIDDEN NOTES (Default) */
+        #otherNotesContainer { display: none; margin-top: 20px; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* CAMERA */
         .camera-box {
             border: 2px dashed #4b5563; border-radius: 16px; height: 110px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            cursor: pointer; background-color: rgba(255,255,255,0.02);
-            position: relative; overflow: hidden; transition: border-color 0.2s;
+            cursor: pointer; background-color: rgba(255,255,255,0.02); position: relative; overflow: hidden;
         }
         .camera-box:hover { border-color: var(--text-label); }
         #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
         .camera-icon { width: 32px; height: 32px; fill: #64748b; margin-bottom: 5px; }
         .camera-text { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* --- MAP --- */
+        /* MAP */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
 
-        /* --- SUBMIT --- */
+        /* SUBMIT */
         .submit-btn {
             width: 100%; background-color: var(--primary-blue); color: white; border: none;
             padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
-            text-transform: uppercase; margin-top: 20px; cursor: pointer;
+            text-transform: uppercase; margin-top: 25px; cursor: pointer;
             box-shadow: 0 4px 20px var(--primary-glow);
         }
     </style>
@@ -136,7 +137,7 @@
     
     <div class="form-group">
         <label>Driver Full Name</label>
-        <input type="text" id="driverName" placeholder="Name">
+        <input type="text" id="driverName" placeholder="Enter Full Name">
     </div>
 
     <label>Issue Category</label>
@@ -148,47 +149,43 @@
     </div>
 
     <div id="high" class="section active">
-        <div class="grid-options">
-            <button class="pill-btn">Brakes Grinding</button>
-            <button class="pill-btn">Tire Blowout</button>
-            <button class="pill-btn">Steering Loose</button>
-            <button class="pill-btn">No Start</button>
-            <button class="pill-btn">Burning Smell</button>
-            <button class="pill-btn">Fluid Leak</button>
-            <button class="pill-btn">Sliding Door Stuck</button>
-            <button class="pill-btn">Rear Door Stuck</button>
-            <button class="pill-btn">Headlight Out</button>
-            <button class="pill-btn">Taillight Out</button>
-            <button class="pill-btn">Blinker Out</button>
-            <button class="pill-btn">Camera Fail</button>
-            <button class="pill-btn">Flat Tire</button>
-            <button class="pill-btn">Battery Dead</button>
-            <button class="pill-btn">Other</button>
+        <div class="list-options">
+            <button class="list-btn">Brakes Squealing / Grinding</button>
+            <button class="list-btn">Tire Blowout / Extreme Wear</button>
+            <button class="list-btn">Steering Column Loose</button>
+            <button class="list-btn">Vehicle Will Not Start</button>
+            <button class="list-btn">Burning Smell / Fluid Leak</button>
+            <button class="list-btn">Sliding / Rear Door Stuck</button>
+            <button class="list-btn">Headlight / Taillight Out</button>
+            <button class="list-btn">Backup Camera No Image</button>
+            <button class="list-btn">Low DEF Light On</button>
+            <button class="list-btn">Flat Tire / Battery Dead</button>
+            <button class="list-btn">Missing Plate / Tag</button>
+            <button class="list-btn">Other (See Notes)</button>
         </div>
     </div>
 
     <div id="edv" class="section">
-        <div class="grid-options">
-            <button class="pill-btn">Key Fob Battery</button>
-            <button class="pill-btn">Not Charging</button>
-            <button class="pill-btn">Warning Light</button>
-            <button class="pill-btn">Bulkhead Door</button>
-            <button class="pill-btn">Severe Dent</button>
-            <button class="pill-btn">Broken Mirror</button>
-            <button class="pill-btn">Broken Glass</button>
-            <button class="pill-btn">Other</button>
+        <div class="list-options">
+            <button class="list-btn">Key Fob Battery Low</button>
+            <button class="list-btn">Vehicle Not Charging</button>
+            <button class="list-btn">Warning Light On</button>
+            <button class="list-btn">Bulkhead Door Issue</button>
+            <button class="list-btn">Severe Body Damage</button>
+            <button class="list-btn">Broken Mirror / Glass</button>
+            <button class="list-btn">Other (See Notes)</button>
         </div>
     </div>
 
     <div id="low" class="section">
-        <div class="grid-options">
-            <button class="pill-btn">Scratches</button>
-            <button class="pill-btn">Interior Dirty</button>
-            <button class="pill-btn">Sensor Error</button>
-            <button class="pill-btn">Seat Stuck</button>
-            <button class="pill-btn">Radio Broken</button>
-            <button class="pill-btn">QR Faded</button>
-            <button class="pill-btn">Other</button>
+        <div class="list-options">
+            <button class="list-btn">Light Scratches</button>
+            <button class="list-btn">Interior Dirty</button>
+            <button class="list-btn">Door Sensor Error</button>
+            <button class="list-btn">Seat Adjustment Stuck</button>
+            <button class="list-btn">Radio / Audio Issue</button>
+            <button class="list-btn">QR Code Faded</button>
+            <button class="list-btn">Other (See Notes)</button>
         </div>
     </div>
 
@@ -200,7 +197,12 @@
         <div id="map"></div>
     </div>
 
-    <div class="form-group" style="margin-top: 20px;">
+    <div class="form-group" id="otherNotesContainer">
+        <label>Additional Notes (Required for "Other")</label>
+        <textarea id="notes" rows="3" placeholder="Describe the specific issue..."></textarea>
+    </div>
+
+    <div class="form-group" style="margin-top: 25px;">
         <label>Photo Evidence (Required)</label>
         <div class="camera-box">
             <input type="file" id="photoInput" multiple accept="image/*">
@@ -209,11 +211,6 @@
             </svg>
             <span class="camera-text" id="photoText">Tap to Upload Photos</span>
         </div>
-    </div>
-
-    <div class="form-group">
-        <label>Additional Notes</label>
-        <textarea id="notes" rows="3" placeholder="Describe specific details..."></textarea>
     </div>
 
     <button class="submit-btn" onclick="submitForm()">Submit Report</button>
@@ -237,12 +234,31 @@
         activeTab = id;
 
         if(id === 'mph') { setTimeout(() => { map.invalidateSize(); }, 100); }
+        
+        // Hide notes when switching tabs unless "Other" is selected in new tab
+        checkForOther();
     }
 
-    // 3. Selection Logic
-    document.querySelectorAll('.pill-btn').forEach(btn => {
-        btn.addEventListener('click', function() { this.classList.toggle('selected'); });
+    // 3. Selection Logic & "Other" Check
+    document.querySelectorAll('.list-btn').forEach(btn => {
+        btn.addEventListener('click', function() { 
+            this.classList.toggle('selected');
+            checkForOther();
+        });
     });
+
+    function checkForOther() {
+        const notesDiv = document.getElementById('otherNotesContainer');
+        // Check if ANY selected button contains the text "Other"
+        const anyOtherSelected = Array.from(document.querySelectorAll('.list-btn.selected'))
+                                      .some(btn => btn.innerText.includes("Other"));
+        
+        if (anyOtherSelected) {
+            notesDiv.style.display = 'block';
+        } else {
+            notesDiv.style.display = 'none';
+        }
+    }
 
     // 4. Map Init
     var map = L.map('map').setView([39.82, -98.58], 4);
@@ -273,18 +289,23 @@
         let selectedTags = [];
         let reportType = "Issue Report";
 
-        // Collect tags from active section
+        // Collect tags
         if (activeTab === 'mph') {
             reportType = "Road MPH Error";
         } else {
             const activeSection = document.getElementById(activeTab);
-            activeSection.querySelectorAll('.pill-btn.selected').forEach(btn => {
-                selectedTags.push(btn.innerText);
+            activeSection.querySelectorAll('.list-btn.selected').forEach(btn => {
+                selectedTags.push(btn.innerText.replace('✓', '').trim());
             });
         }
 
+        // Validation
         if(!driverName) { alert("Please enter Driver Name"); return; }
         if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
+        
+        // Force notes if "Other" is selected
+        const anyOther = selectedTags.some(t => t.includes("Other"));
+        if(anyOther && !notes) { alert("Please describe the issue in Additional Notes."); return; }
 
         const payload = {
             reportType: reportType,
