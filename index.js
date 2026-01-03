@@ -1,219 +1,187 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Report Issue - Fleet Health</title>
-    <style>
-        /* --- THEME SETTINGS --- */
-        :root {
-            --bg-body: #0F1115;       
-            --bg-card: #161B28;       
-            --bg-input: #0b0d12;      
-            --bg-button: #242c3d;     
-            --primary-blue: #2563EB;  
-            --text-label: #3B82F6;    
-            --text-green: #4ade80;    
-            --radius: 12px;           
-        }
+const express = require('express');
+const multer = require('multer');
+const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+const stream = require('stream');
 
-        body {
-            background-color: var(--bg-body);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            padding: 20px;
-            margin: 0;
-            color: white;
-            min-height: 100vh;
-        }
+const app = express();
 
-        .container {
-            width: 100%;
-            max-width: 400px; 
-            background-color: var(--bg-card);
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
+// --- CONFIGURATION ---
+const VOLUME_PATH = '/app/meshcentral-data';
+const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 
-        /* --- HEADER --- */
-        .back-link {
-            color: #94a3b8;
-            text-decoration: none;
-            font-size: 14px;
-            display: inline-block;
-            margin-bottom: 20px;
-        }
-        .timestamp {
-            color: var(--text-green);
-            text-align: center;
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-        h1 {
-            color: var(--text-label);
-            text-align: center;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-            margin: 0 0 20px 0;
-        }
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+    try {
+        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    } catch (e) {
+        console.log("Warning: Could not create upload directory. Using /tmp instead.");
+    }
+}
+const upload = multer({ dest: UPLOAD_DIR });
 
-        /* --- FORMS --- */
-        .form-group { margin-bottom: 20px; }
+// --- MIDDLEWARE ---
+app.use(express.static(__dirname));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-        label {
-            color: var(--text-label);
-            display: block;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            margin-bottom: 8px;
-        }
+// --- ROUTES ---
 
-        input, textarea {
-            width: 100%;
-            background-color: var(--bg-input);
-            border: 1px solid #1f2937;
-            color: white;
-            padding: 16px;
-            border-radius: var(--radius);
-            font-size: 16px;
-            box-sizing: border-box; 
-            outline: none;
-            font-family: inherit;
-        }
-        input:focus, textarea:focus { border-color: var(--text-label); }
+// 1. Home Menu
+app.get('/', (req, res) => {
+    // We look for 'menu.html' first, if not found, we try 'index.html'
+    if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
+        res.sendFile(path.join(__dirname, 'menu.html'));
+    } else {
+        res.sendFile(path.join(__dirname, 'index.html'));
+    }
+});
 
-        /* --- BUTTON GRID (UPDATED) --- */
-        .grid-options {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
+// 2. Video Page
+app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-        .btn-option {
-            background-color: var(--bg-button);
-            border: 1px solid #374151;
-            color: #cbd5e1;
-            padding: 12px;
-            border-radius: var(--radius);
-            font-weight: 700;
-            font-size: 12px;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: background 0.2s;
-            text-align: center;
-        }
+// 3. Report Routing (Fixes "Not Found" and "Insurance" errors)
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+    
+    if (mode === 'issue') {
+        res.sendFile(path.join(__dirname, 'report-issue.html'));
+    } 
+    else if (mode === 'accident') {
+        res.sendFile(path.join(__dirname, 'accident-report.html'));
+    } 
+    else if (mode === 'insurance') {
+        // Placeholder for Insurance to prevent crash
+        res.send(`
+            <body style="background:#0F1115; color:white; font-family:sans-serif; text-align:center; padding:40px;">
+                <h1 style="color:#3B82F6;">INSURANCE UPLOAD</h1>
+                <p>This feature is coming soon.</p>
+                <a href="/" style="color:#4ade80; text-decoration:none; font-weight:bold;">&larr; Back to Menu</a>
+            </body>
+        `);
+    } 
+    else {
+        res.status(404).send('Error: Unknown report type.');
+    }
+});
 
-        .btn-option:hover { background-color: #334155; color: white; }
-        
-        .btn-option.selected {
-            background-color: #1e293b;
-            border-color: var(--text-label);
-            color: white;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
-        }
-
-        /* --- SEVERITY BUTTONS --- */
-        .row-split { display: flex; gap: 10px; }
-        .row-split .btn-option { width: 100%; font-size: 13px; }
-
-        /* --- CAMERA BOX --- */
-        .camera-box {
-            border: 2px dashed #374151;
-            border-radius: 16px;
-            height: 100px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            background-color: rgba(255,255,255,0.02);
-        }
-        .camera-icon { width: 32px; height: 32px; fill: #64748b; }
-
-        /* --- SUBMIT --- */
-        .btn-submit {
-            width: 100%;
-            background-color: var(--primary-blue);
-            color: white;
-            border: none;
-            padding: 18px;
-            font-size: 16px;
-            font-weight: 900;
-            text-transform: uppercase;
-            border-radius: var(--radius);
-            cursor: pointer;
-            margin-top: 10px;
-            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
-        }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <a href="menu.html" class="back-link">← Back to Menu</a>
-        
-        <div class="timestamp">1/2/2026, 6:55:00 PM</div>
-        <h1>Report Issue</h1>
-
-        <div class="form-group">
-            <label>Driver Full Name</label>
-            <input type="text" placeholder="Enter Name">
-        </div>
-
-        <div class="form-group">
-            <label>Select Issue(s)</label>
-            <div class="grid-options">
-                <button class="btn-option">Engine / Check Engine</button>
-                <button class="btn-option">Brakes / Noise</button>
-                <button class="btn-option">Tires / Flat</button>
-                <button class="btn-option">Battery / No Start</button>
-                <button class="btn-option">Oil / Fluids</button>
-                <button class="btn-option">Lights / Signals</button>
-                <button class="btn-option">Body Damage</button>
-                <button class="btn-option">Wipers / Glass</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Severity Level</label>
-            <div class="row-split">
-                <button class="btn-option selected">Safe to Drive</button>
-                <button class="btn-option" style="color:#ef4444; border-color:rgba(239,68,68,0.4);">DO NOT DRIVE</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Description</label>
-            <textarea style="min-height: 80px;" placeholder="Describe the noise, error code, or specific details..."></textarea>
-        </div>
-
-        <div class="form-group">
-            <label>Photo Evidence</label>
-            <div class="camera-box">
-                <svg class="camera-icon" viewBox="0 0 24 24">
-                    <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                </svg>
-            </div>
-        </div>
-
-        <button class="btn-submit">Submit Issue Report</button>
-    </div>
-
-    <script>
-        // Simple script to toggle selection on buttons
-        const buttons = document.querySelectorAll('.grid-options .btn-option');
-        buttons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                btn.classList.toggle('selected');
-            });
+// --- GOOGLE AUTH ---
+let auth;
+try {
+    if (process.env.GCP_SA_KEY) {
+        auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GCP_SA_KEY),
+            scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
-    </script>
+    }
+} catch (err) { console.error("Auth Error:", err.message); }
 
-</body>
-</html>
+// --- VIDEO UPLOAD ENGINE ---
+const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).send('No video file.');
+        const drive = google.drive({ version: 'v3', auth });
+        const { driverName, vin, inspectionType } = req.body;
+        const filename = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        
+        await drive.files.create({
+            resource: { name: filename, parents: [VIDEO_DRIVE_ID] },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
+            fields: 'id', supportsAllDrives: true
+        });
+        
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(200).send('Upload Complete');
+    } catch (error) { res.status(500).send(`Error: ${error.message}`); }
+});
+
+// --- REPORT SUBMISSION ENGINE ---
+const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+app.post('/submit-report', async (req, res) => {
+    const data = req.body;
+    try {
+        const drive = google.drive({ version: 'v3', auth });
+        
+        // Create Folder
+        const folderName = `${data.driverName} - ${data.reportType}`;
+        const folder = await drive.files.create({
+            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
+            fields: 'id'
+        });
+        const folderId = folder.data.id;
+
+        // Upload Photos
+        if (data.photos && data.photos.length) {
+            for (let i = 0; i < data.photos.length; i++) {
+                const buffer = Buffer.from(data.photos[i].data, 'base64');
+                const bs = new stream.PassThrough(); 
+                bs.end(buffer);
+                await drive.files.create({
+                    resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] },
+                    media: { mimeType: 'image/jpeg', body: bs }
+                });
+            }
+        }
+
+        // Generate PDF
+        const doc = await PDFDocument.create();
+        let page = doc.addPage([600, 800]);
+        const font = await doc.embedFont(StandardFonts.Helvetica);
+        let y = 750;
+        
+        const write = (text) => {
+            if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
+            page.drawText(text || '', { x: 50, y, size: 12, font });
+            y -= 20;
+        };
+
+        write(`REPORT: ${data.reportType}`);
+        write(`Driver: ${data.driverName}`);
+        write(`Date: ${new Date().toLocaleString()}`);
+        write('--------------------------------');
+        
+        if (data.reportType === 'Accident / Incident') {
+             write(`Incident: ${data.subType || 'N/A'}`);
+             write(`Statement: ${data.statement || 'N/A'}`);
+        } else {
+             if (data.tags) data.tags.forEach(t => write(`[x] ${t}`));
+             write(`Notes: ${data.otherDescription || ''}`);
+        }
+
+        const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
+        fs.writeFileSync(pdfPath, await doc.save());
+
+        // Email Routing
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
+
+        // Send to different emails based on report type
+        const recipients = data.reportType.includes('Accident') 
+            ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
+            : ['slgpfleetmanager@gmail.com'];
+
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: recipients,
+            subject: `NEW REPORT: ${data.driverName}`,
+            text: `Type: ${data.reportType}\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
+            attachments: [{ filename: 'Report.pdf', path: pdfPath }]
+        });
+
+        fs.unlinkSync(pdfPath);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
