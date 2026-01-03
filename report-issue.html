@@ -6,16 +6,15 @@
     <title>Report Issue</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
-        /* --- MATCHING YOUR EXISTING THEME --- */
+        /* --- THEME (Matches Fleet Health Check) --- */
         :root {
-            --bg-body: #0F1115;       /* Deepest Navy/Black */
-            --bg-card: #161B28;       /* Card Background */
-            --bg-input: #0b0d12;      /* Input Background */
-            --bg-btn: #242c3d;        /* Inactive Button */
-            --border-btn: #2d3748;    /* Button Border */
-            --primary-blue: #2563EB;  /* "Postcheck" Blue */
-            --text-label: #3B82F6;    /* Neon Blue Labels */
-            --text-green: #4ade80;    /* Timestamp Green */
+            --bg-body: #0F1115;       
+            --bg-card: #161B28;       
+            --bg-input: #0b0d12;      
+            --primary-blue: #2563EB;  
+            --primary-glow: rgba(37, 99, 235, 0.4);
+            --text-label: #3B82F6;    
+            --text-green: #4ade80;    
             --radius: 12px;
         }
 
@@ -32,7 +31,7 @@
 
         .container {
             width: 100%;
-            max-width: 420px; /* Matches your Fleet Health Card width */
+            max-width: 420px;
             background-color: var(--bg-card);
             border-radius: 24px;
             padding: 24px;
@@ -40,7 +39,7 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
-        /* --- HEADERS --- */
+        /* --- HEADER --- */
         .back-link {
             color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
         }
@@ -53,7 +52,7 @@
             text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
 
-        /* --- FORMS & LABELS --- */
+        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         label {
             color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
@@ -65,45 +64,66 @@
         }
         input:focus, textarea:focus { border-color: var(--text-label); }
 
-        /* --- TABS (Styled like Service Type buttons) --- */
+        /* --- TABS --- */
         .tabs {
             display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px;
         }
         .tab-btn {
-            background-color: var(--bg-btn); border: 1px solid var(--border-btn); color: #cbd5e1;
-            padding: 12px; border-radius: var(--radius); font-size: 12px; font-weight: 700;
+            background-color: transparent; border: 1px solid #374151; color: #64748b;
+            padding: 12px; border-radius: var(--radius); font-size: 11px; font-weight: 800;
             text-transform: uppercase; cursor: pointer; transition: all 0.2s;
         }
         .tab-btn.active {
             background-color: #1e3a8a; border-color: var(--text-label); color: white;
-            box-shadow: 0 0 10px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
         }
 
-        /* --- ISSUE PILLS --- */
+        /* --- NEW "OUTLINE" BUTTON STYLE --- */
         .section { display: none; }
         .section.active { display: block; }
-
         .grid-options { display: flex; flex-wrap: wrap; gap: 8px; }
         
         .pill-btn {
-            background-color: var(--bg-btn); border: 1px solid var(--border-btn); color: #cbd5e1;
-            padding: 10px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
-            cursor: pointer; transition: background 0.2s; flex-grow: 1; text-align: center;
+            background-color: transparent; 
+            border: 1px solid #3B82F6; /* Bright Blue Border */
+            color: #3B82F6;            /* Blue Text */
+            padding: 10px 14px; 
+            border-radius: 20px; 
+            font-size: 12px; font-weight: 700;
+            cursor: pointer; 
+            transition: all 0.2s; 
+            flex-grow: 1; text-align: center;
         }
-        .pill-btn:hover { background-color: #334155; }
+        
+        .pill-btn:hover { background-color: rgba(59, 130, 246, 0.1); }
+        
         .pill-btn.selected {
-            background-color: var(--primary-blue); color: white; border-color: var(--primary-blue);
+            background-color: var(--primary-blue); 
+            color: white; 
+            box-shadow: 0 0 10px var(--primary-glow);
         }
+
+        /* --- CAMERA BOX --- */
+        .camera-box {
+            border: 2px dashed #4b5563; border-radius: 16px; height: 110px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; transition: border-color 0.2s;
+        }
+        .camera-box:hover { border-color: var(--text-label); }
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .camera-icon { width: 32px; height: 32px; fill: #64748b; margin-bottom: 5px; }
+        .camera-text { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
 
         /* --- MAP --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
 
-        /* --- SUBMIT BUTTON --- */
+        /* --- SUBMIT --- */
         .submit-btn {
             width: 100%; background-color: var(--primary-blue); color: white; border: none;
             padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
             text-transform: uppercase; margin-top: 20px; cursor: pointer;
-            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+            box-shadow: 0 4px 20px var(--primary-glow);
         }
     </style>
 </head>
@@ -111,7 +131,7 @@
 
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
-    <div class="timestamp">1/3/2026, 12:10:00 PM</div>
+    <div class="timestamp" id="ts">Loading...</div>
     <h1>Report Issue</h1>
     
     <div class="form-group">
@@ -174,41 +194,137 @@
 
     <div id="mph" class="section">
         <label>Road / Location Details</label>
-        <input type="text" placeholder="Street Name" style="margin-bottom:10px;">
-        <input type="text" placeholder="City" style="margin-bottom:10px;">
-        <input type="text" placeholder="State">
+        <input type="text" id="street" placeholder="Street Name" style="margin-bottom:10px;">
+        <input type="text" id="city" placeholder="City" style="margin-bottom:10px;">
+        <input type="text" id="state" placeholder="State">
         <div id="map"></div>
     </div>
 
-    <div class="form-group" style="margin-top:20px;">
-        <label>Additional Notes</label>
-        <textarea rows="3" placeholder="Describe specific details..."></textarea>
+    <div class="form-group" style="margin-top: 20px;">
+        <label>Photo Evidence (Required)</label>
+        <div class="camera-box">
+            <input type="file" id="photoInput" multiple accept="image/*">
+            <svg class="camera-icon" viewBox="0 0 24 24">
+                <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+            </svg>
+            <span class="camera-text" id="photoText">Tap to Upload Photos</span>
+        </div>
     </div>
 
-    <button class="submit-btn">Submit Report</button>
+    <div class="form-group">
+        <label>Additional Notes</label>
+        <textarea id="notes" rows="3" placeholder="Describe specific details..."></textarea>
+    </div>
+
+    <button class="submit-btn" onclick="submitForm()">Submit Report</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    // 1. Timestamp
+    document.getElementById('ts').innerText = new Date().toLocaleString();
+
+    // 2. Tab Logic
+    let activeTab = 'high';
     function setTab(id) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
         
-        // Find index to set active tab class
         const tabs = ['high', 'edv', 'low', 'mph'];
         const index = tabs.indexOf(id);
         document.querySelectorAll('.tab-btn')[index].classList.add('active');
         document.getElementById(id).classList.add('active');
+        activeTab = id;
 
         if(id === 'mph') { setTimeout(() => { map.invalidateSize(); }, 100); }
     }
 
+    // 3. Selection Logic
     document.querySelectorAll('.pill-btn').forEach(btn => {
         btn.addEventListener('click', function() { this.classList.toggle('selected'); });
     });
 
+    // 4. Map Init
     var map = L.map('map').setView([39.82, -98.58], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // 5. Photo Logic
+    const photoInput = document.getElementById('photoInput');
+    let photos = [];
+    photoInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        if(files.length > 0) {
+            document.getElementById('photoText').innerText = `${files.length} Photos Selected`;
+            document.querySelector('.camera-icon').style.fill = '#4ade80';
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+    });
+
+    // 6. Submit Logic
+    async function submitForm() {
+        const driverName = document.getElementById('driverName').value;
+        const notes = document.getElementById('notes').value;
+        let selectedTags = [];
+        let reportType = "Issue Report";
+
+        // Collect tags from active section
+        if (activeTab === 'mph') {
+            reportType = "Road MPH Error";
+        } else {
+            const activeSection = document.getElementById(activeTab);
+            activeSection.querySelectorAll('.pill-btn.selected').forEach(btn => {
+                selectedTags.push(btn.innerText);
+            });
+        }
+
+        if(!driverName) { alert("Please enter Driver Name"); return; }
+        if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
+
+        const payload = {
+            reportType: reportType,
+            driverName: driverName,
+            tags: selectedTags,
+            otherDescription: notes,
+            addressStreet: document.getElementById('street').value,
+            addressCity: document.getElementById('city').value,
+            addressState: document.getElementById('state').value,
+            date: new Date().toLocaleDateString(),
+            time: new Date().toLocaleTimeString(),
+            photos: photos
+        };
+
+        const btn = document.querySelector('.submit-btn');
+        btn.innerText = "UPLOADING...";
+        btn.style.opacity = "0.7";
+
+        try {
+            const res = await fetch('/submit-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            if(result.success) {
+                alert("Report Submitted Successfully!");
+                window.location.href = '/';
+            } else {
+                alert("Error: " + result.error);
+                btn.innerText = "SUBMIT REPORT";
+                btn.style.opacity = "1";
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Network Error");
+            btn.innerText = "SUBMIT REPORT";
+            btn.style.opacity = "1";
+        }
+    }
 </script>
 
 </body>
