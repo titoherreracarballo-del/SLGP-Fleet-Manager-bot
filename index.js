@@ -9,7 +9,9 @@ const stream = require('stream');
 
 const app = express();
 
-// --- CONFIGURATION ---
+// =========================================================
+// 1. CONFIGURATION & STORAGE
+// =========================================================
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 
@@ -23,16 +25,21 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
-// --- MIDDLEWARE ---
-app.use(express.static(__dirname));
+// =========================================================
+// 2. MIDDLEWARE
+// =========================================================
+// Serve all HTML, CSS, JS, and PDF files in the main folder
+app.use(express.static(__dirname)); 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- ROUTES ---
+// =========================================================
+// 3. NAVIGATION ROUTES
+// =========================================================
 
-// 1. Home Menu
+// Home Page (Main Menu)
 app.get('/', (req, res) => {
-    // We look for 'menu.html' first, if not found, we try 'index.html'
+    // Tries to serve 'menu.html', falls back to 'index.html'
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
         res.sendFile(path.join(__dirname, 'menu.html'));
     } else {
@@ -40,35 +47,34 @@ app.get('/', (req, res) => {
     }
 });
 
-// 2. Video Page
+// Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// 3. Report Routing (Fixes "Not Found" and "Insurance" errors)
+// --- REPORT ROUTING (UPDATED) ---
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     
     if (mode === 'issue') {
+        // Loads the Purple Tabbed Issue Form
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } 
     else if (mode === 'accident') {
+        // Loads the Red Accident Form
         res.sendFile(path.join(__dirname, 'accident-report.html'));
     } 
     else if (mode === 'insurance') {
-        // Placeholder for Insurance to prevent crash
-        res.send(`
-            <body style="background:#0F1115; color:white; font-family:sans-serif; text-align:center; padding:40px;">
-                <h1 style="color:#3B82F6;">INSURANCE UPLOAD</h1>
-                <p>This feature is coming soon.</p>
-                <a href="/" style="color:#4ade80; text-decoration:none; font-weight:bold;">&larr; Back to Menu</a>
-            </body>
-        `);
+        // Loads the Insurance Download Page
+        res.sendFile(path.join(__dirname, 'insurance.html'));
     } 
     else {
+        // 404 Error if link is broken
         res.status(404).send('Error: Unknown report type.');
     }
 });
 
-// --- GOOGLE AUTH ---
+// =========================================================
+// 4. GOOGLE AUTHENTICATION
+// =========================================================
 let auth;
 try {
     if (process.env.GCP_SA_KEY) {
@@ -79,11 +85,15 @@ try {
     }
 } catch (err) { console.error("Auth Error:", err.message); }
 
-// --- VIDEO UPLOAD ENGINE ---
+// =========================================================
+// SECTION A: VIDEO UPLOAD ENGINE
+// =========================================================
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('No video file.');
+        if (!req.file) return res.status(400).send('No video file received.');
+        
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
         const filename = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
@@ -99,14 +109,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
 
-// --- REPORT SUBMISSION ENGINE ---
+// =========================================================
+// SECTION B: REPORT SUBMISSION ENGINE
+// =========================================================
 const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // Create Folder
+        // 1. Create Folder
         const folderName = `${data.driverName} - ${data.reportType}`;
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
@@ -114,7 +127,7 @@ app.post('/submit-report', async (req, res) => {
         });
         const folderId = folder.data.id;
 
-        // Upload Photos
+        // 2. Upload Photos
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
@@ -127,7 +140,7 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // Generate PDF
+        // 3. Generate PDF Report
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -139,29 +152,34 @@ app.post('/submit-report', async (req, res) => {
             y -= 20;
         };
 
-        write(`REPORT: ${data.reportType}`);
+        write(`REPORT TYPE: ${data.reportType}`);
         write(`Driver: ${data.driverName}`);
         write(`Date: ${new Date().toLocaleString()}`);
-        write('--------------------------------');
+        write('------------------------------------------------');
         
         if (data.reportType === 'Accident / Incident') {
-             write(`Incident: ${data.subType || 'N/A'}`);
-             write(`Statement: ${data.statement || 'N/A'}`);
+             write(`Incident Type: ${data.subType || 'N/A'}`);
+             write('Statement:');
+             write(data.statement || 'N/A');
+        } else if (data.reportType === 'Road MPH Error') {
+             write(`Street: ${data.addressStreet || 'N/A'}`);
+             write(`City: ${data.addressCity || 'N/A'}`);
+             write(`State: ${data.addressState || 'N/A'}`);
         } else {
+             // Mechanical Issues
              if (data.tags) data.tags.forEach(t => write(`[x] ${t}`));
-             write(`Notes: ${data.otherDescription || ''}`);
+             if (data.otherDescription) write(`Notes: ${data.otherDescription}`);
         }
 
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // Email Routing
+        // 4. Email Notification
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
 
-        // Send to different emails based on report type
         const recipients = data.reportType.includes('Accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
             : ['slgpfleetmanager@gmail.com'];
@@ -169,8 +187,8 @@ app.post('/submit-report', async (req, res) => {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: recipients,
-            subject: `NEW REPORT: ${data.driverName}`,
-            text: `Type: ${data.reportType}\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
+            subject: `NEW REPORT: ${data.driverName} - ${data.reportType}`,
+            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nView Files: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Report.pdf', path: pdfPath }]
         });
 
@@ -178,10 +196,13 @@ app.post('/submit-report', async (req, res) => {
         res.json({ success: true });
 
     } catch (error) {
-        console.error(error);
+        console.error("REPORT ERROR:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+// =========================================================
+// START SERVER
+// =========================================================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`SYSTEM ONLINE: Port ${PORT}`));
