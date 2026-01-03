@@ -7,18 +7,14 @@ const app = express();
 const upload = multer();
 
 // --- CONFIGURATION ---
-// ✅ YOUR GOOGLE DRIVE FOLDER ID IS NOW SET
-const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; 
-
-// ⚠️ MAKE SURE THIS FILE EXISTS IN YOUR ROOT FOLDER
+const PARENT_FOLDER_ID = '0AC1GE3XEm4K9Uk9PVA'; // Your Folder ID
 const KEY_FILE_PATH = './service-account.json'; 
-
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
 // --- MIDDLEWARE ---
 app.use(express.json());
-// This tells the server to look for files inside the 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from the CURRENT directory (Root)
+app.use(express.static(__dirname));
 
 // --- AUTHENTICATION ---
 const auth = new google.auth.GoogleAuth({
@@ -26,7 +22,7 @@ const auth = new google.auth.GoogleAuth({
     scopes: SCOPES,
 });
 
-// --- HELPER: GENERATE FOLDER NAME (e.g. "Saturday Jan 3rd") ---
+// --- HELPER: FOLDER NAMES ---
 function getTodayFolderName() {
     const date = new Date();
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -48,7 +44,7 @@ function getTodayFolderName() {
     return `${dayName} ${monthName} ${dayNum}${suffix(dayNum)}`;
 }
 
-// --- HELPER: FIND OR CREATE FOLDER ---
+// --- HELPER: FIND/CREATE DRIVE FOLDER ---
 async function getDailyFolderId(drive) {
     const folderName = getTodayFolderName();
     const query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and '${PARENT_FOLDER_ID}' in parents and trashed=false`;
@@ -57,7 +53,7 @@ async function getDailyFolderId(drive) {
         const res = await drive.files.list({ q: query, fields: 'files(id, name)', spaces: 'drive' });
 
         if (res.data.files.length > 0) {
-            console.log(`Using existing folder: ${folderName} (ID: ${res.data.files[0].id})`);
+            console.log(`Using existing folder: ${folderName}`);
             return res.data.files[0].id;
         } else {
             console.log(`Creating new folder: ${folderName}`);
@@ -70,38 +66,32 @@ async function getDailyFolderId(drive) {
             return folder.data.id;
         }
     } catch (error) {
-        console.error('Error finding/creating folder:', error);
+        console.error('Error finding folder:', error);
         throw error;
     }
 }
 
-// --- EXPLICIT ROUTES (Fixes "Not Found" Error) ---
+// --- EXPLICIT ROUTES (Pointing to ROOT directory) ---
 
-// 1. Home Page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 2. Video Page
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'video.html'));
+    res.sendFile(path.join(__dirname, 'video.html'));
 });
 
-// 3. Report Issue Page
 app.get('/report-issue', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'report-issue.html'));
+    res.sendFile(path.join(__dirname, 'report-issue.html'));
 });
 
-// 4. Accident Report Page
 app.get('/accident-report', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'accident-report.html'));
+    res.sendFile(path.join(__dirname, 'accident-report.html'));
 });
 
-// 5. Insurance Page
 app.get('/insurance', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'insurance.html'));
+    res.sendFile(path.join(__dirname, 'insurance.html'));
 });
-
 
 // --- UPLOAD LOGIC ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -110,15 +100,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (!req.file) return res.status(400).send('No video file uploaded.');
 
         const drive = google.drive({ version: 'v3', auth });
-        
-        // 1. Get/Create the Date Folder
         const dailyFolderId = await getDailyFolderId(drive);
         
-        // 2. Name the file
         const timestamp = new Date().toLocaleTimeString().replace(/:/g, '-');
         const fileName = `${inspectionType} - ${driverName} - ${vin} - ${timestamp}.mp4`;
 
-        // 3. Upload it
         const bufferStream = new stream.PassThrough();
         bufferStream.end(req.file.buffer);
 
@@ -127,7 +113,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
         const response = await drive.files.create({ resource: fileMetadata, media: media, fields: 'id' });
 
-        console.log(`Success! Video uploaded. ID: ${response.data.id}`);
+        console.log(`Success! Video ID: ${response.data.id}`);
         res.status(200).send('Upload successful');
     } catch (error) {
         console.error('Error uploading:', error);
@@ -135,13 +121,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// Report Issue Handler (Placeholder for future drive logic if needed)
 app.post('/submit-report', async (req, res) => {
     try {
         console.log('Report Received:', req.body);
         res.json({ success: true });
     } catch (error) {
-        console.error(error);
         res.json({ success: false, error: error.message });
     }
 });
