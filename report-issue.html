@@ -3,211 +3,237 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Report Issue - Fleet Health</title>
+    <title>Report Issue</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
-        /* --- THEME SETTINGS --- */
         :root {
-            --bg-body: #0F1115;       /* Deepest background */
-            --bg-card: #161B28;       /* Card background */
-            --bg-input: #0b0d12;      /* Input background */
-            --bg-button: #242c3d;     /* Option button background */
-            --primary-blue: #2563EB;  /* Main Action Color */
-            --text-label: #3B82F6;    /* Neon Blue Labels */
-            --text-green: #4ade80;    /* Timestamp */
-            --radius: 12px;           /* Rounded corners */
+            --bg-body: #111827;       /* Dark Background */
+            --bg-card: #1F2937;       /* Card Background */
+            --accent: #8B5CF6;        /* The Purple from your screenshots */
+            --text-white: #F9FAFB;
+            --text-gray: #9CA3AF;
         }
 
         body {
             background-color: var(--bg-body);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: sans-serif;
+            color: var(--text-white);
             display: flex;
             justify-content: center;
             padding: 20px;
             margin: 0;
-            color: white;
-            min-height: 100vh;
         }
 
         .container {
             width: 100%;
-            max-width: 400px; /* Mobile width simulation */
+            max-width: 500px;
             background-color: var(--bg-card);
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #1f2937;
+            border-radius: 16px;
+            padding: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        /* --- HEADER --- */
-        .back-link {
-            color: #94a3b8;
-            text-decoration: none;
-            font-size: 14px;
-            display: inline-block;
-            margin-bottom: 20px;
-            transition: color 0.2s;
-        }
-        .back-link:hover { color: white; }
-
-        .timestamp {
-            color: var(--text-green);
-            text-align: center;
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 5px;
-            letter-spacing: 0.5px;
-        }
-
-        h1 {
-            color: var(--text-label);
-            text-align: center;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin: 0 0 30px 0;
-            text-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
-        }
-
-        /* --- FORMS --- */
-        .form-group { margin-bottom: 20px; }
-
-        label {
-            color: var(--text-label);
-            display: block;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            margin-bottom: 8px;
-        }
-
-        input, textarea {
-            width: 100%;
-            background-color: var(--bg-input);
-            border: 1px solid #1f2937;
-            color: white;
-            padding: 16px;
-            border-radius: var(--radius);
-            font-size: 16px;
-            box-sizing: border-box; /* Ensures padding doesn't break layout */
-            outline: none;
-            font-family: inherit;
-        }
-
-        input:focus, textarea:focus {
-            border-color: var(--text-label);
-        }
-
-        /* --- BUTTONS (OPTIONS) --- */
-        .btn-option {
-            width: 100%;
-            background-color: var(--bg-button);
-            border: 1px solid #374151;
-            color: #cbd5e1;
-            padding: 14px;
-            border-radius: var(--radius);
-            font-weight: 700;
-            font-size: 13px;
-            text-transform: uppercase;
-            cursor: pointer;
-            margin-bottom: 10px;
-            transition: background 0.2s;
-        }
-
-        .btn-option:hover { background-color: #334155; color: white; }
-        
-        .btn-option.selected {
-            background-color: #1e293b;
-            border-color: var(--text-label);
-            color: white;
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
-        }
-
-        /* Split Row for buttons */
-        .row-split { display: flex; gap: 10px; }
-        .row-split .btn-option { margin-bottom: 0; }
-
-        /* --- CAMERA BOX --- */
-        .camera-box {
-            border: 2px dashed #374151;
-            border-radius: 16px;
-            height: 100px;
+        /* TABS */
+        .tabs {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            background-color: rgba(255,255,255,0.02);
-            transition: border-color 0.2s;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            scrollbar-width: none;
         }
-        .camera-box:hover { border-color: var(--text-label); }
-        .camera-icon { width: 32px; height: 32px; fill: #64748b; }
-
-        /* --- SUBMIT BUTTON --- */
-        .btn-submit {
-            width: 100%;
-            background-color: var(--primary-blue);
+        .tab-btn {
+            background: #374151;
+            border: 1px solid #4B5563;
+            color: #D1D5DB;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            background-color: var(--accent);
+            border-color: var(--accent);
             color: white;
-            border: none;
-            padding: 18px;
-            font-size: 16px;
-            font-weight: 900;
-            text-transform: uppercase;
-            border-radius: var(--radius);
-            cursor: pointer;
-            margin-top: 10px;
-            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
-            transition: transform 0.1s;
+            font-weight: bold;
         }
-        .btn-submit:active { transform: scale(0.98); }
 
+        /* PILL BUTTONS */
+        .grid-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .pill-btn {
+            background-color: #374151;
+            border: 1px solid #4B5563;
+            color: #E5E7EB;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .pill-btn:hover { background-color: #4B5563; }
+        .pill-btn.selected {
+            background-color: #2e1065;
+            border-color: var(--accent);
+            color: var(--accent);
+            box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+        }
+
+        /* SECTIONS */
+        .section { display: none; }
+        .section.active { display: block; }
+        
+        label { display: block; color: var(--accent); font-size: 14px; font-weight: bold; margin-bottom: 10px; margin-top: 15px; }
+        
+        input, textarea {
+            width: 100%; box-sizing: border-box; background: #111827;
+            border: 1px solid #374151; color: white; padding: 12px;
+            border-radius: 8px; margin-bottom: 10px;
+        }
+
+        #map { height: 200px; width: 100%; border-radius: 8px; margin-top: 10px; }
+
+        .submit-btn {
+            width: 100%; background-color: var(--accent); color: white;
+            padding: 16px; border: none; border-radius: 12px;
+            font-weight: bold; font-size: 16px; margin-top: 20px; cursor: pointer;
+        }
+        
+        a { color: #9CA3AF; text-decoration: none; font-size: 13px; display: block; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <a href="index.html" class="back-link">← Back to Menu</a>
-        
-        <div class="timestamp">1/2/2026, 6:45:00 PM</div>
-        <h1>Report Issue</h1>
-
-        <div class="form-group">
-            <label>Driver Full Name</label>
-            <input type="text" placeholder="Enter Name">
-        </div>
-
-        <div class="form-group">
-            <label>Issue Category</label>
-            <button class="btn-option selected">Mechanical (Engine/Brakes)</button>
-            <button class="btn-option">Tires / Wheels</button>
-            <button class="btn-option">Body / Glass</button>
-            <button class="btn-option">Electrical / Lights</button>
-        </div>
-
-        <div class="form-group">
-            <label>Severity Level</label>
-            <div class="row-split">
-                <button class="btn-option">Low (Driveable)</button>
-                <button class="btn-option" style="color:#ef4444; border-color:rgba(239,68,68,0.4);">Critical (Stop)</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Description</label>
-            <textarea style="min-height: 80px;" placeholder="Describe the noise, error code, or issue..."></textarea>
-        </div>
-
-        <div class="form-group">
-            <label>Photo Evidence</label>
-            <div class="camera-box">
-                <svg class="camera-icon" viewBox="0 0 24 24">
-                    <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                </svg>
-            </div>
-        </div>
-
-        <button class="btn-submit">Submit Issue Report</button>
+<div class="container">
+    <a href="/">← Back to Menu</a>
+    
+    <div class="form-group">
+        <input type="text" id="driverName" placeholder="Driver Full Name (Required)">
     </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="setTab('high')">High Priority</button>
+        <button class="tab-btn" onclick="setTab('edv')">EDV Issue</button>
+        <button class="tab-btn" onclick="setTab('low')">Low Priority</button>
+        <button class="tab-btn" onclick="setTab('mph')">Road MPH Error</button>
+    </div>
+
+    <div id="high" class="section active">
+        <div class="grid-options">
+            <button class="pill-btn">Brakes squealing or grinding</button>
+            <button class="pill-btn">Tire blowout / extreme wear</button>
+            <button class="pill-btn">Steering column loose</button>
+            <button class="pill-btn">Vehicle will not start</button>
+            <button class="pill-btn">Burning smell</button>
+            <button class="pill-btn">Fluid leak</button>
+            <button class="pill-btn">Sliding door off track</button>
+            <button class="pill-btn">Rear van door will not open</button>
+            <button class="pill-btn">Headlight bulb out</button>
+            <button class="pill-btn">Taillight bulb out</button>
+            <button class="pill-btn">Turn signal bulb out</button>
+            <button class="pill-btn">Backup camera no image</button>
+            <button class="pill-btn">Phone mount broken</button>
+            <button class="pill-btn">Low DEF light on</button>
+            <button class="pill-btn">Flat tire</button>
+            <button class="pill-btn">Power bank not working</button>
+            <button class="pill-btn">Charger cable needs replaced</button>
+            <button class="pill-btn">Gas card missing</button>
+            <button class="pill-btn">Dog deterrent missing</button>
+            <button class="pill-btn">Broken key</button>
+            <button class="pill-btn">Work phone damaged</button>
+            <button class="pill-btn">AVI Grounded</button>
+            <button class="pill-btn">Missing license plate</button>
+            <button class="pill-btn">Missing temp tag</button>
+            <button class="pill-btn">Package spill</button>
+            <button class="pill-btn">Missing windshield wiper</button>
+            <button class="pill-btn">Other (describe)</button>
+        </div>
+    </div>
+
+    <div id="edv" class="section">
+        <div class="grid-options">
+            <button class="pill-btn">EDV key fob battery low</button>
+            <button class="pill-btn">EDV not charging</button>
+            <button class="pill-btn">EDV warning light (describe)</button>
+            <button class="pill-btn">Bulkhead door not opening</button>
+            <button class="pill-btn">Rear cargo door not opening</button>
+            <button class="pill-btn">Severe dent</button>
+            <button class="pill-btn">Minor dent</button>
+            <button class="pill-btn">Severe damages</button>
+            <button class="pill-btn">Broken light fixture</button>
+            <button class="pill-btn">Broken mirror</button>
+            <button class="pill-btn">Broken windshield</button>
+            <button class="pill-btn">Other (describe)</button>
+        </div>
+    </div>
+
+    <div id="low" class="section">
+        <div class="grid-options">
+            <button class="pill-btn">Light scratches</button>
+            <button class="pill-btn">Interior dirty</button>
+            <button class="pill-btn">Door closes but sensor says open</button>
+            <button class="pill-btn">Seat does not adjust</button>
+            <button class="pill-btn">Radio not working</button>
+            <button class="pill-btn">QR code faded</button>
+            <button class="pill-btn">Other</button>
+        </div>
+    </div>
+
+    <div id="mph" class="section">
+        <label>Road MPH Sign Error</label>
+        <input type="text" placeholder="Street or Road Name *">
+        <input type="text" placeholder="City *">
+        <input type="text" placeholder="State *">
+        <div id="map"></div>
+    </div>
+
+    <label style="margin-top: 20px;">Additional Notes</label>
+    <textarea rows="3" placeholder="Describe specific details..."></textarea>
+
+    <button class="submit-btn">Submit Report</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Tab Logic
+    function setTab(id) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        
+        // Activate clicked tab based on text/order is hard, so we assume logic based on ID order or manually match
+        const tabs = ['high', 'edv', 'low', 'mph'];
+        const index = tabs.indexOf(id);
+        document.querySelectorAll('.tab-btn')[index].classList.add('active');
+        document.getElementById(id).classList.add('active');
+
+        if(id === 'mph') {
+            setTimeout(() => { map.invalidateSize(); }, 100);
+        }
+    }
+
+    // Pill Select Logic
+    document.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.addEventListener('click', function() { this.classList.toggle('selected'); });
+    });
+
+    // Map Init
+    var map = L.map('map').setView([39.82, -98.58], 4); // Center of US
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+    
+    // Attempt to get user location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+            L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(map);
+        });
+    }
+</script>
 
 </body>
 </html>
