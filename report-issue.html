@@ -77,13 +77,21 @@
             font-weight: bold;
             cursor: not-allowed;
             border-color: #2d3748;
-            color: #4ade80; /* Default Green (Gas/Electric) */
+            color: #6b7280; /* Default Gray until detected */
         }
         
-        /* DIESEL MODE (Red Text) */
-        input[readonly].diesel-mode {
-            color: #ef4444 !important; /* Bright Red */
+        /* --- FUEL TYPE COLORS --- */
+        input[readonly].gas-mode {
+            color: #ef4444 !important; /* RED for Gas 87 */
             border-color: #ef4444;
+        }
+        input[readonly].diesel-mode {
+            color: #4ade80 !important; /* GREEN for Diesel */
+            border-color: #4ade80;
+        }
+        input[readonly].electric-mode {
+            color: #ffffff !important; /* WHITE for Electric */
+            border-color: #ffffff;
         }
 
         /* --- CATEGORY TABS --- */
@@ -120,7 +128,7 @@
         }
         .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
 
-        /* --- CAMERA BOX (FORCED LIVE CAPTURE) --- */
+        /* --- CAMERA BOX --- */
         .camera-box {
             border: 2px dashed #4b5563; border-radius: 16px; height: 140px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -128,19 +136,14 @@
             position: relative; overflow: hidden; transition: border-color 0.2s;
         }
         .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
-        
         #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
-        
         .camera-icon { width: 40px; height: 40px; fill: #cbd5e1; margin-bottom: 10px; }
         .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; }
         .camera-sub { font-size: 10px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* --- MAP --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
-        
-        #gpsStatus {
-            font-size: 11px; color: #4ade80; margin-top: 5px; text-align: right; display: none;
-        }
+        #gpsStatus { font-size: 11px; color: #4ade80; margin-top: 5px; text-align: right; display: none; }
 
         /* --- HIDDEN NOTES --- */
         #otherNotesContainer { display: none; margin-top: 20px; animation: fadeIn 0.3s ease-in-out; }
@@ -170,7 +173,7 @@
     <div class="form-group row-split">
         <div class="half-width">
             <label>Last 4 of VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 9488" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
+            <input type="text" id="vinInput" placeholder="e.g. 1051 or W123" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
         </div>
         <div class="half-width">
             <label>Vehicle Type</label>
@@ -263,16 +266,16 @@
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
     // ----------------------------------------------------
-    //  VIN DATABASE (EXTRACTED FROM YOUR UPLOADED IMAGES)
+    //  VIN DATABASE (Updated with Fuel Logic)
     // ----------------------------------------------------
     const vinDatabase = {
-        // --- DIESEL (MERCEDES) ---
+        // --- DIESEL (GREEN TEXT) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
         "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
         "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
 
-        // --- ELECTRIC (RIVIAN) ---
+        // --- ELECTRIC (WHITE TEXT) ---
         "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
@@ -290,7 +293,7 @@
         "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
 
-        // --- GAS (FORD/RAM/OTHERS) ---
+        // --- GAS (RED TEXT) ---
         "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
         "5490": { type: "CDV 16ft (Gas)", fuel: "gas" },
         "7097": { type: "CDV 12ft (Gas)", fuel: "gas" },
@@ -319,10 +322,12 @@
     function checkVin() {
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
-        typeBox.classList.remove('diesel-mode');
+        
+        // Clear all previous color classes
+        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
         
         if (vin.length === 4) {
-            // 1. Manual Override: If user types a W (e.g. W123)
+            // 1. Manual Override: If user types a W (e.g. W123) -> Diesel (Green)
             if (vin.startsWith("W")) {
                 typeBox.value = "Mercedes (Diesel)";
                 typeBox.classList.add('diesel-mode'); 
@@ -335,13 +340,15 @@
                 const vehicle = vinDatabase[vin];
                 typeBox.value = vehicle.type; 
                 
-                // Logic based on fuel type
+                // Color Coding Logic
                 if (vehicle.fuel === 'diesel') {
-                    typeBox.classList.add('diesel-mode');
+                    typeBox.classList.add('diesel-mode'); // Green
                     setTab('high');
                 } else if (vehicle.fuel === 'electric') {
+                    typeBox.classList.add('electric-mode'); // White
                     setTab('edv');
-                } else {
+                } else if (vehicle.fuel === 'gas') {
+                    typeBox.classList.add('gas-mode'); // Red
                     setTab('high');
                 }
             } else {
