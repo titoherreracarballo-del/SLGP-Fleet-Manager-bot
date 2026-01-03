@@ -8,12 +8,12 @@
     <style>
         /* --- THEME SETTINGS --- */
         :root {
-            --bg-body: #0F1115;       
-            --bg-card: #161B28;       
-            --bg-input: #0b0d12;      
-            --primary-blue: #2563EB;  
+            --bg-body: #0F1115;       /* Deepest Navy */
+            --bg-card: #161B28;       /* Card Background */
+            --bg-input: #0b0d12;      /* Input Background */
+            --primary-blue: #2563EB;  /* Bright Blue */
             --primary-glow: rgba(37, 99, 235, 0.4);
-            --text-label: #3B82F6;    
+            --text-label: #3B82F6;    /* Neon Blue Text */
             --text-white: #ffffff;
             --text-gray: #94a3b8;
             --border-color: #2d3748;
@@ -41,6 +41,7 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
+        /* --- HEADERS --- */
         .back-link {
             color: var(--text-gray); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
         }
@@ -53,7 +54,13 @@
             text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
 
+        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
+        
+        /* Flex row for VIN and Vehicle Type side-by-side */
+        .row-split { display: flex; gap: 15px; }
+        .half-width { flex: 1; }
+
         label {
             color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
             text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
@@ -61,10 +68,20 @@
         input, textarea {
             width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
             padding: 16px; border-radius: var(--radius); font-size: 16px; box-sizing: border-box; outline: none;
+            transition: border-color 0.2s;
         }
         input:focus, textarea:focus { border-color: var(--text-label); }
+        
+        /* Readonly input style (Vehicle Type) */
+        input[readonly] {
+            background-color: #1a202c; 
+            color: #4ade80; /* Green text when populated */
+            font-weight: bold;
+            border-color: #2d3748;
+            cursor: not-allowed;
+        }
 
-        /* TABS */
+        /* --- CATEGORY TABS --- */
         .tabs {
             display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px;
         }
@@ -78,7 +95,7 @@
             box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
         }
 
-        /* LIST STYLE OPTIONS */
+        /* --- LIST OPTIONS --- */
         .section { display: none; }
         .section.active { display: block; }
         
@@ -92,34 +109,34 @@
             font-size: 14px; font-weight: 600; cursor: pointer;
             transition: all 0.2s ease; position: relative;
         }
-
         .list-btn:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.1); }
-
         .list-btn.selected {
             background-color: var(--primary-blue); border-color: var(--primary-blue);
             color: white; box-shadow: 0 4px 15px var(--primary-glow); transform: translateY(-1px);
         }
         .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
 
-        /* HIDDEN NOTES (Default) */
+        /* --- CAMERA BOX --- */
+        .camera-box {
+            border: 2px dashed #4b5563; border-radius: 16px; height: 140px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; transition: border-color 0.2s;
+        }
+        .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+        .camera-icon { width: 40px; height: 40px; fill: #cbd5e1; margin-bottom: 10px; }
+        .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .camera-sub { font-size: 10px; font-weight: 700; color: #4ade80; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* --- MAP --- */
+        #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
+        
+        /* --- HIDDEN NOTES --- */
         #otherNotesContainer { display: none; margin-top: 20px; animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* CAMERA */
-        .camera-box {
-            border: 2px dashed #4b5563; border-radius: 16px; height: 110px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            cursor: pointer; background-color: rgba(255,255,255,0.02); position: relative; overflow: hidden;
-        }
-        .camera-box:hover { border-color: var(--text-label); }
-        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-        .camera-icon { width: 32px; height: 32px; fill: #64748b; margin-bottom: 5px; }
-        .camera-text { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-
-        /* MAP */
-        #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
-
-        /* SUBMIT */
+        /* --- SUBMIT --- */
         .submit-btn {
             width: 100%; background-color: var(--primary-blue); color: white; border: none;
             padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
@@ -138,6 +155,17 @@
     <div class="form-group">
         <label>Driver Full Name</label>
         <input type="text" id="driverName" placeholder="Enter Full Name">
+    </div>
+
+    <div class="form-group row-split">
+        <div class="half-width">
+            <label>Last 4 of VIN</label>
+            <input type="text" id="vinInput" placeholder="e.g. 1234" maxlength="4" onkeyup="checkVin()">
+        </div>
+        <div class="half-width">
+            <label>Vehicle Type</label>
+            <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
+        </div>
     </div>
 
     <label>Issue Category</label>
@@ -203,13 +231,14 @@
     </div>
 
     <div class="form-group" style="margin-top: 25px;">
-        <label>Photo Evidence (Required)</label>
+        <label>1080P CAMERA EVIDENCE</label>
         <div class="camera-box">
-            <input type="file" id="photoInput" multiple accept="image/*">
+            <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
             <svg class="camera-icon" viewBox="0 0 24 24">
                 <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
             </svg>
-            <span class="camera-text" id="photoText">Tap to Upload Photos</span>
+            <div class="camera-title">TAP TO START HD CAMERA</div>
+            <div class="camera-sub">FORCES 1080p RESOLUTION</div>
         </div>
     </div>
 
@@ -221,7 +250,39 @@
     // 1. Timestamp
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // 2. Tab Logic
+    // 2. VIN Lookup Logic (Mock Database)
+    const vinDatabase = {
+        "1234": { type: "Rivian EDV 700", category: "edv" },
+        "5678": { type: "Ford Transit (CDV)", category: "high" },
+        "9999": { type: "Step Van (Cargo)", category: "high" },
+        "1111": { type: "Ram ProMaster", category: "low" }
+    };
+
+    function checkVin() {
+        const vin = document.getElementById('vinInput').value;
+        const typeBox = document.getElementById('vehicleType');
+
+        if (vin.length === 4) {
+            if (vinDatabase[vin]) {
+                const vehicle = vinDatabase[vin];
+                typeBox.value = vehicle.type; // Populate Field
+                
+                // Optional: Auto-Switch Tab based on vehicle type
+                // If it's an EDV, switch to EDV tab. Otherwise default to High Priority.
+                if(vehicle.category === 'edv') {
+                    setTab('edv');
+                } else {
+                    setTab('high');
+                }
+            } else {
+                typeBox.value = "Unknown Vehicle";
+            }
+        } else {
+            typeBox.value = "";
+        }
+    }
+
+    // 3. Tab Logic
     let activeTab = 'high';
     function setTab(id) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -234,12 +295,10 @@
         activeTab = id;
 
         if(id === 'mph') { setTimeout(() => { map.invalidateSize(); }, 100); }
-        
-        // Hide notes when switching tabs unless "Other" is selected in new tab
         checkForOther();
     }
 
-    // 3. Selection Logic & "Other" Check
+    // 4. Selection Logic
     document.querySelectorAll('.list-btn').forEach(btn => {
         btn.addEventListener('click', function() { 
             this.classList.toggle('selected');
@@ -249,10 +308,8 @@
 
     function checkForOther() {
         const notesDiv = document.getElementById('otherNotesContainer');
-        // Check if ANY selected button contains the text "Other"
         const anyOtherSelected = Array.from(document.querySelectorAll('.list-btn.selected'))
                                       .some(btn => btn.innerText.includes("Other"));
-        
         if (anyOtherSelected) {
             notesDiv.style.display = 'block';
         } else {
@@ -260,18 +317,20 @@
         }
     }
 
-    // 4. Map Init
+    // 5. Map Init
     var map = L.map('map').setView([39.82, -98.58], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // 5. Photo Logic
+    // 6. Photo Logic
     const photoInput = document.getElementById('photoInput');
     let photos = [];
     photoInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
         if(files.length > 0) {
-            document.getElementById('photoText').innerText = `${files.length} Photos Selected`;
+            document.querySelector('.camera-title').innerText = `${files.length} PHOTOS ATTACHED`;
+            document.querySelector('.camera-sub').innerText = "READY FOR UPLOAD";
             document.querySelector('.camera-icon').style.fill = '#4ade80';
+            
             files.forEach(file => {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
@@ -282,14 +341,15 @@
         }
     });
 
-    // 6. Submit Logic
+    // 7. Submit Logic
     async function submitForm() {
         const driverName = document.getElementById('driverName').value;
+        const vin = document.getElementById('vinInput').value;
+        const vehicleType = document.getElementById('vehicleType').value;
         const notes = document.getElementById('notes').value;
         let selectedTags = [];
         let reportType = "Issue Report";
 
-        // Collect tags
         if (activeTab === 'mph') {
             reportType = "Road MPH Error";
         } else {
@@ -299,17 +359,18 @@
             });
         }
 
-        // Validation
         if(!driverName) { alert("Please enter Driver Name"); return; }
+        if(!vin || vin.length < 4) { alert("Please enter Last 4 of VIN"); return; }
         if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
         
-        // Force notes if "Other" is selected
         const anyOther = selectedTags.some(t => t.includes("Other"));
         if(anyOther && !notes) { alert("Please describe the issue in Additional Notes."); return; }
 
         const payload = {
             reportType: reportType,
             driverName: driverName,
+            vinLast4: vin,
+            vehicleType: vehicleType,
             tags: selectedTags,
             otherDescription: notes,
             addressStreet: document.getElementById('street').value,
