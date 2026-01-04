@@ -7,8 +7,8 @@
     <style>
         /* --- THEME SETTINGS --- */
         :root {
-            --bg-body: #0F1115;       
-            --bg-card: #161B28;       
+            --bg-body: #0F1115;        
+            --bg-card: #161B28;        
             --bg-input: #0b0d12;      
             --primary-blue: #2563EB;  
             --text-label: #3B82F6;    
@@ -187,6 +187,42 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
+    // --- 1. AUTO-UPDATE & WAKE LOCK VARIABLES ---
+    let localVersion = null;
+    let wakeLock = null;
+
+    // --- 2. AUTO-UPDATE CHECKER ---
+    async function checkForUpdates() {
+        try {
+            // Checks the version endpoint we added to index.js
+            const res = await fetch('/version');
+            if (res.ok) {
+                const data = await res.json();
+                if (!localVersion) {
+                    localVersion = data.version; 
+                } else if (localVersion !== data.version) {
+                    console.log("New version detected. Refreshing...");
+                    window.location.reload(true); // Force Refresh
+                }
+            }
+        } catch (err) { console.log("Update check failed (offline?)"); }
+    }
+    // Check every 30 seconds
+    setInterval(checkForUpdates, 30000);
+    checkForUpdates(); // Also check immediately on load
+
+    // --- 3. WAKE LOCK FUNCTION ---
+    // Forces screen to stay bright so upload doesn't fail
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Screen Wake Lock Active');
+            }
+        } catch (err) { console.log('Wake Lock Error:', err); }
+    }
+
+    // --- 4. EXISTING LOGIC ---
     function autoSelectInspection() {
         const hour = new Date().getHours();
         if (hour < 13) { selectType('Pre-Trip'); } 
@@ -210,7 +246,6 @@
         "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
         "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
@@ -280,7 +315,7 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- VIDEO & TIMER LOGIC ---
+    // --- VIDEO RECORDING LOGIC ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
@@ -300,7 +335,6 @@
     startCamera();
     autoSelectInspection(); 
 
-    // --- TIMER FUNCTIONS ---
     function startTimer() {
         seconds = 0;
         document.getElementById('timer-display').style.display = 'block';
@@ -320,21 +354,26 @@
 
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+            // ACTIVATE WAKE LOCK to prevent sleeping
+            requestWakeLock();
+            
             const stream = document.getElementById('preview').srcObject;
             
-            const options = {
-                mimeType: 'video/webm;codecs=vp9', 
-                videoBitsPerSecond: 8000000 
-            };
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) delete options.mimeType;
-
-            mediaRecorder = new MediaRecorder(stream, options);
+            // Try to use MP4 if supported, else fallback
+            let options = { mimeType: 'video/webm;codecs=vp9' };
+            if (MediaRecorder.isTypeSupported('video/mp4')) {
+                 options = { mimeType: 'video/mp4' };
+            }
             
+            mediaRecorder = new MediaRecorder(stream, options);
+            chunks = []; // Reset
+
             mediaRecorder.ondataavailable = e => chunks.push(e.data);
             mediaRecorder.onstop = () => {
-                stopTimer(); // Stop timer
-                videoBlob = new Blob(chunks, { type: 'video/mp4' });
+                stopTimer();
+                videoBlob = new Blob(chunks, { type: options.mimeType });
                 const videoURL = URL.createObjectURL(videoBlob);
+                
                 document.getElementById('preview').style.display = 'none';
                 document.getElementById('playback').style.display = 'block';
                 document.getElementById('playback').src = videoURL;
@@ -346,7 +385,7 @@
             };
 
             mediaRecorder.start();
-            startTimer(); // Start timer
+            startTimer();
             document.getElementById('btn-record').classList.add('recording');
             document.getElementById('btn-stop').style.display = 'flex';
             document.getElementById('status').innerText = "Recording... Walk around vehicle.";
@@ -367,9 +406,13 @@
             return;
         }
 
+        // KEEP WAKE LOCK ON during upload
+        requestWakeLock();
+
         const btn = document.getElementById('btn-upload');
         btn.innerText = "UPLOADING... DO NOT CLOSE";
         btn.style.opacity = "0.7";
+        btn.disabled = true;
 
         const formData = new FormData();
         formData.append('video', videoBlob, 'inspection.mp4');
@@ -379,6 +422,11 @@
 
         try {
             const res = await fetch('/upload-to-google-drive', { method: 'POST', body: formData });
+            
+            // Release lock when done
+            if (wakeLock) wakeLock.release();
+            wakeLock = null;
+
             if (res.ok) {
                 alert("Inspection Uploaded Successfully!");
                 window.location.href = '/';
@@ -389,6 +437,7 @@
             alert("Error: " + err.message);
             btn.innerText = "TRY AGAIN";
             btn.style.opacity = "1";
+            btn.disabled = false;
         }
     }
 </script>
