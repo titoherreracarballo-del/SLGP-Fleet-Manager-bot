@@ -143,8 +143,16 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
+    // --- AUTO-REFRESH LOGIC ---
+    let refreshing = false;
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then(() => console.log("SW Active"));
+        // Force reload when a new service worker takes over
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (refreshing) return;
+            refreshing = true;
+            window.location.reload();
+        });
     }
 
     const vinDatabase = {
@@ -237,12 +245,16 @@
     }
     startCamera();
 
-    // --- UPDATED DATABASE AND UPLOAD ENGINE ---
-
+    // --- UPDATED DATABASE ENGINE ---
     function openDatabase() {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open('FleetVideoDB', 1);
-            req.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('videos')) {
+                    db.createObjectStore('videos', { keyPath: 'id' });
+                }
+            };
             req.onsuccess = e => resolve(e.target.result);
             req.onerror = e => reject("DB Error");
         });
@@ -284,12 +296,20 @@
                 putReq.onsuccess = async () => {
                     clearTimeout(dbTimeout);
                     const reg = await navigator.serviceWorker.ready;
-                    await reg.sync.register('video-upload');
-                    
-                    pFill.style.width = '100%';
-                    status.innerText = "SUCCESS! Video locked. Closing app...";
-                    status.style.color = "#4ade80";
-                    setTimeout(() => { window.location.href = '/'; }, 2000);
+                    if (reg.sync) {
+                        await reg.sync.register('video-upload');
+                        pFill.style.width = '100%';
+                        status.innerText = "SUCCESS! Video locked. Closing app...";
+                        status.style.color = "#4ade80";
+                        setTimeout(() => { window.location.href = '/'; }, 2000);
+                    } else {
+                        performManualUpload();
+                    }
+                };
+
+                tx.onerror = () => {
+                    clearTimeout(dbTimeout);
+                    performManualUpload();
                 };
             } catch (e) {
                 clearTimeout(dbTimeout);
@@ -317,6 +337,10 @@
                     alert("Upload failed. Check signal.");
                     btn.style.display = 'block'; pContainer.style.display = 'none';
                 }
+            };
+            xhr.onerror = () => {
+                alert("Network error. Please try again.");
+                btn.style.display = 'block'; pContainer.style.display = 'none';
             };
             xhr.send(formData);
         }
