@@ -90,7 +90,7 @@
         #btn-stop { background-color: #374151; color: white; display: none; }
         #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; border: none; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
+        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -241,7 +241,6 @@
             const stream = document.getElementById('preview').srcObject;
             const options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: 3500000 };
             
-            // Fallbacks for different browser support
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                 options.mimeType = 'video/mp4; codecs="avc1"';
                 if (!MediaRecorder.isTypeSupported(options.mimeType)) options.mimeType = 'video/webm;codecs=vp9';
@@ -279,7 +278,7 @@
 
     function stopRecording() { mediaRecorder.stop(); }
 
-    // 4. THE DUAL UPLOAD ENGINE (ANDROID SYNC + IPHONE XHR)
+    // 4. THE DUAL UPLOAD ENGINE (AUTO-CLOSE ANDROID & IPHONE)
     function openDatabase() {
         return new Promise((resolve) => {
             const req = indexedDB.open('FleetVideoDB', 1);
@@ -303,39 +302,51 @@
         btn.style.display = 'none';
         pContainer.style.display = 'block';
 
-        // DETECT ANDROID/SAMSUNG BACKGROUND SYNC SUPPORT
         const supportsSync = ('serviceWorker' in navigator && 'SyncManager' in window);
 
         if (supportsSync) {
-            // ANDROID PATH
-            status.innerText = "Saving to phone queue...";
+            // ANDROID / SAMSUNG PATH
+            status.innerText = "Securing video to device...";
             let progress = 0;
             const interval = setInterval(() => {
-                progress += 10;
+                progress += 5; 
                 pFill.style.width = progress + '%';
                 if (progress >= 100) {
                     clearInterval(interval);
                     completeAndroidSync();
                 }
-            }, 50);
+            }, 30);
 
             async function completeAndroidSync() {
-                const db = await openDatabase();
-                const tx = db.transaction('videos', 'readwrite');
-                tx.objectStore('videos').put({
-                    id: 'currentVideo', file: videoBlob, driver, vin, type: inspectionType
-                });
-                tx.oncomplete = async () => {
-                    const reg = await navigator.serviceWorker.ready;
-                    await reg.sync.register('video-upload');
-                    status.innerText = "Queued! You can close the app now.";
-                    alert("Samsung/Android Detected: Video is safe. It will upload automatically in the background.");
-                    window.location.reload();
-                };
+                try {
+                    const db = await openDatabase();
+                    const tx = db.transaction('videos', 'readwrite');
+                    tx.objectStore('videos').put({
+                        id: 'currentVideo', file: videoBlob, driver, vin, type: inspectionType
+                    });
+                    
+                    tx.oncomplete = async () => {
+                        const reg = await navigator.serviceWorker.ready;
+                        await reg.sync.register('video-upload');
+                        
+                        status.innerText = "SUCCESS! Closing app...";
+                        status.style.color = "#4ade80"; 
+                        
+                        setTimeout(() => {
+                            window.location.href = '/'; 
+                        }, 2000);
+                    };
+                } catch (e) {
+                    performIphoneUpload();
+                }
             }
         } else {
-            // IPHONE PATH
-            status.innerText = "Uploading (Keep App Open)...";
+            // IPHONE / MANUAL PATH
+            performIphoneUpload();
+        }
+
+        function performIphoneUpload() {
+            status.innerText = "Uploading... KEEP OPEN";
             const formData = new FormData();
             formData.append('video', videoBlob, 'inspection.mp4');
             formData.append('driverName', driver);
@@ -349,10 +360,11 @@
             };
             xhr.onload = () => {
                 if (xhr.status === 200) {
-                    alert("iPhone Upload Success!");
-                    window.location.href = '/';
+                    status.innerText = "SUCCESS! Closing...";
+                    status.style.color = "#4ade80";
+                    setTimeout(() => { window.location.href = '/'; }, 1500);
                 } else {
-                    alert("Upload failed. Try again.");
+                    alert("Upload failed. Check signal.");
                     btn.style.display = 'block';
                     pContainer.style.display = 'none';
                 }
