@@ -1,4 +1,4 @@
-const CACHE_NAME = 'slgp-v6';
+const CACHE_NAME = 'slgp-v7';
 const ASSETS = ['/', 'index.html', 'video.html', 'menu.html', 'Final-01.jpg', 'manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -15,10 +15,9 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
 });
 
-// LISTENER FOR THE "FORCE NUDGE" FROM VIDEO.HTML
+// TRIGGERED BY THE 2-SECOND REDIRECT
 self.addEventListener('message', (event) => {
     if (event.data && event.data.action === 'FORCE_SYNC') {
-        console.log("Forced Sync Triggered");
         event.waitUntil(uploadVideoFromDB());
     }
 });
@@ -32,24 +31,41 @@ async function uploadVideoFromDB() {
         const req = indexedDB.open('FleetVideoDB', 1);
         req.onsuccess = e => r(e.target.result);
     });
+
     const tx = db.transaction('videos', 'readonly');
+    const store = tx.objectStore('videos');
     const record = await new Promise(r => {
-        tx.objectStore('videos').get('currentVideo').onsuccess = e => r(e.target.result);
+        store.get('currentVideo').onsuccess = e => r(e.target.result);
     });
+
     if (!record) return;
 
     const fd = new FormData();
-    fd.append('video', record.file, 'inspection.mp4');
+    // Re-wrap the file to ensure it's not "stale"
+    const videoFile = new File([record.file], 'inspection.mp4', { type: 'video/mp4' });
+    fd.append('video', videoFile);
     fd.append('driverName', record.driver);
     fd.append('vin', record.vin);
     fd.append('inspectionType', record.type);
 
     try {
-        const res = await fetch('/upload-to-google-drive', { method: 'POST', body: fd });
+        console.log("Background Upload: Starting fetch...");
+        const res = await fetch('/upload-to-google-drive', { 
+            method: 'POST', 
+            body: fd,
+            // CRITICAL: Tells the browser to keep this fetch alive even if the user leaves
+            keepalive: true 
+        });
+
         if (res.ok) {
+            console.log("Background Upload: SUCCESS. Clearing DB.");
             const delTx = db.transaction('videos', 'readwrite');
             delTx.objectStore('videos').delete('currentVideo');
-            console.log("Background Upload Complete");
+        } else {
+            console.error("Server returned error:", res.status);
         }
-    } catch (err) { console.error("Sync failed, retrying later..."); throw err; }
+    } catch (err) {
+        console.error("Background Upload: Failed (will retry)", err);
+        throw err; // Forces the browser to try again when signal is better
+    }
 }
