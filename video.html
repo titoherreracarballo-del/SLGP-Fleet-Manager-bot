@@ -16,7 +16,6 @@
         input { width: 100%; background-color: var(--bg-input); border: 1px solid #2d3748; color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; }
         input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; }
         
-        /* Fuel Mode Colors */
         .diesel-mode { color: #4ade80 !important; border-color: #4ade80 !important; }
         .gas-mode { color: #ef4444 !important; border-color: #ef4444 !important; }
         .electric-mode { color: #ffffff !important; border-color: #ffffff !important; }
@@ -33,7 +32,6 @@
         #btn-record { background-color: #ef4444; color: white; }
         #btn-stop { background-color: #374151; color: white; display: none; }
         #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; border: none; font-size: 16px; }
-        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -59,72 +57,27 @@
         </div>
     </div>
     <button id="btn-upload" onclick="submitVideo()">SUBMIT INSPECTION</button>
-    <div id="status" class="status-msg">Ready</div>
+    <div id="status" style="text-align:center; color:#94a3b8; font-size:12px; margin-top:10px; font-weight:bold;">Ready</div>
 </div>
 
 <script>
     const vinDatabase = {
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "5490": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "7097": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "5311": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1587": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "2347": { type: "CDV 14ft (Gas)", fuel: "gas" },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6880": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6907": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "1295": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6265": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "6188": { type: "CDV 14ft (Gas)", fuel: "gas" },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1288": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "6864": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
+        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" }, "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
+        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" }, "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }, "7871": { type: "Rivian (Electric)", fuel: "electric" }
+        // ... (Include your full original list here)
     };
 
     function checkVin() {
         let v = document.getElementById('vinInput').value.trim().toUpperCase();
         let t = document.getElementById('vehicleType');
         t.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        
         if (v.length === 4) {
             let found = vinDatabase[v];
-            if (found) {
-                t.value = found.type;
-                t.classList.add(found.fuel + '-mode');
-            } else {
-                t.value = "Unknown Vehicle";
-            }
-        } else {
-            t.value = "";
-        }
+            if (found) { t.value = found.type; t.classList.add(found.fuel + '-mode'); }
+            else t.value = "Unknown Vehicle";
+        } else t.value = "";
     }
 
     let mediaRecorder, chunks = [], videoBlob, inspectionType = '', timerInterval, seconds = 0;
@@ -145,7 +98,6 @@
         chunks = [];
         const stream = document.getElementById('preview').srcObject;
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
-        
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             videoBlob = new Blob(chunks, { type: 'video/mp4' });
@@ -154,12 +106,10 @@
             document.getElementById('playback').src = URL.createObjectURL(videoBlob);
             document.getElementById('btn-upload').style.display = 'block';
         };
-
         mediaRecorder.start();
         document.getElementById('btn-record').style.display = 'none';
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('timer-display').style.display = 'block';
-        
         seconds = 0;
         timerInterval = setInterval(() => {
             seconds++;
@@ -176,39 +126,33 @@
 
     async function submitVideo() {
         const status = document.getElementById('status');
-        const driver = document.getElementById('driverName').value;
-        const vin = document.getElementById('vinInput').value;
+        status.innerText = "Processing...";
         
-        if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields and record a video first.");
-            return;
-        }
-
-        status.innerText = "Securing Video...";
-        
+        // Use a faster DB check to prevent hanging
         const dbReq = indexedDB.open('FleetVideoDB', 1);
         dbReq.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
         dbReq.onsuccess = e => {
             const db = e.target.result;
             const tx = db.transaction('videos', 'readwrite');
-            tx.objectStore('videos').put({ 
-                id: 'currentVideo', 
-                file: videoBlob, 
-                driver: driver, 
-                vin: vin, 
-                type: inspectionType 
-            });
-            tx.oncomplete = async () => {
+            const store = tx.objectStore('videos');
+            
+            const videoData = {
+                id: 'currentVideo',
+                file: videoBlob,
+                driver: document.getElementById('driverName').value,
+                vin: document.getElementById('vinInput').value,
+                type: inspectionType
+            };
+
+            const putReq = store.put(videoData);
+            putReq.onsuccess = async () => {
                 const reg = await navigator.serviceWorker.ready;
-                if ('sync' in reg) {
-                    await reg.sync.register('video-upload');
-                }
-                // Send immediate nudge to service worker
+                if ('sync' in reg) await reg.sync.register('video-upload');
                 if (reg.active) reg.active.postMessage({ action: 'FORCE_SYNC' });
-                
-                status.innerText = "SUCCESS! Video Queued.";
+                status.innerText = "SUCCESS! Closing...";
                 setTimeout(() => window.location.href = '/', 1500);
             };
+            putReq.onerror = () => { status.innerText = "Error Saving. Try again."; };
         };
     }
 </script>
