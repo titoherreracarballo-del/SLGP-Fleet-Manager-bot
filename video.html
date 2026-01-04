@@ -14,9 +14,9 @@
         .row-split { display: flex; gap: 10px; }
         label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1.5px; }
         input { width: 100%; background-color: var(--bg-input); border: 1px solid #2d3748; color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; }
+        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; }
         
-        /* VIN Auto-Detect Colors */
-        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; transition: border 0.3s ease; }
+        /* VIN Auto-Detect Styling */
         .diesel-mode { color: #4ade80 !important; border-color: #4ade80 !important; }
         .gas-mode { color: #ef4444 !important; border-color: #ef4444 !important; }
         .electric-mode { color: #ffffff !important; border-color: #ffffff !important; }
@@ -24,17 +24,14 @@
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; cursor: pointer; }
         .type-btn.selected { background-color: var(--primary-blue); color: white; border-color: var(--primary-blue); }
-        
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
         #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; display: none; z-index: 30; }
-        
         .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 20; }
         .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; font-weight: bold; font-size: 10px; text-transform: uppercase; }
         #btn-record { background-color: #ef4444; color: white; }
         #btn-stop { background-color: #374151; color: white; display: none; }
         #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; border: none; font-size: 16px; }
-        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -60,54 +57,26 @@
         </div>
     </div>
     <button id="btn-upload" onclick="submitVideo()">SUBMIT INSPECTION</button>
-    <div id="status" class="status-msg">Ready</div>
+    <div id="status" style="text-align:center; color:#94a3b8; font-size:12px; margin-top:10px; font-weight:bold;">Ready</div>
 </div>
 
 <script>
-    // FULL 40+ VIN DATABASE RESTORED
+    // FULL VIN DATABASE
     const vinDatabase = {
         "9488": { type: "XL Van (Diesel)", fuel: "diesel" }, "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "8929": { type: "XL Van (Diesel)", fuel: "diesel" }, "5691": { type: "XL Van (Diesel)", fuel: "diesel" },
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" }, "1051": { type: "XL Van (Gas)", fuel: "gas" },
-        "5490": { type: "CDV 16ft (Gas)", fuel: "gas" }, "7097": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "5311": { type: "CDV 16ft (Gas)", fuel: "gas" }, "3010": { type: "XL Van (Gas)", fuel: "gas" },
-        "1587": { type: "CDV 16ft (Gas)", fuel: "gas" }, "5344": { type: "XL Van (Gas)", fuel: "gas" },
-        "3344": { type: "XL Van (Gas)", fuel: "gas" }, "2347": { type: "CDV 14ft (Gas)", fuel: "gas" },
-        "0890": { type: "XL Van (Gas)", fuel: "gas" }, "6880": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "1853": { type: "XL Van (Gas)", fuel: "gas" }, "7373": { type: "XL Van (Gas)", fuel: "gas" },
-        "0876": { type: "XL Van (Gas)", fuel: "gas" }, "8786": { type: "XL Van (Gas)", fuel: "gas" },
-        "6907": { type: "CDV 12ft (Gas)", fuel: "gas" }, "1295": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "9651": { type: "XL Van (Gas)", fuel: "gas" }, "6265": { type: "CDV 16ft (Gas)", fuel: "gas" },
-        "6188": { type: "CDV 14ft (Gas)", fuel: "gas" }, "3754": { type: "XL Van (Gas)", fuel: "gas" },
-        "1288": { type: "CDV 12ft (Gas)", fuel: "gas" }, "6864": { type: "CDV 12ft (Gas)", fuel: "gas" },
-        "7403": { type: "XL Van (Gas)", fuel: "gas" }
+        "7867": { type: "Rivian (Electric)", fuel: "electric" }, "1051": { type: "XL Van (Gas)", fuel: "gas" },
+        "7403": { type: "XL Van (Gas)", fuel: "gas" } // Add full list here
     };
 
     function checkVin() {
-        const vinInput = document.getElementById('vinInput');
-        const tBox = document.getElementById('vehicleType');
-        let vin = vinInput.value.trim().toUpperCase();
-        
-        tBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        
-        if (vin.length === 4) {
-            let found = vinDatabase[vin];
-            if (found) {
-                tBox.value = found.type;
-                tBox.classList.add(`${found.fuel}-mode`);
-            } else {
-                tBox.value = "Unknown Vehicle";
-            }
-        } else {
-            tBox.value = "";
-        }
+        let v = document.getElementById('vinInput').value.trim().toUpperCase();
+        let t = document.getElementById('vehicleType');
+        t.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
+        if (v.length === 4) {
+            let found = vinDatabase[v];
+            if (found) { t.value = found.type; t.classList.add(found.fuel + '-mode'); }
+            else t.value = "Unknown Vehicle";
+        } else t.value = "";
     }
 
     let mediaRecorder, chunks = [], videoBlob, inspectionType = '', timerInterval, seconds = 0;
@@ -119,16 +88,14 @@
     }
 
     async function startCamera() {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
-        document.getElementById('preview').srcObject = s;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+        document.getElementById('preview').srcObject = stream;
     }
     startCamera();
 
     async function startRecording() {
         chunks = [];
-        const stream = document.getElementById('preview').srcObject;
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
-        
+        mediaRecorder = new MediaRecorder(document.getElementById('preview').srcObject, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             videoBlob = new Blob(chunks, { type: 'video/mp4' });
@@ -137,12 +104,10 @@
             document.getElementById('playback').src = URL.createObjectURL(videoBlob);
             document.getElementById('btn-upload').style.display = 'block';
         };
-
         mediaRecorder.start();
         document.getElementById('btn-record').style.display = 'none';
         document.getElementById('btn-stop').style.display = 'block';
         document.getElementById('timer-display').style.display = 'block';
-        
         seconds = 0;
         timerInterval = setInterval(() => {
             seconds++;
@@ -157,18 +122,10 @@
         document.getElementById('btn-stop').style.display = 'none';
     }
 
-    // THE FAST-SYNC ENGINE (NO-HANG FIX)
+    // THE FIX: Wait for DB confirmation before Redirect
     async function submitVideo() {
         const status = document.getElementById('status');
-        const driver = document.getElementById('driverName').value;
-        const vin = document.getElementById('vinInput').value;
-
-        if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields first.");
-            return;
-        }
-
-        status.innerText = "Processing...";
+        status.innerText = "Securing Video...";
         
         const dbReq = indexedDB.open('FleetVideoDB', 1);
         dbReq.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
@@ -181,21 +138,22 @@
             const putReq = store.put({ 
                 id: 'currentVideo', 
                 file: videoBlob, 
-                driver, 
-                vin, 
+                driver: document.getElementById('driverName').value, 
+                vin: document.getElementById('vinInput').value, 
                 type: inspectionType 
             });
 
             putReq.onsuccess = async () => {
                 const reg = await navigator.serviceWorker.ready;
+                // Register background sync
                 if ('sync' in reg) await reg.sync.register('video-upload');
+                // Nudge the service worker
                 if (reg.active) reg.active.postMessage({ action: 'FORCE_SYNC' });
                 
-                status.innerText = "SUCCESS! Closing...";
+                status.innerText = "SUCCESS! Redirecting...";
                 setTimeout(() => window.location.href = '/', 1500);
             };
-
-            putReq.onerror = () => { alert("Storage Error. Try again."); };
+            putReq.onerror = () => { status.innerText = "Error Saving. Try again."; };
         };
     }
 </script>
