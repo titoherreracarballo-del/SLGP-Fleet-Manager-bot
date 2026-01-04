@@ -38,6 +38,24 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
+        /* --- PROGRESS BAR --- */
+        #progress-container {
+            width: 100%;
+            background-color: #374151;
+            border-radius: 10px;
+            margin-top: 15px;
+            height: 10px;
+            display: none;
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #4ade80;
+            transition: width 0.2s;
+        }
+
         /* --- HEADERS --- */
         .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block; }
         .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
@@ -51,12 +69,10 @@
 
         label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; white-space: nowrap; }
         input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
-        #vehicleType { font-size: 11px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
-        input:focus { border-color: var(--text-label); }
         input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
-        input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
-        input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
-        input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
+        .diesel-mode { color: #4ade80 !important; border-color: #4ade80 !important; }
+        .gas-mode { color: #ef4444 !important; border-color: #ef4444 !important; }
+        .electric-mode { color: #ffffff !important; border-color: #ffffff !important; }
 
         /* --- BUTTONS --- */
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -72,7 +88,7 @@
         #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
         #btn-record.recording { animation: pulse 1s infinite; background-color: darkred; }
         #btn-stop { background-color: #374151; color: white; display: none; }
-        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; }
+        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; border: none; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
         .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
     </style>
@@ -117,7 +133,11 @@
         </div>
     </div>
 
-    <button id="btn-upload" onclick="uploadVideo()">SUBMIT & CLOSE</button>
+    <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
+    
+    <div id="progress-container">
+        <div id="progress-fill"></div>
+    </div>
     
     <div class="status-msg" id="status">Ready for Inspection</div>
 </div>
@@ -125,20 +145,13 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // --- 1. REGISTER SERVICE WORKER ---
+    // 1. SERVICE WORKER REGISTRATION
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log("SW Registered!"))
-            .catch(err => console.log("SW Fail", err));
+            .then(() => console.log("Service Worker Active"));
     }
 
-    // --- 2. EXISTING VIN & TYPE LOGIC ---
-    // (Kept exactly as you had it)
-    function autoSelectInspection() {
-        const hour = new Date().getHours();
-        if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
-    }
-
+    // 2. VIN DATABASE & LOGIC
     const vinDatabase = {
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
@@ -188,17 +201,14 @@
     function checkVin() {
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
-        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
+        typeBox.className = ''; 
         
         if (vin.length >= 4) {
-            let found = vinDatabase[vin];
-            if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
+            let found = vinDatabase[vin] || (vin.length > 4 ? vinDatabase[vin.slice(-4)] : null);
             if (vin.startsWith("W")) { typeBox.value = "Mercedes (Diesel)"; typeBox.classList.add('diesel-mode'); return; }
             if (found) {
                 typeBox.value = found.type; 
-                if (found.fuel === 'diesel') typeBox.classList.add('diesel-mode');
-                else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
-                else typeBox.classList.add('gas-mode');
+                typeBox.classList.add(`${found.fuel}-mode`);
             } else typeBox.value = "Unknown Vehicle";
         } else typeBox.value = "";
     }
@@ -206,115 +216,75 @@
     let inspectionType = '';
     function selectType(type) {
         inspectionType = type;
-        document.getElementById('btn-pre').classList.remove('selected');
-        document.getElementById('btn-post').classList.remove('selected');
-        if(type === 'Pre-Trip') document.getElementById('btn-pre').classList.add('selected');
-        if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
+        document.getElementById('btn-pre').classList.toggle('selected', type === 'Pre-Trip');
+        document.getElementById('btn-post').classList.toggle('selected', type === 'Post-Trip');
     }
 
-    // --- 3. VIDEO ENGINE (H.265 + 3.5Mbps) ---
-    // (Kept exactly as you had it - this is excellent logic)
-    let mediaRecorder;
-    let chunks = [];
-    let videoBlob;
-    let timerInterval;
-    let seconds = 0;
-    
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, 
-                audio: true 
-            });
-            document.getElementById('preview').srcObject = stream;
-        } catch (err) { alert("Camera Error: " + err.message); }
-    }
-    
-    startCamera();
-    autoSelectInspection(); 
+    // 3. VIDEO RECORDING ENGINE
+    let mediaRecorder, chunks = [], videoBlob, timerInterval, seconds = 0, wakeLock = null;
 
-    function startTimer() {
-        seconds = 0;
-        document.getElementById('timer-display').style.display = 'block';
-        document.getElementById('timer-display').innerText = "00:00";
-        timerInterval = setInterval(() => {
-            seconds++;
-            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const secs = (seconds % 60).toString().padStart(2, '0');
-            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
-        }, 1000);
-    }
-
-    function stopTimer() {
-        clearInterval(timerInterval);
-        document.getElementById('timer-display').style.display = 'none';
-    }
-
-    // WAKE LOCK Logic
     async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) await navigator.wakeLock.request('screen');
-        } catch (err) { console.log('Wake Lock Error', err); }
+        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
     }
+
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", width: 1920, height: 1080 }, audio: true 
+        });
+        document.getElementById('preview').srcObject = stream;
+    }
+    startCamera();
 
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
             requestWakeLock();
             const stream = document.getElementById('preview').srcObject;
-            const bitrate = 3500000; // 3.5 Mbps
+            const options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: 3500000 };
             
-            let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
+            // Fallbacks for different browser support
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                 options = { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: bitrate };
-                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                     options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: bitrate };
-                 }
+                options.mimeType = 'video/mp4; codecs="avc1"';
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) options.mimeType = 'video/webm;codecs=vp9';
             }
 
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
-
             mediaRecorder.ondataavailable = e => chunks.push(e.data);
             mediaRecorder.onstop = () => {
-                stopTimer();
                 videoBlob = new Blob(chunks, { type: options.mimeType });
-                const videoURL = URL.createObjectURL(videoBlob);
-                
                 document.getElementById('preview').style.display = 'none';
                 document.getElementById('playback').style.display = 'block';
-                document.getElementById('playback').src = videoURL;
-                
+                document.getElementById('playback').src = URL.createObjectURL(videoBlob);
                 document.getElementById('btn-record').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'none';
                 document.getElementById('btn-upload').style.display = 'block';
-                document.getElementById('status').innerText = "Video Recorded. Ready to Submit.";
+                clearInterval(timerInterval);
+                document.getElementById('timer-display').style.display = 'none';
+                document.getElementById('status').innerText = "Recorded. Ready to Submit.";
             };
 
             mediaRecorder.start();
-            startTimer();
             document.getElementById('btn-record').classList.add('recording');
             document.getElementById('btn-stop').style.display = 'flex';
-            document.getElementById('status').innerText = "Recording... Walk around vehicle.";
+            document.getElementById('timer-display').style.display = 'block';
+            seconds = 0;
+            timerInterval = setInterval(() => {
+                seconds++;
+                const m = Math.floor(seconds/60).toString().padStart(2,'0');
+                const s = (seconds%60).toString().padStart(2,'0');
+                document.getElementById('timer-display').innerText = `${m}:${s}`;
+            }, 1000);
         }
     }
 
-    function stopRecording() {
-        mediaRecorder.stop();
-        document.getElementById('btn-record').classList.remove('recording');
-    }
+    function stopRecording() { mediaRecorder.stop(); }
 
-    // --- 4. NEW UPLOAD ENGINE (BACKGROUND SYNC) ---
+    // 4. THE DUAL UPLOAD ENGINE (ANDROID SYNC + IPHONE XHR)
     function openDatabase() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open('FleetVideoDB', 1);
-            request.onupgradeneeded = function(e) {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('videos')) {
-                    db.createObjectStore('videos', { keyPath: 'id' });
-                }
-            };
-            request.onsuccess = e => resolve(e.target.result);
-            request.onerror = e => reject('Database error');
+        return new Promise((resolve) => {
+            const req = indexedDB.open('FleetVideoDB', 1);
+            req.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
+            req.onsuccess = e => resolve(e.target.result);
         });
     }
 
@@ -323,52 +293,71 @@
         const vin = document.getElementById('vinInput').value;
         const btn = document.getElementById('btn-upload');
         const status = document.getElementById('status');
-        
+        const pContainer = document.getElementById('progress-container');
+        const pFill = document.getElementById('progress-fill');
+
         if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields and record a video.");
-            return;
+            alert("Complete all fields first."); return;
         }
 
-        btn.disabled = true;
-        btn.innerText = "Saving...";
-        status.innerText = "Saving to hidden background queue...";
+        btn.style.display = 'none';
+        pContainer.style.display = 'block';
 
-        try {
-            // 1. Open Local Database
-            const db = await openDatabase();
-            const tx = db.transaction('videos', 'readwrite');
-            
-            // 2. Save file + metadata locally
-            const record = {
-                id: 'currentVideo',
-                file: videoBlob,
-                driver: driver,
-                vin: vin,
-                type: inspectionType,
-                created: Date.now()
+        // DETECT ANDROID/SAMSUNG BACKGROUND SYNC SUPPORT
+        const supportsSync = ('serviceWorker' in navigator && 'SyncManager' in window);
+
+        if (supportsSync) {
+            // ANDROID PATH
+            status.innerText = "Saving to phone queue...";
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                pFill.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    completeAndroidSync();
+                }
+            }, 50);
+
+            async function completeAndroidSync() {
+                const db = await openDatabase();
+                const tx = db.transaction('videos', 'readwrite');
+                tx.objectStore('videos').put({
+                    id: 'currentVideo', file: videoBlob, driver, vin, type: inspectionType
+                });
+                tx.oncomplete = async () => {
+                    const reg = await navigator.serviceWorker.ready;
+                    await reg.sync.register('video-upload');
+                    status.innerText = "Queued! You can close the app now.";
+                    alert("Samsung/Android Detected: Video is safe. It will upload automatically in the background.");
+                    window.location.reload();
+                };
+            }
+        } else {
+            // IPHONE PATH
+            status.innerText = "Uploading (Keep App Open)...";
+            const formData = new FormData();
+            formData.append('video', videoBlob, 'inspection.mp4');
+            formData.append('driverName', driver);
+            formData.append('vin', vin);
+            formData.append('inspectionType', inspectionType);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload-to-google-drive', true);
+            xhr.upload.onprogress = e => {
+                if (e.lengthComputable) pFill.style.width = (e.loaded / e.total * 100) + '%';
             };
-
-            tx.objectStore('videos').put(record);
-
-            tx.oncomplete = async function() {
-                // 3. Tell Android "Sync this when you have internet"
-                if ('serviceWorker' in navigator && 'SyncManager' in window) {
-                    const swReg = await navigator.serviceWorker.ready;
-                    await swReg.sync.register('video-upload');
-                    
-                    // 4. Success Message
-                    status.innerText = "Video Queued! Safe to close app.";
-                    alert("Success! The video is queued in the background. You can close the app now.");
-                    window.location.reload(); // Reset for next user
+            xhr.onload = () => {
+                if (xhr.status === 200) {
+                    alert("iPhone Upload Success!");
+                    window.location.href = '/';
                 } else {
-                    alert("Sync not supported on this device.");
+                    alert("Upload failed. Try again.");
+                    btn.style.display = 'block';
+                    pContainer.style.display = 'none';
                 }
             };
-        } catch (err) {
-            console.error(err);
-            alert("Error saving video to background queue.");
-            btn.disabled = false;
-            btn.innerText = "SUBMIT & CLOSE";
+            xhr.send(formData);
         }
     }
 </script>
