@@ -5,21 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Inspection</title>
     <style>
-        :root {
-            --bg-body: #0F1115; --bg-card: #161B28; --bg-input: #0b0d12;
-            --primary-blue: #2563EB; --text-label: #3B82F6; --radius: 12px;
-        }
+        :root { --bg-body: #0F1115; --bg-card: #161B28; --bg-input: #0b0d12; --primary-blue: #2563EB; --text-label: #3B82F6; --radius: 12px; }
         body { background-color: var(--bg-body); font-family: sans-serif; color: white; display: flex; justify-content: center; padding: 20px; margin: 0; min-height: 100vh; }
         .container { width: 100%; max-width: 420px; background-color: var(--bg-card); border-radius: 24px; padding: 24px; border: 1px solid #1f2937; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
-        #progress-container { width: 100%; background-color: #374151; border-radius: 10px; margin-top: 15px; height: 10px; display: none; overflow: hidden; }
-        #progress-fill { height: 100%; width: 0%; background-color: #4ade80; transition: width 0.3s ease-in-out; }
         .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block; }
-        .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
         h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; }
         .form-group { margin-bottom: 20px; }
         .row-split { display: flex; gap: 10px; }
-        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
-        input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; }
+        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+        input { width: 100%; background-color: var(--bg-input); border: 1px solid #2d3748; color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; }
         input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; }
         .diesel-mode { color: #4ade80 !important; border-color: #4ade80 !important; }
         .gas-mode { color: #ef4444 !important; border-color: #ef4444 !important; }
@@ -27,27 +21,25 @@
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; cursor: pointer; }
         .type-btn.selected { background-color: var(--primary-blue); color: white; }
-        .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; border: 1px solid #374151; }
+        .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); padding: 5px 12px; color: #ef4444; font-weight: 900; display: none; z-index: 20; }
-        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
+        #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); padding: 5px 12px; color: #ef4444; font-weight: 900; display: none; }
+        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; }
         .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; font-weight: bold; font-size: 10px; }
         #btn-record { background-color: #ef4444; color: white; }
-        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; font-size: 16px; border: none; }
-        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; font-weight: bold; }
+        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; border: none; font-size: 16px; }
     </style>
 </head>
 <body>
-
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
-    <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
-    <div class="form-group"><label>Driver Name</label><input type="text" id="driverName"></div>
+    <div class="form-group"><label>Driver Full Name</label><input type="text" id="driverName" placeholder="Enter Full Name"></div>
     <div class="form-group row-split">
-        <div style="flex:0.3"><label>VIN</label><input type="text" id="vinInput" maxlength="4" onkeyup="checkVin()"></div>
-        <div style="flex:0.7"><label>Vehicle</label><input type="text" id="vehicleType" readonly></div>
+        <div style="flex:0.3"><label>Last 4 VIN</label><input type="text" id="vinInput" maxlength="4" placeholder="E.G. 1051" onkeyup="checkVin()"></div>
+        <div style="flex:0.7"><label>Vehicle Type / Fuel</label><input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly></div>
     </div>
+    <label>Inspection Type</label>
     <div class="type-grid">
         <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
         <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
@@ -62,119 +54,64 @@
         </div>
     </div>
     <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
-    <div id="progress-container"><div id="progress-fill"></div></div>
-    <div id="status" class="status-msg">Ready</div>
+    <div id="status" style="text-align:center; color:#94a3b8; font-size:12px; margin-top:10px; font-weight:bold;">Ready</div>
 </div>
 
 <script>
-    document.getElementById('ts').innerText = new Date().toLocaleString();
-    let refreshing = false;
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js');
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (refreshing) return; refreshing = true; window.location.reload();
-        });
-    }
-
     const vinDatabase = {
         "9488": { type: "XL Van (Diesel)", fuel: "diesel" }, "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "8929": { type: "XL Van (Diesel)", fuel: "diesel" }, "5691": { type: "XL Van (Diesel)", fuel: "diesel" },
-        "7867": { type: "Rivian (Electric)", fuel: "electric" }, "7871": { type: "Rivian (Electric)", fuel: "electric" },
-        "9412": { type: "Rivian (Electric)", fuel: "electric" }, "7866": { type: "Rivian (Electric)", fuel: "electric" },
-        "1051": { type: "XL Van (Gas)", fuel: "gas" }, "7403": { type: "XL Van (Gas)", fuel: "gas" }
+        "7867": { type: "Rivian (Electric)", fuel: "electric" }, "1051": { type: "XL Van (Gas)", fuel: "gas" }
     };
 
     function checkVin() {
         let v = document.getElementById('vinInput').value.toUpperCase();
         let t = document.getElementById('vehicleType');
         t.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        if (v.length >= 4) {
-            let found = vinDatabase[v] || (v.length > 4 ? vinDatabase[v.slice(-4)] : null);
-            if (v.startsWith("W")) { t.value = "Mercedes (Diesel)"; t.classList.add('diesel-mode'); return; }
+        if (v.length === 4) {
+            let found = vinDatabase[v];
             if (found) { t.value = found.type; t.classList.add(found.fuel + '-mode'); }
             else t.value = "Unknown Vehicle";
         } else t.value = "";
     }
 
-    let inspectionType = '';
+    let mediaRecorder, chunks = [], videoBlob, inspectionType = '';
     function selectType(t) {
         inspectionType = t;
         document.getElementById('btn-pre').classList.toggle('selected', t === 'Pre-Trip');
         document.getElementById('btn-post').classList.toggle('selected', t === 'Post-Trip');
     }
 
-    let mediaRecorder, chunks = [], videoBlob, timerInterval, seconds = 0;
     async function toggleRecording() {
-        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-            const stream = document.getElementById('preview').srcObject;
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
-            mediaRecorder.ondataavailable = e => chunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                videoBlob = new Blob(chunks, { type: 'video/mp4' });
-                document.getElementById('preview').style.display = 'none';
-                document.getElementById('playback').style.display = 'block';
-                document.getElementById('playback').src = URL.createObjectURL(videoBlob);
-                document.getElementById('btn-upload').style.display = 'block';
-                document.getElementById('timer-display').style.display = 'none';
-                clearInterval(timerInterval);
-            };
-            mediaRecorder.start();
-            document.getElementById('btn-record').style.display = 'none';
-            document.getElementById('btn-stop').style.display = 'block';
-            document.getElementById('timer-display').style.display = 'block';
-            seconds = 0;
-            timerInterval = setInterval(() => {
-                seconds++;
-                const m = Math.floor(seconds/60).toString().padStart(2,'0'), s = (seconds%60).toString().padStart(2,'0');
-                document.getElementById('timer-display').innerText = `${m}:${s}`;
-            }, 1000);
-        }
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+        document.getElementById('preview').srcObject = s;
+        mediaRecorder = new MediaRecorder(s, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            videoBlob = new Blob(chunks, { type: 'video/mp4' });
+            document.getElementById('preview').style.display = 'none';
+            document.getElementById('playback').style.display = 'block';
+            document.getElementById('playback').src = URL.createObjectURL(videoBlob);
+            document.getElementById('btn-upload').style.display = 'block';
+        };
+        mediaRecorder.start();
+        document.getElementById('btn-record').style.display = 'none';
+        document.getElementById('btn-stop').style.display = 'block';
     }
     function stopRecording() { mediaRecorder.stop(); }
 
-    async function startCamera() {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 1920, height: 1080 }, audio: true });
-        document.getElementById('preview').srcObject = s;
-    }
-    startCamera();
-
     async function uploadVideo() {
-        const status = document.getElementById('status');
-        const pFill = document.getElementById('progress-fill');
-        document.getElementById('btn-upload').style.display = 'none';
-        document.getElementById('progress-container').style.display = 'block';
-
-        const driver = document.getElementById('driverName').value;
-        const vin = document.getElementById('vinInput').value;
-
-        if ('SyncManager' in window) {
-            status.innerText = "SUCCESS! Video Queued.";
-            status.style.color = "#4ade80";
-            pFill.style.width = '100%';
-
-            const dbReq = indexedDB.open('FleetVideoDB', 1);
-            dbReq.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
-            dbReq.onsuccess = e => {
-                const db = e.target.result;
-                const tx = db.transaction('videos', 'readwrite');
-                tx.objectStore('videos').put({ id: 'currentVideo', file: videoBlob, driver, vin, type: inspectionType });
-                tx.oncomplete = async () => {
-                    const reg = await navigator.serviceWorker.ready;
-                    await reg.sync.register('video-upload');
-                    if (reg.active) reg.active.postMessage({ action: 'FORCE_SYNC' });
-                };
+        const dbReq = indexedDB.open('FleetVideoDB', 1);
+        dbReq.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
+        dbReq.onsuccess = e => {
+            const db = e.target.result;
+            const tx = db.transaction('videos', 'readwrite');
+            tx.objectStore('videos').put({ id: 'currentVideo', file: videoBlob, driver: document.getElementById('driverName').value, vin: document.getElementById('vinInput').value, type: inspectionType });
+            tx.oncomplete = async () => {
+                const reg = await navigator.serviceWorker.ready;
+                await reg.sync.register('video-upload');
+                window.location.href = '/';
             };
-            setTimeout(() => window.location.href = '/', 2000);
-        } else {
-            const fd = new FormData();
-            fd.append('video', videoBlob, 'inspection.mp4');
-            fd.append('driverName', driver); fd.append('vin', vin); fd.append('inspectionType', inspectionType);
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/upload-to-google-drive');
-            xhr.upload.onprogress = e => pFill.style.width = (e.loaded/e.total*100)+'%';
-            xhr.onload = () => { if (xhr.status === 200) window.location.href = '/'; };
-            xhr.send(fd);
-        }
+        };
     }
 </script>
 </body>
