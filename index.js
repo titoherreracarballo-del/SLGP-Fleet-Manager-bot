@@ -30,7 +30,6 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const upload = multer({ dest: UPLOAD_DIR });
 
 // --- MIDDLEWARE & CACHE CONTROL ---
-// This ensures that the Service Worker (sw.js) is never cached by the phone
 app.use(express.static(__dirname, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('sw.js')) {
@@ -46,6 +45,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // --- ROUTES ---
 
+// Fixed Home Routing to prevent 404s seen in logs
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
         res.sendFile(path.join(__dirname, 'menu.html'));
@@ -53,6 +53,9 @@ app.get('/', (req, res) => {
         res.sendFile(path.join(__dirname, 'index.html'));
     }
 });
+
+// Explicitly handle menu.html to stop 404/499 errors
+app.get('/menu.html', (req, res) => res.sendFile(path.join(__dirname, 'menu.html')));
 
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
@@ -108,13 +111,14 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.error("Upload Error:", error.message);
         res.status(500).send(`Error: ${error.message}`); 
     } finally {
+        // Cleanup local file
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
     }
 });
 
-// --- REPORT SUBMISSION ENGINE ---
+// --- REPORT SUBMISSION ENGINE (RE-RESTORED ALL FEATURES) ---
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
 
