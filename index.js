@@ -20,7 +20,6 @@ app.get('/version', (req, res) => {
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 
-// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
     try {
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -30,14 +29,24 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
-// --- MIDDLEWARE ---
-app.use(express.static(__dirname));
+// --- MIDDLEWARE & CACHE CONTROL ---
+// This section is critical for the "Auto-Update" feature to work on Android
+app.use(express.static(__dirname, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('sw.js')) {
+            // Tell the phone: "Do not cache this file. Check for updates every time."
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
+
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // --- ROUTES ---
 
-// Home Menu
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
         res.sendFile(path.join(__dirname, 'menu.html'));
@@ -46,13 +55,10 @@ app.get('/', (req, res) => {
     }
 });
 
-// Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// Report Routing
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-    
     if (mode === 'issue') {
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } 
@@ -78,17 +84,15 @@ try {
     }
 } catch (err) { console.error("Auth Error:", err.message); }
 
-// --- VIDEO UPLOAD ENGINE (LOCKED & MATCHED TO SW.JS) ---
+// --- VIDEO UPLOAD ENGINE ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        console.log("Video Upload Started..."); // Log start for debugging
+        console.log("Video Upload Started...");
         if (!req.file) return res.status(400).send('No video file.');
         
         const drive = google.drive({ version: 'v3', auth });
-        
-        // These fields come from the FormData in sw.js
         const { driverName, vin, inspectionType } = req.body; 
         const filename = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
         
@@ -99,14 +103,16 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             supportsAllDrives: true
         });
         
-        // Cleanup local file immediately to keep Railway happy
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        console.log("Video Upload Success");
+        console.log(`Video Upload Success: ${filename}`);
         res.status(200).send('Upload Complete');
     } catch (error) { 
         console.error("Upload Error:", error.message);
         res.status(500).send(`Error: ${error.message}`); 
+    } finally {
+        // FAIL-SAFE CLEANUP: Ensure file is deleted even if upload crashes
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
     }
 });
 
@@ -118,7 +124,6 @@ app.post('/submit-report', async (req, res) => {
     const data = req.body;
     try {
         const drive = google.drive({ version: 'v3', auth });
-        
         let targetFolderId = ACCIDENT_DRIVE_ID; 
         if (data.reportType && data.reportType.toLowerCase().includes('issue')) {
             targetFolderId = ISSUE_DRIVE_ID;
@@ -136,7 +141,6 @@ app.post('/submit-report', async (req, res) => {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
                 photoBuffers.push(buffer); 
-                
                 const bs = new stream.PassThrough(); 
                 bs.end(buffer);
                 await drive.files.create({
@@ -156,10 +160,7 @@ app.post('/submit-report', async (req, res) => {
         page.drawText('SLGP FLEET REPORT', { x: 20, y: 760, size: 24, font: font, color: rgb(1,1,1) });
 
         let y = 700;
-
-        const checkPage = () => {
-            if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
-        };
+        const checkPage = () => { if (y < 50) { page = doc.addPage([600, 800]); y = 750; } };
 
         const drawLabel = (label, value) => {
             checkPage();
@@ -191,20 +192,10 @@ app.post('/submit-report', async (req, res) => {
                 try {
                     const img = await doc.embedJpg(buffer);
                     const imgDims = img.scale(0.5);
-                    
-                    if (y - imgDims.height < 50) { 
-                        page = doc.addPage([600, 800]); 
-                        y = 750; 
-                    }
-                    
-                    page.drawImage(img, {
-                        x: 50, y: y - imgDims.height,
-                        width: imgDims.width, height: imgDims.height,
-                    });
+                    if (y - imgDims.height < 50) { page = doc.addPage([600, 800]); y = 750; }
+                    page.drawImage(img, { x: 50, y: y - imgDims.height, width: imgDims.width, height: imgDims.height });
                     y -= (imgDims.height + 20);
-                } catch (e) {
-                    console.log("Photo embed skipped (format error)");
-                }
+                } catch (e) { console.log("Photo embed skipped"); }
             }
         }
 
@@ -215,7 +206,6 @@ app.post('/submit-report', async (req, res) => {
             service: 'gmail',
             auth: { 
                 user: 'slgpincidentreporting@gmail.com',  
-                // *** IMPORTANT: Use process.env OR paste your password below before deploying ***
                 pass: process.env.EMAIL_PASS || 'xxxx xxxx xxxx xxxx' 
             }
         });
@@ -241,10 +231,8 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-// --- SERVER STARTUP (MODIFIED FOR SLOW UPLOADS) ---
 const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
 
-// *** CRITICAL FIX FOR VIDEO UPLOADS ***
-// Increase timeout to 5 minutes (300,000ms) to allow slow connections to finish uploading
+// Increase timeout to 5 minutes for video uploads
 server.setTimeout(300000);
