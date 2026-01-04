@@ -5,169 +5,424 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Inspection</title>
     <style>
-        :root { --bg-body: #0F1115; --bg-card: #161B28; --bg-input: #0b0d12; --primary-blue: #2563EB; --text-label: #3B82F6; --radius: 12px; }
-        body { background-color: var(--bg-body); font-family: sans-serif; color: white; display: flex; justify-content: center; padding: 20px; margin: 0; min-height: 100vh; }
-        .container { width: 100%; max-width: 420px; background-color: var(--bg-card); border-radius: 24px; padding: 24px; border: 1px solid #1f2937; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+        /* --- THEME SETTINGS --- */
+        :root {
+            --bg-body: #0F1115;        
+            --bg-card: #161B28;        
+            --bg-input: #0b0d12;      
+            --primary-blue: #2563EB;  
+            --text-label: #3B82F6;    
+            --text-white: #ffffff;
+            --border-color: #2d3748;
+            --radius: 12px;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            background-color: var(--bg-card);
+            border-radius: 24px;
+            padding: 24px;
+            border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+
+        /* --- PROGRESS BAR STYLE --- */
+        #progress-container {
+            width: 100%;
+            background-color: #374151;
+            border-radius: 10px;
+            margin-top: 15px;
+            height: 10px;
+            display: none; /* Hidden until upload starts */
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #4ade80; /* Green */
+            transition: width 0.2s;
+        }
+
+        /* --- HEADERS --- */
         .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block; }
-        h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; }
+        .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
+        h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+
+        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         .row-split { display: flex; gap: 10px; }
-        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1.5px; }
-        input { width: 100%; background-color: var(--bg-input); border: 1px solid #2d3748; color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; }
-        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; }
-        
-        .diesel-mode { color: #4ade80 !important; border-color: #4ade80 !important; }
-        .gas-mode { color: #ef4444 !important; border-color: #ef4444 !important; }
-        .electric-mode { color: #ffffff !important; border-color: #ffffff !important; }
+        .vin-col { flex: 0.3; min-width: 70px; } 
+        .type-col { flex: 0.7; }
 
+        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; white-space: nowrap; }
+        input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
+        #vehicleType { font-size: 11px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
+        input:focus { border-color: var(--text-label); }
+        input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
+        input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
+        input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
+        input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
+
+        /* --- BUTTONS --- */
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; cursor: pointer; }
-        .type-btn.selected { background-color: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+        .type-btn.selected { background-color: var(--primary-blue); border-color: var(--primary-blue); color: white; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
+
+        /* --- VIDEO --- */
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        
-        #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; display: none; z-index: 30; }
-        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 20; }
-        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; font-weight: bold; font-size: 10px; text-transform: uppercase; }
-        #btn-record { background-color: #ef4444; color: white; }
+        #timer-display { position: absolute; top: 20px; right: 20px; background-color: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20; }
+        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
+        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 10px; text-transform: uppercase; }
+        #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
+        #btn-record.recording { animation: pulse 1s infinite; background-color: darkred; }
         #btn-stop { background-color: #374151; color: white; display: none; }
-        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; border: none; font-size: 16px; }
-
-        #progress-container { width: 100%; background-color: #374151; border-radius: 10px; margin-top: 15px; height: 10px; display: none; overflow: hidden; }
-        #progress-fill { height: 100%; width: 0%; background-color: #4ade80; transition: width 0.3s; }
+        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
     </style>
 </head>
 <body>
+
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
+    <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
-    <div class="form-group"><label>Driver Full Name</label><input type="text" id="driverName" placeholder="Enter Full Name"></div>
-    <div class="form-group row-split">
-        <div style="flex:0.3"><label>Last 4 VIN</label><input type="text" id="vinInput" maxlength="4" placeholder="E.G. 1051" oninput="checkVin()"></div>
-        <div style="flex:0.7"><label>Vehicle Type / Fuel</label><input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly></div>
+
+    <div class="form-group">
+        <label>Driver Full Name</label>
+        <input type="text" id="driverName" placeholder="Enter Full Name">
     </div>
+
+    <div class="form-group row-split">
+        <div class="vin-col">
+            <label>Last 4 VIN</label>
+            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
+        </div>
+        <div class="type-col">
+            <label>Vehicle Type / Fuel</label>
+            <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
+        </div>
+    </div>
+
+    <label>Inspection Type</label>
     <div class="type-grid">
         <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
         <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
     </div>
+
     <div class="video-box">
         <div id="timer-display">00:00</div>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
+        
         <div class="controls">
-            <button id="btn-record" class="btn-circle" onclick="startRecording()">REC</button>
+            <button id="btn-record" class="btn-circle" onclick="toggleRecording()">REC</button>
             <button id="btn-stop" class="btn-circle" onclick="stopRecording()">STOP</button>
         </div>
     </div>
+
     <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
-    <div id="progress-container"><div id="progress-fill"></div></div>
-    <div id="status" style="text-align:center; color:#94a3b8; font-size:12px; margin-top:10px; font-weight:bold;">Ready</div>
+    
+    <div id="progress-container">
+        <div id="progress-fill"></div>
+    </div>
+    
+    <div class="status-msg" id="status">Ready for Inspection</div>
 </div>
 
 <script>
+    document.getElementById('ts').innerText = new Date().toLocaleString();
+
+    // --- 1. FEATURE: AUTO-UPDATE & WAKE LOCK ---
+    let localVersion = null;
+    let wakeLock = null;
+
+    // Checks server version every 30s. Reloads if changed.
+    async function checkForUpdates() {
+        try {
+            const res = await fetch('/version');
+            if (res.ok) {
+                const data = await res.json();
+                if (!localVersion) localVersion = data.version; 
+                else if (localVersion !== data.version) window.location.reload(true);
+            }
+        } catch (err) { console.log("Update check failed"); }
+    }
+    setInterval(checkForUpdates, 30000);
+    checkForUpdates();
+
+    // Forces screen to stay ON during recording/uploading
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Wake Lock Active');
+            }
+        } catch (err) { console.log('Wake Lock Error', err); }
+    }
+
+    // --- 2. EXISTING VIN & TYPE LOGIC ---
+    function autoSelectInspection() {
+        const hour = new Date().getHours();
+        if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
+    }
+
     const vinDatabase = {
+        // --- DIESEL ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
         "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
         "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        // --- ELECTRIC ---
         "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        // --- GAS ---
         "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "5344": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
+        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
+        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
         "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
-        // ... (Add all your VINs here)
     };
 
     function checkVin() {
-        let v = document.getElementById('vinInput').value.trim().toUpperCase();
-        let t = document.getElementById('vehicleType');
-        t.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        if (v.length === 4) {
-            let found = vinDatabase[v];
-            if (found) { t.value = found.type; t.classList.add(found.fuel + '-mode'); }
-            else t.value = "Unknown Vehicle";
-        } else t.value = "";
+        let vin = document.getElementById('vinInput').value.toUpperCase();
+        const typeBox = document.getElementById('vehicleType');
+        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
+        
+        if (vin.length >= 4) {
+            let found = vinDatabase[vin];
+            if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
+            if (vin.startsWith("W")) { typeBox.value = "Mercedes (Diesel)"; typeBox.classList.add('diesel-mode'); return; }
+            if (found) {
+                typeBox.value = found.type; 
+                if (found.fuel === 'diesel') typeBox.classList.add('diesel-mode');
+                else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
+                else typeBox.classList.add('gas-mode');
+            } else typeBox.value = "Unknown Vehicle";
+        } else typeBox.value = "";
     }
 
-    let mediaRecorder, chunks = [], videoBlob, inspectionType = '', timerInterval, seconds = 0;
-
-    function selectType(t) {
-        inspectionType = t;
-        document.getElementById('btn-pre').classList.toggle('selected', t === 'Pre-Trip');
-        document.getElementById('btn-post').classList.toggle('selected', t === 'Post-Trip');
+    let inspectionType = '';
+    function selectType(type) {
+        inspectionType = type;
+        document.getElementById('btn-pre').classList.remove('selected');
+        document.getElementById('btn-post').classList.remove('selected');
+        if(type === 'Pre-Trip') document.getElementById('btn-pre').classList.add('selected');
+        if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
+    // --- 3. VIDEO ENGINE (FEATURE: 3.5Mbps Bandwidth + H.265) ---
+    let mediaRecorder;
+    let chunks = [];
+    let videoBlob;
+    let timerInterval;
+    let seconds = 0;
+    
     async function startCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
-        document.getElementById('preview').srcObject = stream;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, 
+                audio: true 
+            });
+            document.getElementById('preview').srcObject = stream;
+        } catch (err) { alert("Camera Error: " + err.message); }
     }
+    
     startCamera();
+    autoSelectInspection(); 
 
-    async function startRecording() {
-        chunks = [];
-        mediaRecorder = new MediaRecorder(document.getElementById('preview').srcObject, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            videoBlob = new Blob(chunks, { type: 'video/mp4' });
-            document.getElementById('preview').style.display = 'none';
-            document.getElementById('playback').style.display = 'block';
-            document.getElementById('playback').src = URL.createObjectURL(videoBlob);
-            document.getElementById('btn-upload').style.display = 'block';
-        };
-        mediaRecorder.start();
-        document.getElementById('btn-record').style.display = 'none';
-        document.getElementById('btn-stop').style.display = 'block';
-        document.getElementById('timer-display').style.display = 'block';
+    function startTimer() {
         seconds = 0;
+        document.getElementById('timer-display').style.display = 'block';
+        document.getElementById('timer-display').innerText = "00:00";
         timerInterval = setInterval(() => {
             seconds++;
-            const m = Math.floor(seconds/60).toString().padStart(2,'0'), s = (seconds%60).toString().padStart(2,'0');
-            document.getElementById('timer-display').innerText = `${m}:${s}`;
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
         }, 1000);
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+        document.getElementById('timer-display').style.display = 'none';
+    }
+
+    function toggleRecording() {
+        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+            // ACTIVATE WAKE LOCK to prevent sleeping
+            requestWakeLock();
+            const stream = document.getElementById('preview').srcObject;
+            
+            // --- H.265 + BANDWIDTH LIMIT ---
+            // Target Bitrate: 3.5 Mbps (3,500,000 bits)
+            const bitrate = 3500000;
+            
+            // 1. Try H.265 (hvc1) first
+            let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
+            
+            // 2. If unsupported, fallback to standard H.264
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                 options = { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: bitrate };
+                 
+                 // 3. If that fails (Chrome default), use VP9
+                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                     options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: bitrate };
+                 }
+            }
+
+            console.log("Recording with:", options.mimeType, "@ 3.5Mbps"); 
+            
+            mediaRecorder = new MediaRecorder(stream, options);
+            chunks = [];
+
+            mediaRecorder.ondataavailable = e => chunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                stopTimer();
+                videoBlob = new Blob(chunks, { type: options.mimeType });
+                const videoURL = URL.createObjectURL(videoBlob);
+                
+                document.getElementById('preview').style.display = 'none';
+                document.getElementById('playback').style.display = 'block';
+                document.getElementById('playback').src = videoURL;
+                
+                document.getElementById('btn-record').style.display = 'none';
+                document.getElementById('btn-stop').style.display = 'none';
+                document.getElementById('btn-upload').style.display = 'block';
+                document.getElementById('status').innerText = "Video Recorded. Ready to Submit.";
+            };
+
+            mediaRecorder.start();
+            startTimer();
+            document.getElementById('btn-record').classList.add('recording');
+            document.getElementById('btn-stop').style.display = 'flex';
+            document.getElementById('status').innerText = "Recording... Walk around vehicle.";
+        }
     }
 
     function stopRecording() {
         mediaRecorder.stop();
-        clearInterval(timerInterval);
-        document.getElementById('btn-stop').style.display = 'none';
+        document.getElementById('btn-record').classList.remove('recording');
     }
 
-    // ORIGINAL DIRECT UPLOAD METHOD
+    // --- 4. UPLOAD ENGINE (FEATURE: PROGRESS BAR) ---
     function uploadVideo() {
-        const status = document.getElementById('status');
-        const pFill = document.getElementById('progress-fill');
-        const pContainer = document.getElementById('progress-container');
+        const driver = document.getElementById('driverName').value;
+        const vin = document.getElementById('vinInput').value;
         
-        status.innerText = "Uploading to Google Drive...";
-        pContainer.style.display = 'block';
-        document.getElementById('btn-upload').style.display = 'none';
+        if (!driver || !vin || !inspectionType || !videoBlob) {
+            alert("Please complete all fields and record a video.");
+            return;
+        }
 
-        const fd = new FormData();
-        fd.append('video', videoBlob, 'inspection.mp4');
-        fd.append('driverName', document.getElementById('driverName').value);
-        fd.append('vin', document.getElementById('vinInput').value);
-        fd.append('inspectionType', inspectionType);
+        // KEEP WAKE LOCK ON during upload
+        requestWakeLock();
 
+        const btn = document.getElementById('btn-upload');
+        const status = document.getElementById('status');
+        const progressBar = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+
+        btn.style.display = 'none'; // Hide button during upload
+        progressBar.style.display = 'block'; // Show progress bar
+        status.innerText = "Initializing Upload...";
+
+        const formData = new FormData();
+        formData.append('video', videoBlob, 'inspection.mp4');
+        formData.append('driverName', driver);
+        formData.append('vin', vin);
+        formData.append('inspectionType', inspectionType);
+
+        // USE XHR INSTEAD OF FETCH FOR PROGRESS TRACKING
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/upload-to-google-drive', true);
-        
-        xhr.upload.onprogress = (e) => {
+
+        // TRACK PROGRESS
+        xhr.upload.onprogress = function(e) {
             if (e.lengthComputable) {
-                const percent = (e.loaded / e.total) * 100;
-                pFill.style.width = percent + '%';
+                const percentComplete = (e.loaded / e.total) * 100;
+                progressFill.style.width = percentComplete + '%';
+                status.innerText = `Uploading: ${Math.round(percentComplete)}%`;
             }
         };
 
-        xhr.onload = () => {
+        // ON SUCCESS
+        xhr.onload = function() {
+            if (wakeLock) wakeLock.release();
             if (xhr.status === 200) {
                 status.innerText = "Upload Complete!";
-                setTimeout(() => window.location.href = '/', 1500);
+                progressFill.style.backgroundColor = "#2563EB"; // Blue on success
+                alert("Inspection Uploaded Successfully!");
+                window.location.href = '/';
             } else {
-                status.innerText = "Upload Failed. Please try again.";
-                document.getElementById('btn-upload').style.display = 'block';
+                alert("Upload Error: " + xhr.responseText);
+                resetUploadUI();
             }
         };
 
-        xhr.send(fd);
+        // ON ERROR
+        xhr.onerror = function() {
+            if (wakeLock) wakeLock.release();
+            alert("Network Error during upload.");
+            resetUploadUI();
+        };
+
+        xhr.send(formData);
+    }
+
+    function resetUploadUI() {
+        document.getElementById('btn-upload').style.display = 'block';
+        document.getElementById('progress-container').style.display = 'none';
+        document.getElementById('status').innerText = "Ready to retry.";
+        document.getElementById('progress-fill').style.width = '0%';
     }
 </script>
+
 </body>
 </html>
