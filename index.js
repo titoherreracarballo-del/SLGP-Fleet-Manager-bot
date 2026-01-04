@@ -4,10 +4,19 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
-const { PDFDocument, StandardFonts } = require('pdf-lib');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
 
 const app = express();
+
+// --- 1. AUTO-REFRESH SYSTEM ---
+// This timestamp stays the same until you restart the server.
+// The video page checks this to know when to reload.
+const APP_VERSION = Date.now();
+
+app.get('/version', (req, res) => {
+    res.json({ version: APP_VERSION });
+});
 
 // --- CONFIGURATION ---
 const VOLUME_PATH = '/app/meshcentral-data';
@@ -30,7 +39,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // --- ROUTES ---
 
-// 1. Home Menu
+// Home Menu
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
         res.sendFile(path.join(__dirname, 'menu.html'));
@@ -39,23 +48,21 @@ app.get('/', (req, res) => {
     }
 });
 
-// 2. Video Page
+// Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// 3. Report Routing (UPDATED NAMES TO MATCH MANIFEST)
+// Report Routing (Matches your Manifest Names)
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     
     if (mode === 'issue') {
-        // Matches "report-issue.html" in your list
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } 
     else if (mode === 'accident') {
-        // FIXED: Matches "accident - report.html" (with spaces)
+        // Note: Matches "accident - report.html" (with spaces) from your file list
         res.sendFile(path.join(__dirname, 'accident - report.html'));
     } 
     else if (mode === 'insurance') {
-        // FIXED: Matches "insurance.html" in your list
         res.sendFile(path.join(__dirname, 'insurance.html'));
     } 
     else {
@@ -74,7 +81,7 @@ try {
     }
 } catch (err) { console.error("Auth Error:", err.message); }
 
-// --- VIDEO UPLOAD ENGINE (LOCKED & WORKING) ---
+// --- VIDEO UPLOAD ENGINE (LOCKED) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -95,32 +102,41 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Complete');
     } catch (error) { 
-        console.error("Upload Error:", error);
         res.status(500).send(`Error: ${error.message}`); 
     }
 });
 
-// --- REPORT SUBMISSION ENGINE ---
-const REPORT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+// --- REPORT SUBMISSION ENGINE (MODERN PDF + DUAL FOLDERS) ---
+
+const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
 
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     try {
         const drive = google.drive({ version: 'v3', auth });
         
-        // Create Folder
+        // 1. Determine Folder based on Report Type
+        let targetFolderId = ACCIDENT_DRIVE_ID; 
+        if (data.reportType && data.reportType.toLowerCase().includes('issue')) {
+            targetFolderId = ISSUE_DRIVE_ID;
+        }
+
+        // 2. Create Sub-Folder
         const folderName = `${data.driverName} - ${data.reportType}`;
         const folder = await drive.files.create({
-            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [REPORT_DRIVE_ID] },
-            fields: 'id',
-            supportsAllDrives: true
+            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
+            fields: 'id', supportsAllDrives: true
         });
         const folderId = folder.data.id;
 
-        // Upload Photos
+        // 3. Upload Photos & Keep Data for PDF
+        const photoBuffers = [];
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
+                photoBuffers.push(buffer); 
+                
                 const bs = new stream.PassThrough(); 
                 bs.end(buffer);
                 await drive.files.create({
@@ -131,51 +147,93 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // Generate PDF
+        // 4. Generate Modern PDF
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
-        const font = await doc.embedFont(StandardFonts.Helvetica);
-        let y = 750;
+        const font = await doc.embedFont(StandardFonts.HelveticaBold);
+        const textFont = await doc.embedFont(StandardFonts.Helvetica);
         
-        const write = (text) => {
+        // Header Bar
+        page.drawRectangle({ x: 0, y: 740, width: 600, height: 60, color: rgb(0.1, 0.3, 0.7) });
+        page.drawText('SLGP FLEET REPORT', { x: 20, y: 760, size: 24, font: font, color: rgb(1,1,1) });
+
+        let y = 700;
+
+        const checkPage = () => {
             if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawText(text || '', { x: 50, y, size: 12, font });
-            y -= 20;
         };
 
-        write(`REPORT: ${data.reportType}`);
-        write(`Driver: ${data.driverName}`);
-        write(`Date: ${new Date().toLocaleString()}`);
-        write('--------------------------------');
-        
+        const drawLabel = (label, value) => {
+            checkPage();
+            page.drawText(label, { x: 50, y, size: 10, font: font, color: rgb(0.5,0.5,0.5) });
+            y -= 15;
+            page.drawText(value || 'N/A', { x: 50, y, size: 14, font: textFont, color: rgb(0,0,0) });
+            y -= 30;
+        };
+
+        drawLabel('REPORT TYPE', data.reportType);
+        drawLabel('DRIVER NAME', data.driverName);
+        drawLabel('DATE', new Date().toLocaleString());
+
         if (data.reportType === 'Accident / Incident') {
-             write(`Incident: ${data.subType || 'N/A'}`);
-             write(`Statement: ${data.statement || 'N/A'}`);
+             drawLabel('INCIDENT TYPE', data.subType);
+             drawLabel('STATEMENT', data.statement);
         } else {
-             if (data.tags) data.tags.forEach(t => write(`[x] ${t}`));
-             write(`Notes: ${data.otherDescription || ''}`);
+             if (data.tags) drawLabel('TAGS', data.tags.join(', '));
+             drawLabel('DESCRIPTION', data.otherDescription);
+        }
+
+        // Embed Photos
+        if (photoBuffers.length > 0) {
+            checkPage();
+            y -= 20;
+            page.drawText('ATTACHED PHOTOS:', { x: 50, y, size: 12, font: font, color: rgb(0,0,0) });
+            y -= 20;
+
+            for (const buffer of photoBuffers) {
+                try {
+                    const img = await doc.embedJpg(buffer);
+                    const imgDims = img.scale(0.5);
+                    
+                    if (y - imgDims.height < 50) { 
+                        page = doc.addPage([600, 800]); 
+                        y = 750; 
+                    }
+                    
+                    page.drawImage(img, {
+                        x: 50, y: y - imgDims.height,
+                        width: imgDims.width, height: imgDims.height,
+                    });
+                    y -= (imgDims.height + 20);
+                } catch (e) {
+                    console.log("Photo embed skipped (format error)");
+                }
+            }
         }
 
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // Email Routing
+        // --- EMAIL ROUTING ---
         const transporter = nodemailer.createTransport({
             service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+            auth: { 
+                user: 'slgpincidentreporting@gmail.com',  
+                // *** PASTE YOUR 16-CHAR APP PASSWORD BELOW ***
+                pass: 'xxxx xxxx xxxx xxxx' 
+            }
         });
 
-        // Send to different emails based on report type
         const recipients = data.reportType.includes('Accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
             : ['slgpfleetmanager@gmail.com'];
 
         await transporter.sendMail({
-            from: process.env.EMAIL_USER,
+            from: 'slgpincidentreporting@gmail.com',
             to: recipients,
-            subject: `NEW REPORT: ${data.driverName}`,
-            text: `Type: ${data.reportType}\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
-            attachments: [{ filename: 'Report.pdf', path: pdfPath }]
+            subject: `REPORT: ${data.driverName} - ${data.reportType}`,
+            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nSee PDF attached.\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
+            attachments: [{ filename: 'Report_Snapshot.pdf', path: pdfPath }]
         });
 
         fs.unlinkSync(pdfPath);
