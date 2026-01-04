@@ -30,11 +30,10 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const upload = multer({ dest: UPLOAD_DIR });
 
 // --- MIDDLEWARE & CACHE CONTROL ---
-// This section is critical for the "Auto-Update" feature to work on Android
+// This ensures that the Service Worker (sw.js) is never cached by the phone
 app.use(express.static(__dirname, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('sw.js')) {
-            // Tell the phone: "Do not cache this file. Check for updates every time."
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -109,7 +108,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.error("Upload Error:", error.message);
         res.status(500).send(`Error: ${error.message}`); 
     } finally {
-        // FAIL-SAFE CLEANUP: Ensure file is deleted even if upload crashes
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
@@ -234,5 +232,4 @@ app.post('/submit-report', async (req, res) => {
 const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
 
-// Increase timeout to 5 minutes for video uploads
 server.setTimeout(300000);
