@@ -20,13 +20,14 @@
         .electric-mode { color: #ffffff !important; border-color: #ffffff !important; }
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; cursor: pointer; }
-        .type-btn.selected { background-color: var(--primary-blue); color: white; }
+        .type-btn.selected { background-color: var(--primary-blue); color: white; border-color: var(--primary-blue); }
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
-        #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); padding: 5px 12px; color: #ef4444; font-weight: 900; display: none; }
-        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; }
-        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; font-weight: bold; font-size: 10px; }
+        #timer-display { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; display: none; z-index: 30; }
+        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 20; }
+        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; font-weight: bold; font-size: 10px; text-transform: uppercase; }
         #btn-record { background-color: #ef4444; color: white; }
+        #btn-stop { background-color: #374151; color: white; display: none; }
         #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-weight: 900; border: none; font-size: 16px; }
     </style>
 </head>
@@ -36,10 +37,9 @@
     <h1>Video Inspection</h1>
     <div class="form-group"><label>Driver Full Name</label><input type="text" id="driverName" placeholder="Enter Full Name"></div>
     <div class="form-group row-split">
-        <div style="flex:0.3"><label>Last 4 VIN</label><input type="text" id="vinInput" maxlength="4" placeholder="E.G. 1051" onkeyup="checkVin()"></div>
-        <div style="flex:0.7"><label>Vehicle Type / Fuel</label><input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly></div>
+        <div style="flex:0.3"><label>Last 4 VIN</label><input type="text" id="vinInput" maxlength="4" placeholder="E.G. 1051" oninput="checkVin()"></div>
+        <div style="flex:0.7"><label>Vehicle Type / Fuel</label><input type="text" id="vehicleType" readonly></div>
     </div>
-    <label>Inspection Type</label>
     <div class="type-grid">
         <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
         <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
@@ -49,18 +49,19 @@
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
         <div class="controls">
-            <button id="btn-record" class="btn-circle" onclick="toggleRecording()">REC</button>
-            <button id="btn-stop" class="btn-circle" style="display:none; background:#374151; color:white;" onclick="stopRecording()">STOP</button>
+            <button id="btn-record" class="btn-circle" onclick="startRecording()">REC</button>
+            <button id="btn-stop" class="btn-circle" onclick="stopRecording()">STOP</button>
         </div>
     </div>
-    <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
+    <button id="btn-upload" onclick="submitVideo()">SUBMIT INSPECTION</button>
     <div id="status" style="text-align:center; color:#94a3b8; font-size:12px; margin-top:10px; font-weight:bold;">Ready</div>
 </div>
 
 <script>
+    // --- VIN DATABASE ---
     const vinDatabase = {
-        "9488": { type: "XL Van (Diesel)", fuel: "diesel" }, "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "7867": { type: "Rivian (Electric)", fuel: "electric" }, "1051": { type: "XL Van (Gas)", fuel: "gas" }
+        "9488": { type: "XL Van (Diesel)", fuel: "diesel" }, "1051": { type: "XL Van (Gas)", fuel: "gas" },
+        "7867": { type: "Rivian (Electric)", fuel: "electric" }, "7403": { type: "XL Van (Gas)", fuel: "gas" }
     };
 
     function checkVin() {
@@ -74,17 +75,25 @@
         } else t.value = "";
     }
 
-    let mediaRecorder, chunks = [], videoBlob, inspectionType = '';
+    let mediaRecorder, chunks = [], videoBlob, inspectionType = '', timerInterval, seconds = 0;
+
     function selectType(t) {
         inspectionType = t;
         document.getElementById('btn-pre').classList.toggle('selected', t === 'Pre-Trip');
         document.getElementById('btn-post').classList.toggle('selected', t === 'Post-Trip');
     }
 
-    async function toggleRecording() {
-        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
-        document.getElementById('preview').srcObject = s;
-        mediaRecorder = new MediaRecorder(s, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+        document.getElementById('preview').srcObject = stream;
+    }
+    startCamera();
+
+    async function startRecording() {
+        chunks = [];
+        const stream = document.getElementById('preview').srcObject;
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: 3500000 });
+        
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             videoBlob = new Blob(chunks, { type: 'video/mp4' });
@@ -93,23 +102,48 @@
             document.getElementById('playback').src = URL.createObjectURL(videoBlob);
             document.getElementById('btn-upload').style.display = 'block';
         };
+
         mediaRecorder.start();
         document.getElementById('btn-record').style.display = 'none';
         document.getElementById('btn-stop').style.display = 'block';
+        document.getElementById('timer-display').style.display = 'block';
+        
+        seconds = 0;
+        timerInterval = setInterval(() => {
+            seconds++;
+            const m = Math.floor(seconds/60).toString().padStart(2,'0'), s = (seconds%60).toString().padStart(2,'0');
+            document.getElementById('timer-display').innerText = `${m}:${s}`;
+        }, 1000);
     }
-    function stopRecording() { mediaRecorder.stop(); }
 
-    async function uploadVideo() {
+    function stopRecording() {
+        mediaRecorder.stop();
+        clearInterval(timerInterval);
+        document.getElementById('btn-stop').style.display = 'none';
+    }
+
+    async function submitVideo() {
+        const status = document.getElementById('status');
+        status.innerText = "Securing Video...";
+        
         const dbReq = indexedDB.open('FleetVideoDB', 1);
         dbReq.onupgradeneeded = e => e.target.result.createObjectStore('videos', { keyPath: 'id' });
         dbReq.onsuccess = e => {
             const db = e.target.result;
             const tx = db.transaction('videos', 'readwrite');
-            tx.objectStore('videos').put({ id: 'currentVideo', file: videoBlob, driver: document.getElementById('driverName').value, vin: document.getElementById('vinInput').value, type: inspectionType });
+            tx.objectStore('videos').put({ 
+                id: 'currentVideo', 
+                file: videoBlob, 
+                driver: document.getElementById('driverName').value, 
+                vin: document.getElementById('vinInput').value, 
+                type: inspectionType 
+            });
             tx.oncomplete = async () => {
                 const reg = await navigator.serviceWorker.ready;
                 await reg.sync.register('video-upload');
-                window.location.href = '/';
+                if (reg.active) reg.active.postMessage({ action: 'FORCE_SYNC' });
+                status.innerText = "SUCCESS! Redirecting...";
+                setTimeout(() => window.location.href = '/', 2000);
             };
         };
     }
