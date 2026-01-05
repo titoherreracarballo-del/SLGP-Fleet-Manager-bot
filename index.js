@@ -10,139 +10,85 @@ const cron = require('node-cron');
 
 const app = express();
 
-// --- 1. AUTO-REFRESH SYSTEM ---
 const APP_VERSION = Date.now();
+app.get('/version', (req, res) => { res.json({ version: APP_VERSION }); });
 
-app.get('/version', (req, res) => {
-    res.json({ version: APP_VERSION });
-});
-
-// --- CONFIGURATION ---
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 
-// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
-    try {
-        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    } catch (e) {
-        console.log("Warning: Could not create upload directory. Using /tmp instead.");
-    }
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
+    catch (e) { console.log("Using /tmp"); }
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
-// --- MIDDLEWARE ---
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- ROUTES ---
-
-// Home Menu
 app.get('/', (req, res) => {
-    if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
-        res.sendFile(path.join(__dirname, 'menu.html'));
-    } else {
-        res.sendFile(path.join(__dirname, 'index.html'));
-    }
+    if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
+    else res.sendFile(path.join(__dirname, 'index.html'));
 });
-
-// Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-
-// Success Page
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
-
-// Report Routing
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-    
-    if (mode === 'issue') {
-        res.sendFile(path.join(__dirname, 'report-issue.html'));
-    } 
-    else if (mode === 'accident') {
-        res.sendFile(path.join(__dirname, 'accident - report.html'));
-    } 
-    else if (mode === 'insurance') {
-        res.sendFile(path.join(__dirname, 'insurance.html'));
-    } 
-    else {
-        res.status(404).send('Error: Unknown report type.');
-    }
+    if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
+    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident - report.html'));
+    else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
+    else res.status(404).send('Unknown report type.');
 });
 
 // --- GOOGLE AUTH ---
-let auth;
-try {
-    if (process.env.GCP_SA_KEY) {
-        auth = new google.auth.GoogleAuth({
-            credentials: JSON.parse(process.env.GCP_SA_KEY),
-            scopes: ['https://www.googleapis.com/auth/drive.file'],
-        });
-    }
-} catch (err) { console.error("Auth Error:", err.message); }
+const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
+const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
 
-// --- HELPER: LOG REPORT FOR END OF DAY ---
 function logReportLocally(data) {
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) {
         try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
     }
-    // Add timestamp for filtering
     data.timestamp = new Date();
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 }
 
-// --- VIDEO UPLOAD ENGINE (LOCKED) ---
-const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
-
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('No video file.');
-        
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GCP_SA_KEY),
+            scopes: ['https://www.googleapis.com/auth/drive.file'],
+        });
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
-        const filename = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
-        
         await drive.files.create({
-            resource: { name: filename, parents: [VIDEO_DRIVE_ID] },
+            resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
-            fields: 'id', 
-            supportsAllDrives: true
+            fields: 'id', supportsAllDrives: true
         });
-        
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Complete');
-    } catch (error) { 
-        res.status(500).send(`Error: ${error.message}`); 
-    }
+    } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
-
-// --- REPORT SUBMISSION ENGINE (PROFESSIONAL PDF) ---
-
-const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
-const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
 
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
-    
-    // 1. SAVE TO DAILY LOG
     logReportLocally(data);
 
     try {
-        // 2. Google Drive Upload Logic
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GCP_SA_KEY),
+            scopes: ['https://www.googleapis.com/auth/drive.file'],
+        });
         const drive = google.drive({ version: 'v3', auth });
-        
         let targetFolderId = ACCIDENT_DRIVE_ID; 
-        if (data.reportType && !data.reportType.includes('Accident')) {
-            targetFolderId = ISSUE_DRIVE_ID;
-        }
+        if (data.reportType && !data.reportType.includes('Accident')) targetFolderId = ISSUE_DRIVE_ID;
 
-        const folderName = `${data.driverName} - ${data.reportType}`;
         const folder = await drive.files.create({
-            resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
+            resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
             fields: 'id', supportsAllDrives: true
         });
         const folderId = folder.data.id;
@@ -152,9 +98,7 @@ app.post('/submit-report', async (req, res) => {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
                 photoBuffers.push(buffer); 
-                
-                const bs = new stream.PassThrough(); 
-                bs.end(buffer);
+                const bs = new stream.PassThrough(); bs.end(buffer);
                 await drive.files.create({
                     resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] },
                     media: { mimeType: 'image/jpeg', body: bs },
@@ -163,39 +107,28 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // 3. Generate Professional PDF
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
         
-        // --- HEADER BAR (Blue #2563EB) ---
+        // --- INSTANT REPORT HEADER ---
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.14, 0.38, 0.92) });
-        
-        // Header Text
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
         page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        // --- LOGO INTEGRATION (Final-01.jpg) ---
         try {
-            // Updated Path Logic to find 'Final-01.jpg' correctly
             const logoPath = path.join(__dirname, 'Final-01.jpg');
             if (fs.existsSync(logoPath)) {
                 const logoBytes = fs.readFileSync(logoPath);
                 const logoImg = await doc.embedJpg(logoBytes);
                 const dims = logoImg.scaleToFit(60, 60); 
                 page.drawImage(logoImg, { x: 500, y: 730, width: dims.width, height: dims.height });
-            } else {
-                console.log("Logo not found at:", logoPath);
             }
-        } catch(e) { console.log("Logo Error:", e.message); }
+        } catch(e) {}
 
         let y = 680;
-
-        const checkPage = () => {
-            if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
-        };
-
+        const checkPage = () => { if (y < 50) { page = doc.addPage([600, 800]); y = 750; } };
         const drawField = (title, value) => {
             checkPage();
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
@@ -211,26 +144,20 @@ app.post('/submit-report', async (req, res) => {
         drawField('VEHICLE TYPE', data.vehicleType);
         drawField('DATE & TIME', `${data.date} at ${data.time}`);
         
-        if (data.reportType.includes('Road')) {
-            drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
-        } else {
-            drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
-        }
+        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
+        else drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
         
         checkPage();
         y -= 10;
         page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
         y -= 20;
-        
-        const notes = data.otherDescription || "No additional notes provided.";
+        const notes = data.otherDescription || "No notes.";
         const words = notes.split(' ');
         let line = '';
         for (const word of words) {
             if ((line + word).length > 85) {
                 page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-                y -= 15;
-                line = '';
-                checkPage();
+                y -= 15; line = ''; checkPage();
             }
             line += word + ' ';
         }
@@ -247,36 +174,20 @@ app.post('/submit-report', async (req, res) => {
             for (const buffer of photoBuffers) {
                 try {
                     const img = await doc.embedJpg(buffer);
-                    const maxW = 500;
-                    const dims = img.scaleToFit(maxW, 400);
-                    
-                    if (y - dims.height < 50) { 
-                        page = doc.addPage([600, 800]); 
-                        y = 750; 
-                    }
-                    
-                    page.drawImage(img, {
-                        x: 50, 
-                        y: y - dims.height,
-                        width: dims.width, height: dims.height,
-                    });
+                    const dims = img.scaleToFit(500, 400);
+                    if (y - dims.height < 50) { page = doc.addPage([600, 800]); y = 750; }
+                    page.drawImage(img, { x: 50, y: y - dims.height, width: dims.width, height: dims.height });
                     y -= (dims.height + 20);
-                } catch (e) {
-                    console.log("Photo embed skipped");
-                }
+                } catch (e) {}
             }
         }
 
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // --- 4. EMAIL ROUTING ---
         const transporter = nodemailer.createTransport({
             service: 'gmail',
-            auth: { 
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
 
         const recipients = data.reportType.includes('Accident') 
@@ -300,7 +211,7 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-// --- CRON JOB: 11:30 PM DAILY SUMMARY ---
+// --- CRON JOB: 11:30 PM DAILY SUMMARY (UPDATED VISUALS) ---
 cron.schedule('30 23 * * *', async () => {
     console.log("Running Daily Summary...");
     if (!fs.existsSync(DAILY_LOG_FILE)) return;
@@ -314,24 +225,57 @@ cron.schedule('30 23 * * *', async () => {
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
+        // --- SUMMARY HEADER ---
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
-        page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
-        page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 12, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+        page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
+        page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 14, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+
+        // Add Logo to Summary
+        try {
+            const logoPath = path.join(__dirname, 'Final-01.jpg');
+            if (fs.existsSync(logoPath)) {
+                const logoImg = await doc.embedJpg(fs.readFileSync(logoPath));
+                const dims = logoImg.scaleToFit(60, 60); 
+                page.drawImage(logoImg, { x: 500, y: 730, width: dims.width, height: dims.height });
+            }
+        } catch(e) {}
 
         let y = 680;
         allLogs.forEach((log, index) => {
             if (y < 150) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawRectangle({ x: 30, y: y, width: 540, height: 20, color: rgb(0.9, 0.9, 0.9) });
-            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 35, y: y+6, size: 10, font: fontBold });
+
+            // --- REPORT BLOCK ---
+            // Gray Background Bar for Title
+            page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
+            
+            // Bold Title
+            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { 
+                x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) 
+            });
+            y -= 25;
+
+            // Big Bold Info Line
+            page.drawText(`DRIVER: ${log.driverName}   |   VIN: ${log.vinLast4}   |   TIME: ${log.time}`, { 
+                x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) 
+            });
             y -= 20;
-            page.drawText(`DRIVER: ${log.driverName} | VIN: ${log.vinLast4}`, { x: 35, y: y-15, size: 9, font: fontReg });
-            y -= 15;
-            if(log.otherDescription) {
-                const short = log.otherDescription.length > 60 ? log.otherDescription.substring(0, 60) + "..." : log.otherDescription;
-                page.drawText(`NOTE: ${short}`, { x: 35, y: y-15, size: 9, font: fontReg, color: rgb(0.8, 0, 0) });
+
+            // Issues List
+            if(log.tags && log.tags.length > 0) {
+                page.drawText(`ISSUES: ${log.tags.join(', ')}`, { x: 30, y: y-15, size: 10, font: fontReg, color: rgb(0.2, 0.2, 0.2) });
                 y -= 15;
             }
-            y -= 15;
+
+            // Notes (Red if present)
+            if(log.otherDescription) {
+                const short = log.otherDescription.length > 70 ? log.otherDescription.substring(0, 70) + "..." : log.otherDescription;
+                page.drawText(`NOTE: ${short}`, { x: 30, y: y-15, size: 10, font: fontBold, color: rgb(0.8, 0, 0) });
+                y -= 15;
+            }
+
+            // Separator Line
+            page.drawLine({ start: { x: 30, y: y-10 }, end: { x: 570, y: y-10 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+            y -= 30; // Spacing between reports
         });
 
         const summaryPath = path.join(UPLOAD_DIR, `Daily_Summary_${Date.now()}.pdf`);
