@@ -20,7 +20,6 @@ const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 
 // --- DISCORD BOT SETUP ---
-// We are looking for 'FLEET_BOT_SECRET'
 const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
@@ -103,9 +102,11 @@ webpush.setVapidDetails(
 
 // --- 2. ROUTES ---
 app.get('/', (req, res) => {
+    // If menu.html exists, serve it as the home page
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
 });
+
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
