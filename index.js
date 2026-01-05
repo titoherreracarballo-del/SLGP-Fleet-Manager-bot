@@ -57,7 +57,10 @@ if (DISCORD_BOT_TOKEN) {
             });
 
             subs.forEach(sub => {
-                webpush.sendNotification(sub, payload).catch(err => console.log("Push Failed", err));
+                webpush.sendNotification(sub, payload).catch(err => {
+                    console.error("Push Failed", err);
+                    // Optional: remove dead subscriptions here if 404/410
+                });
             });
             
             // React to the message so you know it worked
@@ -81,17 +84,26 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- VAPID KEYS ---
-let publicVapidKey = process.env.VAPID_PUBLIC_KEY;
-let privateVapidKey = process.env.VAPID_PRIVATE_KEY;
+// --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
+// 1. Load keys and STRIP OUT any spaces, quotes, or invisible junk
+let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
+let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
+// 2. If keys are missing (or empty after cleaning), generate new ones
 if (!publicVapidKey || !privateVapidKey) {
+    console.log("⚠️ Keys Missing or Invalid. Generating FRESH Keys...");
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("--- SAVE THESE KEYS TO RAILWAY ---");
-    console.log("PUBLIC:", publicVapidKey);
-    console.log("PRIVATE:", privateVapidKey);
+    
+    console.log("\n!!! SAVE THESE TO RAILWAY VARIABLES !!!");
+    console.log("VAPID_PUBLIC_KEY");
+    console.log(publicVapidKey);
+    console.log("\nVAPID_PRIVATE_KEY");
+    console.log(privateVapidKey);
+    console.log("!!! ------------------------------- !!!\n");
+} else {
+    console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
 
 webpush.setVapidDetails(
@@ -130,6 +142,7 @@ app.post('/subscribe', (req, res) => {
         try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch(e) {}
     }
     subs.push(subscription);
+    // Remove duplicates based on endpoint
     const unique = subs.filter((v,i,a)=>a.findIndex(t=>(t.endpoint === v.endpoint))===i);
     fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(unique));
     res.status(201).json({});
