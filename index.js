@@ -10,16 +10,16 @@ const cron = require('node-cron');
 
 const app = express();
 
+// --- 1. CONFIGURATION ---
 const APP_VERSION = Date.now();
-app.get('/version', (req, res) => { res.json({ version: APP_VERSION }); });
-
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 
+// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
     try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
-    catch (e) { console.log("Using /tmp"); }
+    catch (e) { console.log("Using /tmp for uploads"); }
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
@@ -27,10 +27,12 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+// --- 2. ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
 });
+app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
 app.get('/report', (req, res) => {
@@ -41,11 +43,12 @@ app.get('/report', (req, res) => {
     else res.status(404).send('Unknown report type.');
 });
 
-// --- GOOGLE AUTH ---
+// --- 3. GOOGLE DRIVE SETUP ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
 
+// Helper: Log for Daily Summary
 function logReportLocally(data) {
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) {
@@ -56,6 +59,7 @@ function logReportLocally(data) {
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 }
 
+// --- 4. VIDEO UPLOAD ROUTE ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
         const auth = new google.auth.GoogleAuth({
@@ -64,18 +68,23 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
+        
         await drive.files.create({
             resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id', supportsAllDrives: true
         });
+        
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).send('Upload Complete');
     } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
 
+// --- 5. REPORT SUBMISSION ROUTE (INSTANT PDF) ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
+    
+    // Save to daily log first
     logReportLocally(data);
 
     try {
@@ -84,15 +93,18 @@ app.post('/submit-report', async (req, res) => {
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
+        
         let targetFolderId = ACCIDENT_DRIVE_ID; 
         if (data.reportType && !data.reportType.includes('Accident')) targetFolderId = ISSUE_DRIVE_ID;
 
+        // Create Drive Folder
         const folder = await drive.files.create({
             resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
             fields: 'id', supportsAllDrives: true
         });
         const folderId = folder.data.id;
 
+        // Upload Photos to Drive & Buffer for PDF
         const photoBuffers = [];
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
@@ -107,28 +119,46 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
+        // --- GENERATE PROFESSIONAL PDF ---
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
         
-        // --- INSTANT REPORT HEADER ---
+        // Header Bar (Blue)
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.14, 0.38, 0.92) });
+        
+        // Header Text
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
         page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
+        // --- LOGO LOGIC (UPDATED: LARGER & ALIGNED RIGHT) ---
         try {
             const logoPath = path.join(__dirname, 'Final-01.jpg');
             if (fs.existsSync(logoPath)) {
                 const logoBytes = fs.readFileSync(logoPath);
                 const logoImg = await doc.embedJpg(logoBytes);
-                const dims = logoImg.scaleToFit(60, 60); 
-                page.drawImage(logoImg, { x: 500, y: 730, width: dims.width, height: dims.height });
+                
+                // Allow logo to be much larger (up to 180px wide, 70px tall)
+                const dims = logoImg.scaleToFit(180, 70); 
+                
+                // Position: Right Aligned (Width 600 - Margin 30 - LogoWidth)
+                const logoX = 570 - dims.width;
+                // Position: Vertically Centered in the 80px header (Center Y is 760)
+                const logoY = 760 - (dims.height / 2);
+
+                page.drawImage(logoImg, { 
+                    x: logoX, 
+                    y: logoY, 
+                    width: dims.width, 
+                    height: dims.height 
+                });
             }
-        } catch(e) {}
+        } catch(e) { console.log("Logo Error:", e.message); }
 
         let y = 680;
         const checkPage = () => { if (y < 50) { page = doc.addPage([600, 800]); y = 750; } };
+        
         const drawField = (title, value) => {
             checkPage();
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
@@ -151,7 +181,8 @@ app.post('/submit-report', async (req, res) => {
         y -= 10;
         page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
         y -= 20;
-        const notes = data.otherDescription || "No notes.";
+        
+        const notes = data.otherDescription || "No additional notes provided.";
         const words = notes.split(' ');
         let line = '';
         for (const word of words) {
@@ -167,6 +198,8 @@ app.post('/submit-report', async (req, res) => {
         if (photoBuffers.length > 0) {
             checkPage();
             if(y < 200) { page = doc.addPage([600, 800]); y = 750; }
+            
+            // Sub-header for photos
             page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.95, 0.95, 0.95) });
             page.drawText('ATTACHED EVIDENCE PHOTOS', { x: 40, y: y+8, size: 10, font: fontBold, color: rgb(0.14, 0.38, 0.92) });
             y -= 30;
@@ -174,17 +207,21 @@ app.post('/submit-report', async (req, res) => {
             for (const buffer of photoBuffers) {
                 try {
                     const img = await doc.embedJpg(buffer);
-                    const dims = img.scaleToFit(500, 400);
+                    const maxW = 500;
+                    const dims = img.scaleToFit(maxW, 400);
+                    
                     if (y - dims.height < 50) { page = doc.addPage([600, 800]); y = 750; }
+                    
                     page.drawImage(img, { x: 50, y: y - dims.height, width: dims.width, height: dims.height });
                     y -= (dims.height + 20);
-                } catch (e) {}
+                } catch (e) { console.log("Photo Skipped"); }
             }
         }
 
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
+        // --- EMAIL SEND ---
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -198,7 +235,7 @@ app.post('/submit-report', async (req, res) => {
             from: process.env.EMAIL_USER,
             to: recipients,
             subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-            text: `A new vehicle report has been submitted.\n\nCategory: ${data.reportType}\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nThe official PDF report is attached to this email.\n\nView Full Files: https://drive.google.com/drive/folders/${folderId}`,
+            text: `A new vehicle report has been submitted.\n\nCategory: ${data.reportType}\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nThe official PDF report is attached.\n\nView Files: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
@@ -211,7 +248,7 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-// --- CRON JOB: 11:30 PM DAILY SUMMARY (UPDATED VISUALS) ---
+// --- 6. CRON JOB: DAILY SUMMARY (11:30 PM) ---
 cron.schedule('30 23 * * *', async () => {
     console.log("Running Daily Summary...");
     if (!fs.existsSync(DAILY_LOG_FILE)) return;
@@ -225,18 +262,20 @@ cron.schedule('30 23 * * *', async () => {
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // --- SUMMARY HEADER ---
+        // Summary Header
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
         page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
         page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 14, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        // Add Logo to Summary
+        // Add Logo to Summary (Using same large size logic)
         try {
             const logoPath = path.join(__dirname, 'Final-01.jpg');
             if (fs.existsSync(logoPath)) {
                 const logoImg = await doc.embedJpg(fs.readFileSync(logoPath));
-                const dims = logoImg.scaleToFit(60, 60); 
-                page.drawImage(logoImg, { x: 500, y: 730, width: dims.width, height: dims.height });
+                const dims = logoImg.scaleToFit(180, 70); 
+                const logoX = 570 - dims.width;
+                const logoY = 760 - (dims.height / 2);
+                page.drawImage(logoImg, { x: logoX, y: logoY, width: dims.width, height: dims.height });
             }
         } catch(e) {}
 
@@ -244,38 +283,31 @@ cron.schedule('30 23 * * *', async () => {
         allLogs.forEach((log, index) => {
             if (y < 150) { page = doc.addPage([600, 800]); y = 750; }
 
-            // --- REPORT BLOCK ---
-            // Gray Background Bar for Title
+            // Item Boarder/Header
             page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
-            
-            // Bold Title
-            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { 
-                x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) 
-            });
+            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 25;
 
-            // Big Bold Info Line
+            // Details
             page.drawText(`DRIVER: ${log.driverName}   |   VIN: ${log.vinLast4}   |   TIME: ${log.time}`, { 
                 x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) 
             });
             y -= 20;
 
-            // Issues List
             if(log.tags && log.tags.length > 0) {
                 page.drawText(`ISSUES: ${log.tags.join(', ')}`, { x: 30, y: y-15, size: 10, font: fontReg, color: rgb(0.2, 0.2, 0.2) });
                 y -= 15;
             }
 
-            // Notes (Red if present)
             if(log.otherDescription) {
                 const short = log.otherDescription.length > 70 ? log.otherDescription.substring(0, 70) + "..." : log.otherDescription;
                 page.drawText(`NOTE: ${short}`, { x: 30, y: y-15, size: 10, font: fontBold, color: rgb(0.8, 0, 0) });
                 y -= 15;
             }
 
-            // Separator Line
+            // Separator
             page.drawLine({ start: { x: 30, y: y-10 }, end: { x: 570, y: y-10 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-            y -= 30; // Spacing between reports
+            y -= 30; 
         });
 
         const summaryPath = path.join(UPLOAD_DIR, `Daily_Summary_${Date.now()}.pdf`);
