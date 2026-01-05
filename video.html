@@ -108,6 +108,24 @@
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
         #timer-display { position: absolute; top: 20px; right: 20px; background-color: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20; }
+        
+        /* Flash Toggle Button */
+        #btn-flash {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0,0,0,0.6);
+            border: 1px solid #fbbf24;
+            color: #fbbf24;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 20;
+            text-transform: uppercase;
+        }
+
         .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
         .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 10px; text-transform: uppercase; }
         #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
@@ -158,6 +176,7 @@
 
     <div class="video-box">
         <div id="timer-display">00:00</div>
+        <button id="btn-flash" onclick="toggleFlash()">Flash: ON</button>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
         
@@ -206,55 +225,53 @@
     }
 
     // --- 2. UPDATED VIN DATABASE (WITH TOW STATUS) ---
-    // hasTow: true = Green (Active)
-    // hasTow: false = Orange (No Tow + Warning)
     const vinDatabase = {
-        // --- DIESEL ---
+        // --- NO TOW ASSISTANCE GROUP (Your Specific List) ---
+        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
+        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
+        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+
+        // --- TOW ASSISTANCE ACTIVE GROUP ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel", hasTow: true },
         "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
         "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
-        // --- ELECTRIC ---
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
         "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
         "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
         "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
         "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
         "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        // --- GAS ---
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: false },
-        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: false },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: false },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: false },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: false },
-        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: false },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false }
+        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
+        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
+        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true }
     };
 
     function checkVin() {
@@ -267,16 +284,14 @@
         // Reset Styles
         typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
         towBox.classList.remove('tow-yes', 'tow-no');
-        warningBox.style.display = 'none'; // Hide warning by default
+        warningBox.style.display = 'none';
         
         if (vin.length === 4) {
             let found = vinDatabase[vin];
             
-            // Special Mercedes Logic (Starts with W)
             if (vin.startsWith("W")) { 
                 typeBox.value = "Mercedes (Diesel)"; 
                 typeBox.classList.add('diesel-mode');
-                // Assuming Mercedes have tow?
                 towBox.value = "Tow Assistance Active";
                 towBox.classList.add('tow-yes');
                 return; 
@@ -318,12 +333,14 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 3. VIDEO ENGINE ---
+    // --- 3. VIDEO ENGINE + FLASHLIGHT ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
     let timerInterval;
     let seconds = 0;
+    let videoTrack = null;
+    let flashEnabled = true; // Auto-Enable by default
     
     async function startCamera() {
         try {
@@ -332,7 +349,35 @@
                 audio: true 
             });
             document.getElementById('preview').srcObject = stream;
+            
+            // Get Video Track for Flashlight Control
+            videoTrack = stream.getVideoTracks()[0];
+            
+            // Apply Flashlight Constraint (Auto-ON)
+            if (videoTrack) {
+                applyFlash(true);
+            }
+
         } catch (err) { alert("Camera Error: " + err.message); }
+    }
+    
+    // Function to Toggle Flashlight
+    function toggleFlash() {
+        flashEnabled = !flashEnabled;
+        applyFlash(flashEnabled);
+    }
+
+    function applyFlash(enable) {
+        if (videoTrack) {
+            videoTrack.applyConstraints({
+                advanced: [{ torch: enable }]
+            }).then(() => {
+                const btn = document.getElementById('btn-flash');
+                btn.innerText = enable ? "Flash: ON" : "Flash: OFF";
+                btn.style.color = enable ? "#fbbf24" : "white";
+                btn.style.borderColor = enable ? "#fbbf24" : "white";
+            }).catch(e => console.log("Flash not supported", e));
+        }
     }
     
     startCamera();
@@ -369,8 +414,6 @@
                  }
             }
 
-            console.log("Recording with:", options.mimeType); 
-            
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
 
@@ -384,6 +427,7 @@
                 document.getElementById('playback').style.display = 'block';
                 document.getElementById('playback').src = videoURL;
                 
+                document.getElementById('btn-flash').style.display = 'none'; // Hide flash button on playback
                 document.getElementById('btn-record').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'none';
                 document.getElementById('btn-upload').style.display = 'block';
@@ -401,6 +445,8 @@
     function stopRecording() {
         mediaRecorder.stop();
         document.getElementById('btn-record').classList.remove('recording');
+        // Turn off flash when recording stops
+        applyFlash(false);
     }
 
     // --- 4. UPLOAD ENGINE ---
