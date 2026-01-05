@@ -1,7 +1,6 @@
 {
-  "name": "slgp-fleet-portal",
-  "version": "3.3.0",
-  "description": "SLGP Fleet Portal with Video Uploads and Incident Reporting",
+  "name": "fleet-portal",
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,17 +8,11 @@
   "dependencies": {
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
-    "googleapis": "^126.0.1",
-    "nodemailer": "^6.9.5",
-    "node-cron": "^3.0.0",
+    "googleapis": "^118.0.0",
+    "nodemailer": "^6.9.3",
     "pdf-lib": "^1.17.1",
-    "web-push": "^3.6.0",
-    "discord.js": "^14.14.1"
-  },
-  "engines": {
-    "node": "18.x"
-  },
-  "keywords": [],
-  "author": "SLGP",
-  "license": "ISC"
+    "node-cron": "^3.0.2",
+    "web-push": "^3.6.3",
+    "discord.js": "^14.11.0"
+  }
 }
