@@ -226,7 +226,7 @@
 
     // --- 2. UPDATED VIN DATABASE (WITH TOW STATUS) ---
     const vinDatabase = {
-        // --- NO TOW ASSISTANCE GROUP (Your Specific List) ---
+        // --- NO TOW ASSISTANCE GROUP ---
         "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
         "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
         "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
@@ -324,6 +324,17 @@
         }
     }
 
+    // --- 3. AUTO-SELECT INSPECTION TYPE ---
+    function autoSelectInspection() {
+        const hour = new Date().getHours();
+        // If before 1:00 PM (13:00), it's Pre-Trip. Otherwise, Post-Trip.
+        if (hour < 13) {
+            selectType('Pre-Trip');
+        } else {
+            selectType('Post-Trip');
+        }
+    }
+
     let inspectionType = '';
     function selectType(type) {
         inspectionType = type;
@@ -333,7 +344,7 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 3. VIDEO ENGINE + FLASHLIGHT ---
+    // --- 4. VIDEO ENGINE + FLASHLIGHT ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
@@ -350,10 +361,9 @@
             });
             document.getElementById('preview').srcObject = stream;
             
-            // Get Video Track for Flashlight Control
             videoTrack = stream.getVideoTracks()[0];
             
-            // Apply Flashlight Constraint (Auto-ON)
+            // Auto-ON Flashlight
             if (videoTrack) {
                 applyFlash(true);
             }
@@ -361,7 +371,6 @@
         } catch (err) { alert("Camera Error: " + err.message); }
     }
     
-    // Function to Toggle Flashlight
     function toggleFlash() {
         flashEnabled = !flashEnabled;
         applyFlash(flashEnabled);
@@ -380,7 +389,9 @@
         }
     }
     
+    // Call Functions at Startup
     startCamera();
+    autoSelectInspection();
 
     function startTimer() {
         seconds = 0;
@@ -414,6 +425,8 @@
                  }
             }
 
+            console.log("Recording with:", options.mimeType); 
+            
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
 
@@ -427,7 +440,7 @@
                 document.getElementById('playback').style.display = 'block';
                 document.getElementById('playback').src = videoURL;
                 
-                document.getElementById('btn-flash').style.display = 'none'; // Hide flash button on playback
+                document.getElementById('btn-flash').style.display = 'none'; 
                 document.getElementById('btn-record').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'none';
                 document.getElementById('btn-upload').style.display = 'block';
@@ -445,11 +458,10 @@
     function stopRecording() {
         mediaRecorder.stop();
         document.getElementById('btn-record').classList.remove('recording');
-        // Turn off flash when recording stops
         applyFlash(false);
     }
 
-    // --- 4. UPLOAD ENGINE ---
+    // --- 5. UPLOAD ENGINE ---
     function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
