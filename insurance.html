@@ -22,16 +22,13 @@
             padding: 20px;
             margin: 0;
             min-height: 100vh;
-            /* Disable Selection */
             -webkit-user-select: none;
             -moz-user-select: none;
             -ms-user-select: none;
             user-select: none;
-            /* Disable Touch Callouts */
             -webkit-touch-callout: none;
         }
 
-        /* Privacy Blur Filter */
         body.blurred {
             filter: blur(15px);
             pointer-events: none;
@@ -79,7 +76,7 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
 
-        /* --- WATERMARK OVERLAY (Security) --- */
+        /* --- WATERMARK OVERLAY --- */
         .watermark {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -115,8 +112,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            z-index: 1;
-            /* Ensure text is readable over images */
+            z-index: 3; /* Above watermark and van */
             text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
@@ -141,7 +137,7 @@
             border: 2px solid currentColor;
             padding: 4px 8px;
             border-radius: 6px;
-            background: rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.2);
         }
 
         .card-footer {
@@ -155,25 +151,27 @@
 
         /* --- THEMES --- */
 
-        /* AMAZON (Updated: Cartoon Van & Amazon Blue) */
+        /* AMAZON (Updated: Amazon Blue + Embedded SVG Cartoon Van) */
         .card-amazon {
-            /* Layered background: Cartoon Van Image on top of Amazon Blue gradient */
-            /* Note: Using a placeholder transparent cartoon van image */
-            background-image: url('https://i.imgur.com/8Q5QY9Q.png'), linear-gradient(135deg, #00A8E1 0%, #006c99 100%);
-            background-size: 55% auto, cover; /* Van size, Gradient size */
-            background-position: 110% 60%, center; /* Position van off-center right */
+            /* 1. The Van SVG (Embedded Base64) - Won't break! 
+               2. The Amazon Blue Gradient background
+            */
+            background-image: 
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%23ffffff' d='M400 224h-24v-16c0-26.51-21.49-48-48-48h-80V64c0-35.35-28.65-64-64-64H64C28.65 0 0 28.65 0 64v320c0 35.35 28.65 64 64 64h14.94c8.53 37.07 41.59 64 81.06 64s72.53-26.93 81.06-64h81.88c8.53 37.07 41.59 64 81.06 64s72.53-26.93 81.06-64H448c35.35 0 64-28.65 64-64v-96c0-35.35-28.65-64-64-64zM160 464c-17.67 0-32-14.33-32-32s14.33-32 32-32 32 14.33 32 32-14.33 32-32 32zm264 0c-17.67 0-32-14.33-32-32s14.33-32 32-32 32 14.33 32 32-14.33 32-32 32zm-16-160h-48v-48h48v48zm-160 0h-96v-48h96v48z'/%3E%3C/svg%3E"),
+                linear-gradient(135deg, #00A8E1 0%, #0078a0 100%);
+            
+            background-size: 200px auto, cover; /* Van Size, Gradient Size */
+            background-position: 120% 70%, center; /* Van Position (Bottom Right), Gradient Center */
             background-repeat: no-repeat, no-repeat;
             color: white;
         }
-        .card-amazon .company-name { color: #FF9900; text-shadow: 0 2px 4px rgba(0,0,0,0.2); } 
-        /* Update label to white contrast against blue */
-        .card-amazon .card-label { border-color: white; color: white; background: rgba(0,168,225, 0.4); }
+        .card-amazon .company-name { color: #FF9900; text-shadow: 0 2px 4px rgba(0,0,0,0.3); } 
+        .card-amazon .card-label { border-color: white; color: white; background: rgba(0,0,0,0.2); }
 
         /* HERTZ (Untouched) */
         .card-hertz { background: linear-gradient(135deg, #ffcc00 0%, #ffb700 100%); color: #1a1a1a; text-shadow: none; }
         .card-hertz .card-content { text-shadow: none; }
         .card-hertz .card-label { border-color: #1a1a1a; background: transparent; opacity: 0.8; border-width: 1px; }
-
 
         /* UTILS */
         .icon-doc { width: 20px; height: 20px; fill: currentColor; }
@@ -185,7 +183,6 @@
         }
         .back-link:hover { background: rgba(59, 130, 246, 0.2); }
 
-        /* Security Alert Overlay */
         #security-alert {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.95); z-index: 9999;
@@ -208,7 +205,8 @@
         <h1>Fleet Insurance Cards</h1>
         
         <a href="/amazon.pdf" target="_blank" class="wallet-card card-amazon">
-            <div class="watermark"></div> <div class="card-content">
+            <div class="watermark"></div> 
+            <div class="card-content">
                 <div class="card-header">
                     <div class="company-name">Amazon</div>
                     <div class="card-label">Fleet Insurance</div>
@@ -221,7 +219,8 @@
         </a>
 
         <a href="/hertz.pdf" target="_blank" class="wallet-card card-hertz">
-            <div class="watermark"></div> <div class="card-content">
+            <div class="watermark"></div> 
+            <div class="card-content">
                 <div class="card-header">
                     <div class="company-name">Hertz</div>
                     <div class="card-label">Rental Fleet</div>
@@ -238,42 +237,18 @@
     </div>
 
     <script>
-        // --- SECURITY SUITE ---
-
-        // 1. Disable Context Menu (Right Click)
         document.addEventListener('contextmenu', event => event.preventDefault());
-
-        // 2. Disable Drag and Drop
         document.addEventListener('dragstart', event => event.preventDefault());
-
-        // 3. Print Screen / Shortcut Detection (Best Effort)
         document.addEventListener('keydown', function(e) {
-            // Check for PrintScreen or Mac Command+Shift combinations
             if (e.key === 'PrintScreen' || (e.metaKey && e.shiftKey)) {
-                // Instantly blur content before OS can capture (race condition)
                 document.body.style.display = 'none';
                 alert('Screenshots are disabled for this sensitive data.');
                 setTimeout(() => document.body.style.display = 'flex', 100);
             }
         });
-
-        // 4. Privacy Blur on Focus Loss (Tab switching/Snipping Tool usage)
-        window.addEventListener('blur', function() {
-            document.body.classList.add('blurred');
-        });
-
-        window.addEventListener('focus', function() {
-            document.body.classList.remove('blurred');
-        });
-
-        // 5. Mobile Protection (Prevent long press to save image)
-        document.addEventListener("touchstart", function(e) {
-            if(e.touches.length > 1) {
-                // Prevent multi-touch gestures often used for screenshots
-                e.preventDefault(); 
-            }
-        }, { passive: false });
-
+        window.addEventListener('blur', function() { document.body.classList.add('blurred'); });
+        window.addEventListener('focus', function() { document.body.classList.remove('blurred'); });
+        document.addEventListener("touchstart", function(e) { if(e.touches.length > 1) { e.preventDefault(); } }, { passive: false });
     </script>
 
 </body>
