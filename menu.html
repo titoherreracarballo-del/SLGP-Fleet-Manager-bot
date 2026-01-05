@@ -201,9 +201,9 @@
     <div class="footer">Secure Fleet Portal • Connected</div>
 
     <script>
-        // 1. Register Service Worker
+        // 1. Register Service Worker (UPDATED to match sw.js)
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('/sw.js')
             .then(function(registration) {
                 console.log('Service Worker Registered');
                 initializePush(registration);
@@ -215,7 +215,6 @@
 
         // 2. Ask for Permission & Subscribe
         function initializePush(registration) {
-            // Check if VAPID key is available from server
             fetch('/vapid-key')
             .then(response => response.json())
             .then(data => {
@@ -230,8 +229,10 @@
                 return registration.pushManager.subscribe(subscribeOptions);
             })
             .then(function(pushSubscription) {
-                console.log('Received PushSubscription: ', JSON.stringify(pushSubscription));
-                sendSubscriptionToBackEnd(pushSubscription);
+                if (pushSubscription) {
+                    console.log('Received PushSubscription: ', JSON.stringify(pushSubscription));
+                    sendSubscriptionToBackEnd(pushSubscription);
+                }
             });
         }
 
@@ -248,7 +249,7 @@
             });
         }
 
-        // Helper function to convert VAPID key
+        // Helper function
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
