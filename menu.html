@@ -2,212 +2,199 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="icon.jpg">
-    <link rel="icon" type="image/jpeg" href="icon.jpg">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategic Logistics Dashboard</title>
     <style>
-        /* --- DIGITAL HUD THEME --- */
-        :root {
-            --bg-dark: #050B14;
-            /* Metallic Card Gradient background */
-            --bg-card-metal: linear-gradient(135deg, #242a38 0%, #121621 100%);
-            --border-glass: rgba(255, 255, 255, 0.1);
-            --text-primary: #E2E8F0;
-            --text-dim: #64748B;
-            
-            /* Neon Accents */
-            --neon-blue: #00f2ff;
-            --neon-orange: #ffaa00;
-            --neon-red: #ff2a2a;
-            --neon-green: #00ff88;
+        /* --- RESET & BASIC SETUP --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
         body {
-            background-color: var(--bg-dark);
-            /* Tech Grid Background Pattern */
+            background-color: #050b14; /* Deep dark blue background */
             background-image: 
                 linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
             background-size: 40px 40px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: var(--text-primary);
+            color: white;
             display: flex;
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
-            margin: 0;
             padding: 20px;
-            box-sizing: border-box;
         }
 
-        /* --- HEADER & LOGO --- */
-        .system-header {
-            width: 100%; max-width: 340px; display: flex; justify-content: space-between;
-            font-size: 10px; color: var(--neon-blue); text-transform: uppercase;
-            letter-spacing: 2px; margin-bottom: 20px; opacity: 0.8; font-weight: 700;
+        /* --- HEADER --- */
+        .status-bar {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #00ffff;
+            margin-bottom: 20px;
+            letter-spacing: 1px;
+            font-weight: bold;
+            opacity: 0.8;
         }
 
-        .logo-container { 
-            width: 100%; max-width: 280px;
-            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);
-            border: 1px solid var(--border-glass); padding: 20px; 
-            border-radius: 24px; margin-bottom: 30px; 
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-            position: relative; overflow: hidden;
+        .logo-container {
+            background: #0b1629;
+            border: 1px solid #1c2e4a;
+            border-radius: 12px;
+            padding: 15px 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
         }
-        .logo-container img { width: 100%; display: block; border-radius: 12px; }
-        
+
+        .logo-text {
+            font-style: italic;
+            font-weight: 900;
+            font-size: 1.5rem;
+            color: #fff;
+            text-transform: uppercase;
+        }
+        .logo-highlight { color: #007bff; }
+
         /* --- MENU GRID --- */
         .menu-grid {
-            width: 100%; max-width: 340px;
-            display: flex; flex-direction: column; gap: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            max-width: 400px;
         }
 
-        /* --- DIGITAL CREDIT CARD CONTAINER STYLE --- */
-        .menu-btn {
-            position: relative;
-            display: flex; flex-direction: column; 
-            width: 100%; 
-            /* Credit Card Shape */
-            border-radius: 16px; 
-            text-decoration: none;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            /* Dark Metallic Background */
-            background: var(--bg-card-metal);
-            /* Thicker glowing borders */
-            border: 2px solid var(--border-glass);
+        /* --- CARD STYLES --- */
+        .card {
+            background: #1a2639;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 2px solid transparent;
+            text-decoration: none;
+            display: block;
         }
 
-        .menu-btn:active { transform: scale(0.98); }
-        .menu-btn:hover { transform: translateY(-5px); }
-
-        /* Subtle tech pattern overlay on the card background */
-        .menu-btn::after {
-            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.02) 10px, rgba(255,255,255,0.02) 20px);
-            pointer-events: none; z-index: 0;
-        }
-
-        /* --- IMAGE AREA (Top Half) --- */
-        .btn-img-box { 
-            width: 100%; height: 130px; overflow: hidden; position: relative;
-            border-bottom: 2px solid rgba(0,0,0,0.3); z-index: 1;
-            background: #000; /* Dark background behind image to make colors pop */
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
         }
         
-        .btn-img { 
-            width: 100%; height: 100%; object-fit: cover; 
-            transition: transform 0.5s; opacity: 1;
-        }
-        .menu-btn:hover .btn-img { transform: scale(1.05); }
-
-        /* --- TEXT LABEL AREA (Bottom Half) --- */
-        .btn-content {
-            padding: 18px 20px; z-index: 1;
-            display: flex; justify-content: space-between; align-items: center;
-            /* Slightly lighter footer area for contrast */
-            background: rgba(255,255,255,0.02);
+        .card:active {
+            transform: translateY(1px);
         }
 
-        .btn-label {
-            font-size: 15px; font-weight: 900; color: white;
-            text-transform: uppercase; letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        .card-image {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            background-color: #333;
+            display: block;
         }
 
-        .btn-icon {
-            width: 24px; height: 24px; opacity: 0.7;
-            transition: transform 0.3s, opacity 0.3s;
+        .card-footer {
+            padding: 12px 15px;
+            background: linear-gradient(90deg, #101926 0%, #162030 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
         }
-        .menu-btn:hover .btn-icon { transform: translateX(5px); opacity: 1; }
 
-        /* --- THEME GLOWING BORDERS --- */
-        
-        /* VIDEO (Blue) */
-        .theme-video { border-color: var(--neon-blue); }
-        .theme-video:hover { box-shadow: 0 0 25px rgba(0, 242, 255, 0.4); }
-        .theme-video .btn-icon { fill: var(--neon-blue); }
-
-        /* ISSUE (Orange) */
-        .theme-issue { border-color: var(--neon-orange); }
-        .theme-issue:hover { box-shadow: 0 0 25px rgba(255, 170, 0, 0.4); }
-        .theme-issue .btn-icon { fill: var(--neon-orange); }
-
-        /* ACCIDENT (Red) */
-        .theme-accident { border-color: var(--neon-red); }
-        .theme-accident:hover { box-shadow: 0 0 25px rgba(255, 42, 42, 0.4); }
-        .theme-accident .btn-icon { fill: var(--neon-red); }
-
-        /* INSURANCE (Green) */
-        .theme-insurance { border-color: var(--neon-green); }
-        .theme-insurance:hover { box-shadow: 0 0 25px rgba(0, 255, 136, 0.4); }
-        .theme-insurance .btn-icon { fill: var(--neon-green); }
-
-        .footer { 
-            margin-top: 40px; font-size: 10px; color: var(--text-dim); 
-            letter-spacing: 1px; text-transform: uppercase;
+        .card-title {
+            color: #fff;
+            font-weight: 900;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
+
+        .arrow-icon {
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        /* --- SPECIFIC CARD COLORS --- */
+        .card-fleet { border-color: #00d2ff; }
+        .card-fleet .arrow-icon { color: #00d2ff; }
+        .card-fleet:hover { box-shadow: 0 0 15px rgba(0, 210, 255, 0.3); }
+
+        .card-issue { border-color: #ff9d00; }
+        .card-issue .arrow-icon { color: #ff9d00; }
+        .card-issue:hover { box-shadow: 0 0 15px rgba(255, 157, 0, 0.3); }
+
+        .card-accident { border-color: #ff3333; }
+        .card-accident .arrow-icon { color: #ff3333; }
+        .card-accident:hover { box-shadow: 0 0 15px rgba(255, 51, 51, 0.3); }
+
+        .card-insurance { border-color: #00ff88; }
+        .card-insurance .arrow-icon { color: #00ff88; }
+        .card-insurance:hover { box-shadow: 0 0 15px rgba(0, 255, 136, 0.3); }
+
+        /* --- FORCE ENABLE UTILITY --- */
+        .force-enable {
+            pointer-events: auto !important;
+            opacity: 1 !important;
+            filter: none !important;
+        }
+
     </style>
 </head>
 <body>
 
-    <div class="system-header">
-        <span>System: Online</span>
-        <span>SLGP-NET v6.4</span>
+    <div class="status-bar">
+        <span>SYSTEM: ONLINE</span>
+        <span>SLGP-NET V6.4</span>
     </div>
 
     <div class="logo-container">
-        <img src="Final-01.jpg" alt="SLGP Logo">
+        <h1 class="logo-text">Strategic <span class="logo-highlight">Logistics</span></h1>
     </div>
 
     <div class="menu-grid">
-        <a href="/video" class="menu-btn theme-video">
-            <div class="btn-img-box">
-                <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
-            </div>
-            <div class="btn-content">
-                <div class="btn-label">Pre & Post Fleet Vids</div>
-                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+
+        <a href="/video" class="card card-fleet force-enable">
+            <img src="https://placehold.co/600x300/222/00d2ff?text=Fleet+Vids" alt="Fleet Vids" class="card-image">
+            <div class="card-footer">
+                <span class="card-title">Pre & Post Fleet Vids</span>
+                <span class="arrow-icon">&rsaquo;</span>
             </div>
         </a>
 
-        <a href="/report?mode=issue" class="menu-btn theme-issue">
-            <div class="btn-img-box">
-                <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
-            </div>
-            <div class="btn-content">
-                <div class="btn-label">Report Issue</div>
-                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        <a href="/report?mode=issue" class="card card-issue force-enable">
+            <img src="https://placehold.co/600x300/222/ff9d00?text=Report+Issue" alt="Report Issue" class="card-image">
+            <div class="card-footer">
+                <span class="card-title">Report Issue</span>
+                <span class="arrow-icon">&rsaquo;</span>
             </div>
         </a>
 
-        <a href="/report?mode=accident" class="menu-btn theme-accident">
-            <div class="btn-img-box">
-                <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
-            </div>
-            <div class="btn-content">
-                <div class="btn-label">Accident/Incident Report</div>
-                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        <a href="/report?mode=accident" class="card card-accident force-enable">
+            <img src="https://placehold.co/600x300/222/ff3333?text=Accident+Report" alt="Accident Report" class="card-image">
+            <div class="card-footer">
+                <span class="card-title">Accident/Incident Report</span>
+                <span class="arrow-icon">&rsaquo;</span>
             </div>
         </a>
 
-        <a href="/report?mode=insurance" class="menu-btn theme-insurance">
-            <div class="btn-img-box">
-                <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
-            </div>
-            <div class="btn-content">
-                <div class="btn-label">Insurance Cards</div>
-                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        <a href="/report?mode=insurance" class="card card-insurance force-enable">
+            <img src="https://placehold.co/600x300/222/00ff88?text=Insurance+Cards" alt="Insurance Cards" class="card-image">
+            <div class="card-footer">
+                <span class="card-title">Insurance Cards</span>
+                <span class="arrow-icon">&rsaquo;</span>
             </div>
         </a>
+
     </div>
-
-    <div class="footer">Secure Fleet Portal • Connected</div>
 
 </body>
 </html>
