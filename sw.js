@@ -1,37 +1,33 @@
-const CACHE_NAME = 'slgp-v2'; // Bumped version to ensure update
-const ASSETS = ['/', 'index.html', 'video.html', 'menu.html', 'Final-01.jpg', 'manifest.json'];
-
-// --- 1. EXISTING CACHING LOGIC (Keep this) ---
-self.addEventListener('install', (e) => {
-    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
-});
-
-self.addEventListener('fetch', (e) => {
-    // Only cache GET requests, ignore POST (like report submissions)
-    if (e.request.method !== 'GET') return;
-    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
-});
-
-// --- 2. NEW PUSH NOTIFICATION LOGIC (Add this) ---
+/* SERVICE WORKER (sw.js)
+   Handles background Push Notifications even when the app is closed.
+*/
 
 self.addEventListener('push', function(event) {
-    let data = { title: "New Alert", body: "Check the portal." };
-    
+    console.log('[Service Worker] Push Received.');
+
+    // Default data in case the server sends nothing
+    let data = { 
+        title: 'Fleet Alert', 
+        body: 'New notification received.' 
+    };
+
+    // Try to parse the data sent from the server
     if (event.data) {
-        data = event.data.json();
+        try {
+            data = event.data.json();
+        } catch (e) {
+            // If it's just text, use it as the body
+            data.body = event.data.text();
+        }
     }
 
     const options = {
         body: data.body,
-        icon: '/icon.jpg', // Ensure you have this file
-        badge: '/icon.jpg',
-        vibrate: [100, 50, 100],
-        data: {
-            dateOfArrival: Date.now()
-        },
-        actions: [
-            {action: 'explore', title: 'View Alert'}
-        ]
+        icon: 'icon.jpg',    // The icon you have in your manifest
+        badge: 'icon.jpg',   // Small icon for the Android status bar
+        vibrate: [200, 100, 200], // Vibration pattern: Vibrate-Pause-Vibrate
+        tag: 'fleet-alert',  // grouping notifications
+        renotify: true       // Vibrate again even if an old alert is still visible
     };
 
     event.waitUntil(
@@ -40,9 +36,25 @@ self.addEventListener('push', function(event) {
 });
 
 self.addEventListener('notificationclick', function(event) {
-    event.notification.close();
-    // This opens the portal when they click the notification
+    console.log('[Service Worker] Notification click received.');
+
+    event.notification.close(); // Close the notification
+
+    // Open the app or focus the window if it's already open
     event.waitUntil(
-        clients.openWindow('/')
+        clients.matchAll({type: 'window'}).then(function(clientList) {
+            // 1. Look for an open window to focus
+            for (var i = 0; i < clientList.length; i++) {
+                var client = clientList[i];
+                // Check if your app is open (root URL '/')
+                if (client.url.includes('/') && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // 2. If no window is open, open a new one
+            if (clients.openWindow) {
+                return clients.openWindow('/');
+            }
+        })
     );
 });
