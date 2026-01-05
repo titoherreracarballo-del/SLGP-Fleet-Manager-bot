@@ -31,6 +31,30 @@ const client = new Client({
     ]
 });
 
+// --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
+let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
+let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
+
+if (!publicVapidKey || !privateVapidKey) {
+    console.log("⚠️ Keys Missing or Invalid. Generating FRESH Keys...");
+    const vapidKeys = webpush.generateVAPIDKeys();
+    publicVapidKey = vapidKeys.publicKey;
+    privateVapidKey = vapidKeys.privateKey;
+    
+    console.log("\n!!! SAVE THESE TO RAILWAY VARIABLES !!!");
+    console.log("VAPID_PUBLIC_KEY", publicVapidKey);
+    console.log("VAPID_PRIVATE_KEY", privateVapidKey);
+    console.log("!!! ------------------------------- !!!\n");
+} else {
+    console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
+}
+
+webpush.setVapidDetails(
+    'mailto:slgpfleetmanager@gmail.com',
+    publicVapidKey,
+    privateVapidKey
+);
+
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
     
@@ -40,30 +64,55 @@ if (DISCORD_BOT_TOKEN) {
 
     // --- THE BRIDGE: DISCORD -> APP ---
     client.on(Events.MessageCreate, async message => {
-        // 1. Ignore bot's own messages
         if (message.author.bot) return;
-
-        // 2. Only listen to the specific channel
         if (message.channelId !== DISCORD_CHANNEL_ID) return;
 
         console.log(`Received Discord Alert: ${message.content}`);
 
-        // 3. Send PUSH NOTIFICATION to all phones
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
-            const subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
+            let subs = [];
+            try {
+                subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
+            } catch (e) {
+                console.error("Error reading subscriptions file", e);
+            }
+
             const payload = JSON.stringify({ 
                 title: "📢 FLEET ALERT", 
                 body: message.content 
             });
 
-            subs.forEach(sub => {
-                webpush.sendNotification(sub, payload).catch(err => {
-                    console.error("Push Failed", err);
-                    // Optional: remove dead subscriptions here if 404/410
-                });
+            const activeSubs = [];
+            let changed = false;
+
+            // Use Promise.all to process all notifications
+            const pushPromises = subs.map(async (sub) => {
+                try {
+                    await webpush.sendNotification(sub, payload);
+                    activeSubs.push(sub); // Keep valid subscription
+                } catch (error) {
+                    changed = true;
+                    // FIX: Handle Expired/Unsubscribed (Status 410/404)
+                    if (error.statusCode === 410 || error.statusCode === 404) {
+                        console.warn("⚠️ Subscription expired/gone. Removing from list.");
+                    } 
+                    // FIX: Handle Key Mismatch (Status 403)
+                    else if (error.statusCode === 403) {
+                        console.error("🚨 VAPID Key Mismatch: This user's key is invalid. Removing.");
+                    } else {
+                        console.error("❌ Unexpected Push Error:", error.message);
+                        activeSubs.push(sub); // Keep if error is temporary/unknown
+                    }
+                }
             });
+
+            await Promise.all(pushPromises);
+
+            // Update file only if subscriptions were removed
+            if (changed) {
+                fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
+            }
             
-            // React to the message so you know it worked
             message.react('✅');
         } else {
             message.reply("No subscribers found yet!");
@@ -84,37 +133,8 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
-// 1. Load keys and STRIP OUT any spaces, quotes, or invisible junk
-let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
-let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
-
-// 2. If keys are missing (or empty after cleaning), generate new ones
-if (!publicVapidKey || !privateVapidKey) {
-    console.log("⚠️ Keys Missing or Invalid. Generating FRESH Keys...");
-    const vapidKeys = webpush.generateVAPIDKeys();
-    publicVapidKey = vapidKeys.publicKey;
-    privateVapidKey = vapidKeys.privateKey;
-    
-    console.log("\n!!! SAVE THESE TO RAILWAY VARIABLES !!!");
-    console.log("VAPID_PUBLIC_KEY");
-    console.log(publicVapidKey);
-    console.log("\nVAPID_PRIVATE_KEY");
-    console.log(privateVapidKey);
-    console.log("!!! ------------------------------- !!!\n");
-} else {
-    console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
-}
-
-webpush.setVapidDetails(
-    'mailto:slgpfleetmanager@gmail.com',
-    publicVapidKey,
-    privateVapidKey
-);
-
 // --- 2. ROUTES ---
 app.get('/', (req, res) => {
-    // If menu.html exists, serve it as the home page
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -132,7 +152,6 @@ app.get('/report', (req, res) => {
     else res.status(404).send('Unknown report type.');
 });
 
-// --- PUSH ROUTES ---
 app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
 app.post('/subscribe', (req, res) => {
@@ -142,13 +161,12 @@ app.post('/subscribe', (req, res) => {
         try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch(e) {}
     }
     subs.push(subscription);
-    // Remove duplicates based on endpoint
     const unique = subs.filter((v,i,a)=>a.findIndex(t=>(t.endpoint === v.endpoint))===i);
     fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(unique));
     res.status(201).json({});
 });
 
-// --- GOOGLE AUTH ---
+// --- GOOGLE DRIVE & PDF LOGIC ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -178,7 +196,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         
-        // Notify Discord about upload
         if (client.isReady()) {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
             if (channel) channel.send(`🎥 **Video Uploaded:** ${driverName} (${inspectionType})`);
@@ -191,7 +208,6 @@ app.post('/submit-report', async (req, res) => {
     const data = req.body;
     logReportLocally(data);
 
-    // Notify Discord about Report
     if (client.isReady()) {
         try {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -323,6 +339,7 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
+// --- CRON JOB SUMMARY ---
 cron.schedule('30 23 * * *', async () => {
     if (!fs.existsSync(DAILY_LOG_FILE)) return;
     try {
@@ -330,7 +347,6 @@ cron.schedule('30 23 * * *', async () => {
         const allLogs = JSON.parse(rawData);
         if (allLogs.length === 0) return;
 
-        // Notify Discord about Summary
         if (client.isReady()) {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
             if (channel) channel.send(`📋 **DAILY SUMMARY:** ${allLogs.length} reports submitted today.`);
@@ -344,15 +360,6 @@ cron.schedule('30 23 * * *', async () => {
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
         page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
         page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 14, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
-
-        try {
-            const logoPath = path.join(__dirname, 'Final-01.jpg');
-            if (fs.existsSync(logoPath)) {
-                const logoImg = await doc.embedJpg(fs.readFileSync(logoPath));
-                const dims = logoImg.scaleToFit(180, 70); 
-                page.drawImage(logoImg, { x: 570 - dims.width, y: 760 - (dims.height/2), width: dims.width, height: dims.height });
-            }
-        } catch(e) {}
 
         let y = 680;
         allLogs.forEach((log, index) => {
