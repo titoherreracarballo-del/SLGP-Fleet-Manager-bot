@@ -117,7 +117,7 @@
             justify-content: space-between;
             z-index: 1;
             /* Ensure text is readable over images */
-            text-shadow: 0 2px 4px rgba(0,0,0,0.7);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
         .card-header {
@@ -155,17 +155,19 @@
 
         /* --- THEMES --- */
 
-        /* AMAZON (Updated with Truck) */
+        /* AMAZON (Updated: Cartoon Van & Amazon Blue) */
         .card-amazon {
-            /* Layered background: Image on top of gradient */
-            background-image: url('https://purepng.com/public/uploads/large/purepng.com-white-delivery-vanvantransportvehicle-981524673346vdsgq.png'), linear-gradient(135deg, #232f3e 0%, #0a0e14 100%);
-            background-size: 60%, cover; /* Truck size, Gradient size */
-            background-position: 110% 90%, center; /* Truck position (bottom right), Gradient position */
+            /* Layered background: Cartoon Van Image on top of Amazon Blue gradient */
+            /* Note: Using a placeholder transparent cartoon van image */
+            background-image: url('https://i.imgur.com/8Q5QY9Q.png'), linear-gradient(135deg, #00A8E1 0%, #006c99 100%);
+            background-size: 55% auto, cover; /* Van size, Gradient size */
+            background-position: 110% 60%, center; /* Position van off-center right */
             background-repeat: no-repeat, no-repeat;
             color: white;
         }
-        .card-amazon .company-name { color: #ff9900; } 
-        .card-amazon .card-label { border-color: #ff9900; color: #ff9900; }
+        .card-amazon .company-name { color: #FF9900; text-shadow: 0 2px 4px rgba(0,0,0,0.2); } 
+        /* Update label to white contrast against blue */
+        .card-amazon .card-label { border-color: white; color: white; background: rgba(0,168,225, 0.4); }
 
         /* HERTZ (Untouched) */
         .card-hertz { background: linear-gradient(135deg, #ffcc00 0%, #ffb700 100%); color: #1a1a1a; text-shadow: none; }
