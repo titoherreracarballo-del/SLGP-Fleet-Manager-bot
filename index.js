@@ -10,8 +10,6 @@ const stream = require('stream');
 const app = express();
 
 // --- 1. AUTO-REFRESH SYSTEM ---
-// This timestamp stays the same until you restart the server.
-// The video page checks this to know when to reload.
 const APP_VERSION = Date.now();
 
 app.get('/version', (req, res) => {
@@ -51,7 +49,7 @@ app.get('/', (req, res) => {
 // Video Page
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 
-// Report Routing (Matches your Manifest Names)
+// Report Routing
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     
@@ -59,7 +57,6 @@ app.get('/report', (req, res) => {
         res.sendFile(path.join(__dirname, 'report-issue.html'));
     } 
     else if (mode === 'accident') {
-        // Note: Matches "accident - report.html" (with spaces) from your file list
         res.sendFile(path.join(__dirname, 'accident - report.html'));
     } 
     else if (mode === 'insurance') {
@@ -106,7 +103,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// --- REPORT SUBMISSION ENGINE (MODERN PDF + DUAL FOLDERS) ---
+// --- REPORT SUBMISSION ENGINE ---
 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -114,15 +111,14 @@ const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     try {
+        // 1. Google Drive Upload Logic
         const drive = google.drive({ version: 'v3', auth });
         
-        // 1. Determine Folder based on Report Type
         let targetFolderId = ACCIDENT_DRIVE_ID; 
         if (data.reportType && data.reportType.toLowerCase().includes('issue')) {
             targetFolderId = ISSUE_DRIVE_ID;
         }
 
-        // 2. Create Sub-Folder
         const folderName = `${data.driverName} - ${data.reportType}`;
         const folder = await drive.files.create({
             resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
@@ -130,7 +126,6 @@ app.post('/submit-report', async (req, res) => {
         });
         const folderId = folder.data.id;
 
-        // 3. Upload Photos & Keep Data for PDF
         const photoBuffers = [];
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
@@ -147,13 +142,12 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // 4. Generate Modern PDF
+        // 2. Generate PDF
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const font = await doc.embedFont(StandardFonts.HelveticaBold);
         const textFont = await doc.embedFont(StandardFonts.Helvetica);
         
-        // Header Bar
         page.drawRectangle({ x: 0, y: 740, width: 600, height: 60, color: rgb(0.1, 0.3, 0.7) });
         page.drawText('SLGP FLEET REPORT', { x: 20, y: 760, size: 24, font: font, color: rgb(1,1,1) });
 
@@ -183,7 +177,6 @@ app.post('/submit-report', async (req, res) => {
              drawLabel('DESCRIPTION', data.otherDescription);
         }
 
-        // Embed Photos
         if (photoBuffers.length > 0) {
             checkPage();
             y -= 20;
@@ -214,22 +207,24 @@ app.post('/submit-report', async (req, res) => {
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // --- EMAIL ROUTING ---
+        // --- 3. EMAIL ROUTING (UPDATED TO USE RAILWAY VARIABLES) ---
+        
+        // This connects using the variables you set in Railway
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { 
-                user: 'slgpincidentreporting@gmail.com',  
-                // *** PASTE YOUR 16-CHAR APP PASSWORD BELOW ***
-                pass: 'xxxx xxxx xxxx xxxx' 
+                user: process.env.EMAIL_USER, // Will read 'slgpfleetmanager@gmail.com'
+                pass: process.env.EMAIL_PASS  // Will read your 16-char App Password
             }
         });
 
+        // Determine who gets the email
         const recipients = data.reportType.includes('Accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
             : ['slgpfleetmanager@gmail.com'];
 
         await transporter.sendMail({
-            from: 'slgpincidentreporting@gmail.com',
+            from: process.env.EMAIL_USER, // Send from the authenticated account
             to: recipients,
             subject: `REPORT: ${data.driverName} - ${data.reportType}`,
             text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nSee PDF attached.\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
