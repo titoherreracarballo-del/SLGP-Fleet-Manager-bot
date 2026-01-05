@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Insurance Cards</title>
+    <title>Insurance Wallet</title>
     <style>
         :root {
             --bg-body: #0F1115;
             --bg-card: #161B28;
-            --bg-btn: #242c3d;
             --text-label: #3B82F6;
-            --radius: 12px;
+            --radius: 20px;
         }
 
         body {
@@ -27,58 +26,196 @@
         .container {
             width: 100%;
             max-width: 420px;
-            background-color: var(--bg-card);
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #1f2937;
+            /* Removed card background to focus on the "wallet" look */
+            padding: 20px 10px; 
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
         h1 {
-            color: var(--text-label); font-size: 24px; font-weight: 900; 
-            text-transform: uppercase; margin-bottom: 30px;
+            color: white;
+            font-size: 28px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+            letter-spacing: 1px;
+            text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
         }
 
-        .card-btn {
+        /* --- WALLET CARD BASE STYLES --- */
+        .wallet-card {
             display: block;
             width: 100%;
-            background-color: var(--bg-btn);
-            border: 1px solid #2d3748;
-            color: #cbd5e1;
-            padding: 20px;
-            margin-bottom: 15px;
+            height: 200px;
             border-radius: var(--radius);
+            position: relative;
             text-decoration: none;
+            box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+            margin-bottom: -60px; /* This creates the stacking effect */
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+        }
+
+        /* Hover Effect - Pop up */
+        .wallet-card:hover {
+            transform: translateY(-25px) scale(1.02);
+            z-index: 10;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        /* Card Content Layout */
+        .card-content {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            padding: 25px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .company-name {
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-label {
+            font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
-            font-size: 14px;
-            transition: all 0.2s;
-            box-sizing: border-box;
+            opacity: 0.8;
+            border: 1px solid currentColor;
+            padding: 4px 8px;
+            border-radius: 6px;
         }
 
-        .card-btn:hover {
-            background-color: #334155;
-            border-color: var(--text-label);
+        .card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .policy-text {
+            font-size: 12px;
+            opacity: 0.9;
+            font-weight: 600;
+        }
+
+        .tap-hint {
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* --- THEME: AMAZON (Dark/Orange) --- */
+        .card-amazon {
+            background: linear-gradient(135deg, #232f3e 0%, #11151c 100%);
             color: white;
         }
+        .card-amazon .company-name { color: #ff9900; } /* Amazon Orange */
+        .card-amazon::after {
+            content: "";
+            position: absolute;
+            top: -50px; right: -50px;
+            width: 150px; height: 150px;
+            background: rgba(255, 153, 0, 0.1);
+            border-radius: 50%;
+            filter: blur(40px);
+        }
 
-        .back-link { color: #94a3b8; text-decoration: none; margin-top: 20px; display: inline-block; }
+        /* --- THEME: HERTZ (Yellow/Black) --- */
+        .card-hertz {
+            background: linear-gradient(135deg, #ffcc00 0%, #ffb700 100%);
+            color: #1a1a1a;
+        }
+        .card-hertz .card-label { border-color: #1a1a1a; }
+        .card-hertz::after {
+            content: "";
+            position: absolute;
+            top: -50px; right: -50px;
+            width: 150px; height: 150px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            filter: blur(40px);
+        }
+
+        /* --- UTILS --- */
+        .icon-doc { width: 20px; height: 20px; fill: currentColor; }
+        
+        .spacer { height: 80px; } /* Push back button down below stack */
+
+        .back-link {
+            color: var(--text-label);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 20px;
+            transition: all 0.2s;
+        }
+        .back-link:hover { background: rgba(59, 130, 246, 0.2); }
+
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Insurance Cards</h1>
+        <h1>Digital Wallet</h1>
         
-        <a href="/amazon.pdf" target="_blank" class="card-btn">
-            Amazon Fleet Insurance (PDF)
+        <a href="/amazon.pdf" target="_blank" class="wallet-card card-amazon">
+            <div class="card-content">
+                <div class="card-header">
+                    <div class="company-name">Amazon</div>
+                    <div class="card-label">Fleet Insurance</div>
+                </div>
+                <div class="card-footer">
+                    <div class="policy-text">
+                        COMMERCIAL AUTO<br>
+                        PDF DOCUMENT
+                    </div>
+                    <div class="tap-hint">
+                        VIEW CARD 
+                        <svg class="icon-doc" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>
+                    </div>
+                </div>
+            </div>
         </a>
 
-        <a href="/hertz.pdf" target="_blank" class="card-btn">
-            Hertz Fleet Insurance (PDF)
+        <a href="/hertz.pdf" target="_blank" class="wallet-card card-hertz">
+            <div class="card-content">
+                <div class="card-header">
+                    <div class="company-name">Hertz</div>
+                    <div class="card-label">Rental Fleet</div>
+                </div>
+                <div class="card-footer">
+                    <div class="policy-text">
+                        INSURANCE ID<br>
+                        PDF DOCUMENT
+                    </div>
+                    <div class="tap-hint">
+                        VIEW CARD 
+                        <svg class="icon-doc" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>
+                    </div>
+                </div>
+            </div>
         </a>
 
+        <div class="spacer"></div>
         <a href="/" class="back-link">← Back to Menu</a>
     </div>
 
