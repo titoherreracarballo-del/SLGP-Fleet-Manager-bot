@@ -8,6 +8,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
 const cron = require('node-cron'); 
 const webpush = require('web-push');
+const { Client, GatewayIntentBits, Events } = require('discord.js');
 
 const app = express();
 
@@ -18,37 +19,56 @@ const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 
-// --- DISCORD SETUP ---
-// This automatically pulls the URL you save in Railway Variables
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
+// --- DISCORD BOT SETUP (RENAMED VARIABLE) ---
+// We are now looking for 'FLEET_BOT_SECRET' instead of the default name
+const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET; 
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID; 
 
-// Helper: Send Discord Notification
-async function sendDiscordAlert(title, description, fields, colorHex) {
-    if (!DISCORD_WEBHOOK_URL) return;
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent 
+    ]
+});
 
-    // Convert Hex to Decimal for Discord
-    const colorDecimal = parseInt(colorHex.replace("#", ""), 16);
+if (DISCORD_BOT_TOKEN) {
+    client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
+    
+    client.once(Events.ClientReady, c => {
+        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
+    });
 
-    const payload = {
-        embeds: [{
-            title: title,
-            description: description,
-            color: colorDecimal,
-            fields: fields,
-            footer: { text: "SLGP Fleet Portal • System v3.0" },
-            timestamp: new Date().toISOString()
-        }]
-    };
+    // --- THE BRIDGE: DISCORD -> APP ---
+    client.on(Events.MessageCreate, async message => {
+        // 1. Ignore bot's own messages
+        if (message.author.bot) return;
 
-    try {
-        await fetch(DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-    } catch (error) {
-        console.error("Discord Webhook Error:", error);
-    }
+        // 2. Only listen to the specific channel
+        if (message.channelId !== DISCORD_CHANNEL_ID) return;
+
+        console.log(`Received Discord Alert: ${message.content}`);
+
+        // 3. Send PUSH NOTIFICATION to all phones
+        if (fs.existsSync(SUBSCRIPTION_FILE)) {
+            const subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
+            const payload = JSON.stringify({ 
+                title: "📢 FLEET ALERT", 
+                body: message.content 
+            });
+
+            subs.forEach(sub => {
+                webpush.sendNotification(sub, payload).catch(err => console.log("Push Failed", err));
+            });
+            
+            // React to the message so you know it worked
+            message.react('✅');
+        } else {
+            message.reply("No subscribers found yet!");
+        }
+    });
+} else {
+    console.log("⚠️ No FLEET_BOT_SECRET found in Railway Variables. Bot disabled.");
 }
 
 // Ensure upload directory exists
@@ -62,7 +82,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- VAPID KEYS (PUSH NOTIFICATIONS) ---
+// --- VAPID KEYS ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 
@@ -70,12 +90,9 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("---------------------------------------------------");
-    console.log("⚠️  NO VAPID KEYS FOUND. GENERATED TEMPORARY KEYS:");
-    console.log("PUBLIC KEY:", publicVapidKey);
-    console.log("PRIVATE KEY:", privateVapidKey);
-    console.log("SAVE THESE TO RAILWAY VARIABLES TO KEEP SUBSCRIPTIONS WORKING!");
-    console.log("---------------------------------------------------");
+    console.log("--- SAVE THESE KEYS TO RAILWAY ---");
+    console.log("PUBLIC:", publicVapidKey);
+    console.log("PRIVATE:", privateVapidKey);
 }
 
 webpush.setVapidDetails(
@@ -112,34 +129,12 @@ app.post('/subscribe', (req, res) => {
         try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch(e) {}
     }
     subs.push(subscription);
-    // Remove duplicates
     const unique = subs.filter((v,i,a)=>a.findIndex(t=>(t.endpoint === v.endpoint))===i);
     fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(unique));
     res.status(201).json({});
 });
 
-app.post('/send-alert', async (req, res) => {
-    const { title, message } = req.body;
-    
-    // 1. Send to Browser Push
-    if (fs.existsSync(SUBSCRIPTION_FILE)) {
-        const subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
-        const payload = JSON.stringify({ title, body: message });
-        subs.forEach(sub => webpush.sendNotification(sub, payload).catch(e => console.log(e)));
-    }
-
-    // 2. Send to Discord
-    await sendDiscordAlert(
-        `📢 ADMIN BROADCAST: ${title}`, 
-        message, 
-        [], 
-        "#00f2ff" // Neon Blue
-    );
-
-    res.json({ success: true });
-});
-
-// --- GOOGLE AUTH & LOGGING ---
+// --- GOOGLE AUTH ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -162,24 +157,18 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
         const drive = google.drive({ version: 'v3', auth });
         const { driverName, vin, inspectionType } = req.body;
-        
-        // Log to Discord
-        await sendDiscordAlert(
-            "🎥 Video Inspection Uploaded",
-            `A new ${inspectionType} video has been uploaded.`,
-            [
-                { name: "Driver", value: driverName, inline: true },
-                { name: "VIN", value: vin, inline: true }
-            ],
-            "#00ff88" // Green
-        );
-
         await drive.files.create({
             resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id', supportsAllDrives: true
         });
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        
+        // Notify Discord about upload
+        if (client.isReady()) {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            if (channel) channel.send(`🎥 **Video Uploaded:** ${driverName} (${inspectionType})`);
+        }
         res.status(200).send('Upload Complete');
     } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
@@ -188,24 +177,14 @@ app.post('/submit-report', async (req, res) => {
     const data = req.body;
     logReportLocally(data);
 
-    // --- DISCORD ALERT LOGIC ---
-    const isAccident = data.reportType.includes('Accident');
-    const discordColor = isAccident ? "#ff2a2a" : "#ffaa00"; 
-    const discordTitle = isAccident ? "🚨 NEW ACCIDENT REPORTED" : "⚠️ NEW VEHICLE ISSUE";
-    
-    const discordFields = [
-        { name: "Driver", value: data.driverName, inline: true },
-        { name: "VIN (Last 4)", value: data.vinLast4, inline: true },
-        { name: "Type", value: data.reportType, inline: true },
-        { name: "Time", value: `${data.date} at ${data.time}`, inline: false }
-    ];
-
-    if(data.otherDescription) {
-        discordFields.push({ name: "Notes", value: data.otherDescription.substring(0, 1024) });
+    // Notify Discord about Report
+    if (client.isReady()) {
+        try {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            const title = data.reportType.includes('Accident') ? "🚨 **ACCIDENT REPORT**" : "⚠️ **ISSUE REPORT**";
+            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.otherDescription || 'None'}`);
+        } catch(e) { console.log("Discord Send Error", e); }
     }
-
-    // Fire Alert
-    sendDiscordAlert(discordTitle, "A new report has been submitted via the portal.", discordFields, discordColor);
 
     try {
         const auth = new google.auth.GoogleAuth({
@@ -214,7 +193,7 @@ app.post('/submit-report', async (req, res) => {
         });
         const drive = google.drive({ version: 'v3', auth });
         let targetFolderId = ACCIDENT_DRIVE_ID; 
-        if (!isAccident) targetFolderId = ISSUE_DRIVE_ID;
+        if (data.reportType && !data.reportType.includes('Accident')) targetFolderId = ISSUE_DRIVE_ID;
 
         const folder = await drive.files.create({
             resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
@@ -312,7 +291,7 @@ app.post('/submit-report', async (req, res) => {
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
 
-        const recipients = isAccident
+        const recipients = data.reportType.includes('Accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
             : ['slgpfleetmanager@gmail.com'];
 
@@ -337,13 +316,11 @@ cron.schedule('30 23 * * *', async () => {
         const allLogs = JSON.parse(rawData);
         if (allLogs.length === 0) return;
 
-        // --- DISCORD SUMMARY LOG ---
-        await sendDiscordAlert(
-            "📋 DAILY FLEET SUMMARY",
-            `A total of ${allLogs.length} reports were submitted today.`,
-            [],
-            "#00f2ff" // Neon Blue
-        );
+        // Notify Discord about Summary
+        if (client.isReady()) {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            if (channel) channel.send(`📋 **DAILY SUMMARY:** ${allLogs.length} reports submitted today.`);
+        }
 
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
