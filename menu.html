@@ -9,112 +9,220 @@
     <link rel="apple-touch-icon" href="icon.jpg">
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
+        /* --- DIGITAL HUD THEME --- */
+        :root {
+            --bg-dark: #050B14;
+            --bg-panel: rgba(22, 27, 40, 0.85);
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --text-primary: #E2E8F0;
+            --text-dim: #64748B;
+            
+            /* Neon Accents */
+            --neon-blue: #00f2ff;
+            --neon-orange: #ffaa00;
+            --neon-red: #ff2a2a;
+            --neon-green: #00ff88;
+        }
+
         body {
-            background-color: #0a0e17;
-            background-image: radial-gradient(circle at top right, #1a2a44, #0a0e17);
-            color: white; font-family: -apple-system, system-ui, sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 100vh; margin: 0; padding: 20px; text-align: center;
+            background-color: var(--bg-dark);
+            /* Tech Grid Background Pattern */
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
         }
-        
-        /* LOGO BADGE STYLE */
+
+        /* --- SYSTEM STATUS HEADER --- */
+        .system-header {
+            width: 100%;
+            max-width: 340px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            opacity: 0.8;
+            font-weight: 700;
+        }
+
+        /* --- LOGO CONTAINER --- */
         .logo-container { 
-            background: white; 
-            padding: 15px 25px; 
-            border-radius: 20px; 
+            width: 100%;
+            max-width: 280px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-glass);
+            padding: 20px; 
+            border-radius: 24px; 
             margin-bottom: 30px; 
-            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3); 
-            display: inline-block;
-        }
-        .logo-container img { 
-            width: 100%; 
-            max-width: 250px; 
-            display: block; 
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            display: flex; justify-content: center; align-items: center;
+            position: relative; overflow: hidden;
         }
         
-        /* BUTTON CONTAINER */
+        /* Scanline effect over logo */
+        .logo-container::after {
+            content: "";
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%);
+            background-size: 100% 4px; pointer-events: none;
+        }
+
+        .logo-container img { width: 100%; display: block; border-radius: 12px; }
+        
+        /* --- MENU GRID --- */
+        .menu-grid {
+            width: 100%;
+            max-width: 340px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+
         .menu-btn {
-            display: flex; 
-            flex-direction: column; 
-            width: 100%; 
-            max-width: 320px; 
-            margin-bottom: 25px; 
-            border-radius: 18px; 
+            position: relative;
+            display: flex; flex-direction: column; 
+            width: 100%; border-radius: 20px; 
             text-decoration: none;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.4); 
-            padding: 0; 
-            background: rgba(255, 255, 255, 0.05); 
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden; 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glass);
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .menu-btn:active { transform: scale(0.97); }
 
-        /* IMAGE BOX */
+        .menu-btn:active { transform: scale(0.98); }
+
+        /* Image Box */
         .btn-img-box { 
-            width: 100%; 
-            height: 180px; 
-            overflow: hidden; 
-        }
-        .btn-img { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            display: block; 
-        }
-
-        /* LABEL STYLE */
-        .btn-label {
-            padding: 15px; 
-            font-size: 16px; 
-            font-weight: 800; 
-            color: white;
-            text-transform: uppercase; 
-            letter-spacing: 1px;
+            width: 100%; height: 140px; overflow: hidden; position: relative;
+            border-bottom: 1px solid var(--border-glass);
         }
         
-        /* COLOR BARS */
-        .lbl-video { border-bottom: 4px solid #0066ff; }
-        .lbl-issue { border-bottom: 4px solid #ff9900; }
-        .lbl-accident { border-bottom: 4px solid #ff4444; }
-        .lbl-insurance { border-bottom: 4px solid #00cc66; } 
+        .btn-img { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transition: transform 0.5s; opacity: 0.9;
+        }
+        
+        /* Gradient Overlay */
+        .btn-img-box::after {
+            content: ""; position: absolute; bottom: 0; left: 0; width: 100%; height: 50%;
+            background: linear-gradient(to top, var(--bg-panel), transparent);
+        }
 
-        .footer { margin-top: 40px; font-size: 11px; color: #444; }
+        .menu-btn:hover .btn-img { transform: scale(1.05); opacity: 1; }
+
+        /* Text Label Area */
+        .btn-content {
+            padding: 18px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .btn-label {
+            font-size: 15px; font-weight: 800; color: white;
+            text-transform: uppercase; letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .btn-icon {
+            width: 20px; height: 20px; opacity: 0.5;
+            transition: transform 0.3s, opacity 0.3s;
+        }
+        
+        .menu-btn:hover .btn-icon { transform: translateX(5px); opacity: 1; }
+
+        /* --- THEME BORDERS --- */
+        
+        /* VIDEO (Blue) */
+        .theme-video { border-left: 4px solid var(--neon-blue); }
+        .theme-video:hover { box-shadow: 0 0 20px rgba(0, 242, 255, 0.2); border-color: var(--neon-blue); }
+        .theme-video .btn-icon { fill: var(--neon-blue); }
+
+        /* ISSUE (Orange) */
+        .theme-issue { border-left: 4px solid var(--neon-orange); }
+        .theme-issue:hover { box-shadow: 0 0 20px rgba(255, 170, 0, 0.2); border-color: var(--neon-orange); }
+        .theme-issue .btn-icon { fill: var(--neon-orange); }
+
+        /* ACCIDENT (Red) */
+        .theme-accident { border-left: 4px solid var(--neon-red); }
+        .theme-accident:hover { box-shadow: 0 0 20px rgba(255, 42, 42, 0.2); border-color: var(--neon-red); }
+        .theme-accident .btn-icon { fill: var(--neon-red); }
+
+        /* INSURANCE (Green) */
+        .theme-insurance { border-left: 4px solid var(--neon-green); }
+        .theme-insurance:hover { box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); border-color: var(--neon-green); }
+        .theme-insurance .btn-icon { fill: var(--neon-green); }
+
+        .footer { 
+            margin-top: 40px; font-size: 10px; color: var(--text-dim); 
+            letter-spacing: 1px; text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
+
+    <div class="system-header">
+        <span>System: Online</span>
+        <span>SLGP-NET v6.2</span>
+    </div>
+
     <div class="logo-container">
         <img src="Final-01.jpg" alt="SLGP Logo">
     </div>
 
-    <a href="/video" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
-        </div>
-        <div class="btn-label lbl-video">Pre & Post Fleet Vids</div>
-    </a>
+    <div class="menu-grid">
+        <a href="/video" class="menu-btn theme-video">
+            <div class="btn-img-box">
+                <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Pre & Post Fleet Vids</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </div>
+        </a>
 
-    <a href="/report?mode=issue" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
-        </div>
-        <div class="btn-label lbl-issue">Report Issue</div>
-    </a>
+        <a href="/report?mode=issue" class="menu-btn theme-issue">
+            <div class="btn-img-box">
+                <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Report Issue</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </div>
+        </a>
 
-    <a href="/report?mode=accident" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
-        </div>
-        <div class="btn-label lbl-accident">Accident/Incident Report</div>
-    </a>
+        <a href="/report?mode=accident" class="menu-btn theme-accident">
+            <div class="btn-img-box">
+                <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Accident/Incident Report</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </div>
+        </a>
 
-    <a href="/report?mode=insurance" class="menu-btn">
-        <div class="btn-img-box">
-            <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
-        </div>
-        <div class="btn-label lbl-insurance">Insurance Cards</div>
-    </a>
+        <a href="/report?mode=insurance" class="menu-btn theme-insurance">
+            <div class="btn-img-box">
+                <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Insurance Cards</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </div>
+        </a>
+    </div>
 
-    <div class="footer">SLGP Fleet Portal v6.2</div>
+    <div class="footer">Secure Fleet Portal • Connected</div>
+
 </body>
 </html>
