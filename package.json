@@ -1,6 +1,6 @@
 {
   "name": "slgp-fleet-portal",
-  "version": "3.1.0",
+  "version": "3.3.0",
   "description": "SLGP Fleet Portal with Video Uploads and Incident Reporting",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,8 @@
     "nodemailer": "^6.9.5",
     "node-cron": "^3.0.0",
     "pdf-lib": "^1.17.1",
-    "web-push": "^3.6.0"
+    "web-push": "^3.6.0",
+    "discord.js": "^14.14.1"
   },
   "engines": {
     "node": "18.x"
