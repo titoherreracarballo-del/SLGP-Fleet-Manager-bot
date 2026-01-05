@@ -44,12 +44,11 @@
         /* --- LOGO WATERMARK --- */
         .container::before {
             content: "";
-            /* Looks for Final-01.jpg in your server root */
             background-image: url('/Final-01.jpg'); 
             background-repeat: no-repeat;
             background-position: center center;
-            background-size: 80%; /* Large watermark */
-            opacity: 0.08; /* Very subtle so text pops */
+            background-size: 80%; 
+            opacity: 0.08; 
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
             z-index: -1; 
@@ -67,18 +66,17 @@
             position: relative;
         }
 
-        /* UPDATED: Extra Bold Main Text */
+        /* BOLD MAIN TEXT */
         .main-text {
             color: var(--text-bright);
-            font-size: 19px; 
-            font-weight: 900; /* Maximum Boldness */
+            font-size: 19px;
+            font-weight: 900; /* Extra Bold */
             line-height: 1.5;
             margin-bottom: 35px;
             position: relative;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Slight shadow for readability */
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
 
-        /* NOTE BOX */
         .note-box {
             background-color: rgba(239, 68, 68, 0.15);
             border: 2px solid #ef4444;
@@ -87,7 +85,7 @@
             text-align: left;
             margin-bottom: 35px;
             position: relative;
-            background-color: rgba(239, 68, 68, 0.15); /* Ensures text is readable over watermark */
+            background-color: rgba(239, 68, 68, 0.15);
         }
 
         .note-title {
@@ -100,6 +98,7 @@
             display: block;
         }
 
+        /* OPTION 3 WORDING + BOLD */
         .note-text {
             color: #fca5a5;
             font-size: 16px;
