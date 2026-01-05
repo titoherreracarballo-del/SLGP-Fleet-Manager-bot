@@ -57,8 +57,6 @@
         /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         .row-split { display: flex; gap: 10px; }
-        
-        /* Layout: VIN (Small) vs Type (Large) */
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
 
@@ -73,17 +71,16 @@
             transition: border-color 0.2s;
         }
         
-        /* Vehicle Type Box: Auto-Wrap Text */
         #vehicleType {
             font-size: 12px; 
-            white-space: normal; /* Allow wrap */
+            white-space: normal;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         input:focus, textarea:focus { border-color: var(--text-label); }
 
-        /* Readonly VIN Display */
+        /* Readonly Styling */
         input[readonly] {
             background-color: #1a202c; 
             font-weight: bold;
@@ -96,6 +93,25 @@
         input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
         input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
         input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
+
+        /* Tow Modes */
+        input[readonly].tow-yes { color: #4ade80 !important; border-color: #4ade80; } /* Green */
+        input[readonly].tow-no { color: #ea580c !important; border-color: #ea580c; } /* Dark Orange */
+
+        /* Warning Box */
+        .warning-msg {
+            background-color: rgba(234, 88, 12, 0.15);
+            border: 1px solid #ea580c;
+            color: #fdba74;
+            padding: 15px;
+            border-radius: var(--radius);
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            line-height: 1.5;
+            display: none; /* Hidden by default */
+            text-align: left;
+        }
 
         /* --- CATEGORY TABS --- */
         .tabs {
@@ -180,12 +196,21 @@
     <div class="form-group row-split">
         <div class="vin-col">
             <label>Last 4 VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
+            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" oninput="checkVin()" style="text-transform:uppercase;">
         </div>
         <div class="type-col">
             <label>Vehicle Type / Fuel</label>
             <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
         </div>
+    </div>
+
+    <div class="form-group">
+        <label>Tow Assistance Status</label>
+        <input type="text" id="towStatus" placeholder="Pending VIN..." readonly>
+    </div>
+
+    <div id="towWarning" class="warning-msg">
+        ⚠️ <strong>WARNING:</strong> Accessing customer driveways is strictly prohibited. For customers with long driveways, the Call-Text-Call procedure must be followed without exception. Any towing assistance required resulting from a violation of this policy will be at the driver's expense.
     </div>
 
     <label>Issue Category</label>
@@ -351,86 +376,114 @@
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
     // ----------------------------------------------------
-    //  FULL VIN DATABASE (Cleaned Up Names)
+    //  FULL VIN DATABASE (Updated with Tow Status)
     // ----------------------------------------------------
     const vinDatabase = {
-        // --- DIESEL (GREEN) ---
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        // --- NO TOW ASSISTANCE GROUP (Specific List) ---
+        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
+        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
+        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
+        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
 
-        // --- ELECTRIC (WHITE) ---
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
-
-        // --- GAS (RED) ---
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
-        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
-        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
-        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
+        // --- TOW ASSISTANCE ACTIVE GROUP ---
+        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
+        "0213": { type: "Large Van (Diesel)", fuel: "diesel", hasTow: true },
+        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
+        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
+        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
+        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
+        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
+        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
+        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
+        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
+        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
+        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
+        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true }
     };
 
     function checkVin() {
         let vin = document.getElementById('vinInput').value.toUpperCase();
+        
         const typeBox = document.getElementById('vehicleType');
-        
-        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        
-        if (vin.length >= 4) {
-            let found = vinDatabase[vin];
-            if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
+        const towBox = document.getElementById('towStatus');
+        const warningBox = document.getElementById('towWarning');
 
-            if (vin.startsWith("W")) {
-                typeBox.value = "Mercedes (Diesel)";
-                typeBox.classList.add('diesel-mode'); 
-                setTab('high'); 
-                return;
+        // Reset Styles
+        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
+        towBox.classList.remove('tow-yes', 'tow-no');
+        warningBox.style.display = 'none'; // Hide warning by default
+        
+        if (vin.length === 4) {
+            let found = vinDatabase[vin];
+            
+            // Special Mercedes Logic (Starts with W)
+            if (vin.startsWith("W")) { 
+                typeBox.value = "Mercedes (Diesel)"; 
+                typeBox.classList.add('diesel-mode');
+                // Assuming Mercedes have tow?
+                towBox.value = "Tow Assistance Active";
+                towBox.classList.add('tow-yes');
+                setTab('high'); // Default to High Priority for Mercedes
+                return; 
             }
 
             if (found) {
+                // 1. Set Vehicle Type & Fuel Color & Auto-Switch Tab
                 typeBox.value = found.type; 
-                if (found.fuel === 'diesel') { typeBox.classList.add('diesel-mode'); setTab('high'); } 
-                else if (found.fuel === 'electric') { typeBox.classList.add('electric-mode'); setTab('edv'); } 
-                else { typeBox.classList.add('gas-mode'); setTab('high'); }
+                if (found.fuel === 'diesel') {
+                    typeBox.classList.add('diesel-mode');
+                    setTab('high');
+                } else if (found.fuel === 'electric') {
+                    typeBox.classList.add('electric-mode');
+                    setTab('edv'); // Auto-switch to Electric Tab
+                } else {
+                    typeBox.classList.add('gas-mode');
+                    setTab('high');
+                }
+
+                // 2. Set Tow Status & Warning
+                if (found.hasTow) {
+                    towBox.value = "Tow Assistance Active";
+                    towBox.classList.add('tow-yes');
+                } else {
+                    towBox.value = "NO TOW ASSISTANCE";
+                    towBox.classList.add('tow-no');
+                    warningBox.style.display = 'block'; // Show Warning
+                }
+
             } else {
                 typeBox.value = "Unknown Vehicle";
+                towBox.value = "Unknown Status";
             }
         } else {
             typeBox.value = "";
+            towBox.value = "";
         }
     }
 
