@@ -32,6 +32,7 @@ const client = new Client({
 });
 
 // --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
+// Cleans keys of any invisible characters or quotes from Railway
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -40,11 +41,8 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    
-    console.log("\n!!! SAVE THESE TO RAILWAY VARIABLES !!!");
-    console.log("VAPID_PUBLIC_KEY", publicVapidKey);
-    console.log("VAPID_PRIVATE_KEY", privateVapidKey);
-    console.log("!!! ------------------------------- !!!\n");
+    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
+    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -62,10 +60,9 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
-    // --- THE BRIDGE: DISCORD -> APP ---
+    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
-        if (message.author.bot) return;
-        if (message.channelId !== DISCORD_CHANNEL_ID) return;
+        if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
 
         console.log(`Received Discord Alert: ${message.content}`);
 
@@ -85,32 +82,30 @@ if (DISCORD_BOT_TOKEN) {
             const activeSubs = [];
             let changed = false;
 
-            // Use Promise.all to process all notifications
+            // map through subscriptions to handle failures
             const pushPromises = subs.map(async (sub) => {
                 try {
                     await webpush.sendNotification(sub, payload);
                     activeSubs.push(sub); // Keep valid subscription
                 } catch (error) {
-                    changed = true;
-                    // FIX: Handle Expired/Unsubscribed (Status 410/404)
+                    changed = true; // Flag that we found a bad subscription
                     if (error.statusCode === 410 || error.statusCode === 404) {
-                        console.warn("⚠️ Subscription expired/gone. Removing from list.");
-                    } 
-                    // FIX: Handle Key Mismatch (Status 403)
-                    else if (error.statusCode === 403) {
-                        console.error("🚨 VAPID Key Mismatch: This user's key is invalid. Removing.");
+                        console.warn("🧹 Scrubbing expired subscription.");
+                    } else if (error.statusCode === 403) {
+                        console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
                     } else {
                         console.error("❌ Unexpected Push Error:", error.message);
-                        activeSubs.push(sub); // Keep if error is temporary/unknown
+                        activeSubs.push(sub); // Keep if error is temporary
                     }
                 }
             });
 
             await Promise.all(pushPromises);
 
-            // Update file only if subscriptions were removed
+            // Automatically clean the subscriptions.json file
             if (changed) {
                 fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
+                console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
             }
             
             message.react('✅');
@@ -118,8 +113,6 @@ if (DISCORD_BOT_TOKEN) {
             message.reply("No subscribers found yet!");
         }
     });
-} else {
-    console.log("⚠️ No FLEET_BOT_SECRET found in Railway Variables. Bot disabled.");
 }
 
 // Ensure upload directory exists
@@ -133,7 +126,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- 2. ROUTES ---
+// --- ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
@@ -166,7 +159,7 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- GOOGLE DRIVE & PDF LOGIC ---
+// --- GOOGLE DRIVE & PDF LOGIC (PRESERVED) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -222,8 +215,7 @@ app.post('/submit-report', async (req, res) => {
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
         const drive = google.drive({ version: 'v3', auth });
-        let targetFolderId = ACCIDENT_DRIVE_ID; 
-        if (data.reportType && !data.reportType.includes('Accident')) targetFolderId = ISSUE_DRIVE_ID;
+        let targetFolderId = data.reportType.includes('Accident') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
 
         const folder = await drive.files.create({
             resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] },
