@@ -7,50 +7,184 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         /* --- THEME SETTINGS --- */
-        :root { --bg-body: #0F1115; --bg-card: #161B28; --bg-input: #0b0d12; --primary-blue: #2563EB; --primary-glow: rgba(37, 99, 235, 0.4); --text-label: #3B82F6; --text-white: #ffffff; --text-gray: #94a3b8; --border-color: #2d3748; --radius: 12px; }
-        body { background-color: var(--bg-body); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: white; display: flex; justify-content: center; padding: 20px; margin: 0; min-height: 100vh; }
-        .container { width: 100%; max-width: 420px; background-color: var(--bg-card); border-radius: 24px; padding: 24px; border: 1px solid #1f2937; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
-        .back-link { color: var(--text-gray); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block; }
-        .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
-        h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+        :root {
+            --bg-body: #0F1115;       
+            --bg-card: #161B28;       
+            --bg-input: #0b0d12;      
+            --primary-blue: #2563EB;  
+            --primary-glow: rgba(37, 99, 235, 0.4);
+            --text-label: #3B82F6;    
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
+            --border-color: #2d3748;
+            --radius: 12px;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            background-color: var(--bg-card);
+            border-radius: 24px;
+            padding: 24px;
+            border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+
+        /* --- HEADERS --- */
+        .back-link {
+            color: var(--text-gray); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
+        }
+        .timestamp {
+            color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px;
+        }
+        h1 {
+            color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; 
+            text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+        }
+
+        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         .row-split { display: flex; gap: 10px; }
-        .vin-col { flex: 0.3; min-width: 70px; } .type-col { flex: 0.7; }
-        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; white-space: nowrap; }
-        input, textarea { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
-        #vehicleType { font-size: 12px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
+        .vin-col { flex: 0.3; min-width: 70px; } 
+        .type-col { flex: 0.7; }
+
+        label {
+            color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
+            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
+            white-space: nowrap; 
+        }
+        input, textarea {
+            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
+            padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        #vehicleType {
+            font-size: 12px; 
+            white-space: normal;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         input:focus, textarea:focus { border-color: var(--text-label); }
-        input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
+
+        /* Readonly Styling */
+        input[readonly] {
+            background-color: #1a202c; 
+            font-weight: bold;
+            cursor: not-allowed;
+            border-color: #2d3748;
+            color: #6b7280; 
+        }
+        
+        /* Auto-Fix Colors */
         input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
         input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
         input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
-        input[readonly].tow-yes { color: #4ade80 !important; border-color: #4ade80; } 
-        input[readonly].tow-no { color: #ea580c !important; border-color: #ea580c; }
-        .warning-msg { background-color: rgba(234, 88, 12, 0.15); border: 1px solid #ea580c; color: #fdba74; padding: 15px; border-radius: var(--radius); font-size: 12px; font-weight: bold; margin-bottom: 20px; line-height: 1.5; display: none; text-align: left; }
-        .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-        .tab-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 12px; border-radius: var(--radius); font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
-        .tab-btn.active { background-color: #1e3a8a; border-color: var(--text-label); color: white; box-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
+
+        /* Tow Modes */
+        input[readonly].tow-yes { color: #4ade80 !important; border-color: #4ade80; } /* Green */
+        input[readonly].tow-no { color: #ea580c !important; border-color: #ea580c; } /* Dark Orange */
+
+        /* Warning Box */
+        .warning-msg {
+            background-color: rgba(234, 88, 12, 0.15);
+            border: 1px solid #ea580c;
+            color: #fdba74;
+            padding: 15px;
+            border-radius: var(--radius);
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            line-height: 1.5;
+            display: none; /* Hidden by default */
+            text-align: left;
+        }
+
+        /* --- CATEGORY TABS --- */
+        .tabs {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px;
+        }
+        .tab-btn {
+            background-color: transparent; border: 1px solid #374151; color: #64748b;
+            padding: 12px; border-radius: var(--radius); font-size: 11px; font-weight: 800;
+            text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background-color: #1e3a8a; border-color: var(--text-label); color: white;
+            box-shadow: 0 0 15px rgba(37, 99, 235, 0.2);
+        }
+
+        /* --- LIST BUTTONS --- */
         .section { display: none; }
         .section.active { display: block; }
         .list-options { display: flex; flex-direction: column; gap: 10px; }
-        .list-btn { width: 100%; display: flex; align-items: center; gap: 15px; text-align: left; background-color: rgba(255, 255, 255, 0.03); border: 1px solid #334155; color: #E2E8F0; padding: 14px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; position: relative; }
+
+        .list-btn {
+            width: 100%; display: flex; align-items: center; gap: 15px; text-align: left;
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid #334155; color: #E2E8F0;
+            padding: 14px 16px; border-radius: var(--radius);
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease; position: relative;
+        }
         .list-btn:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.1); }
-        .list-btn.selected { background-color: var(--primary-blue); border-color: var(--primary-blue); color: white; box-shadow: 0 4px 15px var(--primary-glow); transform: translateY(-1px); }
+        .list-btn.selected {
+            background-color: var(--primary-blue); border-color: var(--primary-blue);
+            color: white; box-shadow: 0 4px 15px var(--primary-glow); transform: translateY(-1px);
+        }
         .list-btn.selected::after { content: "✓"; position: absolute; right: 20px; font-weight: bold; }
+
+        /* Icons */
         .opt-icon { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; fill: #94a3b8; }
-        .list-btn.selected .opt-icon { fill: white; }
-        .camera-box { border: 2px dashed #4b5563; border-radius: 16px; height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; background-color: rgba(255,255,255,0.02); position: relative; overflow: hidden; transition: border-color 0.2s; }
+        .list-btn.selected .opt-icon { fill: white; } 
+
+        /* --- CAMERA BOX --- */
+        .camera-box {
+            border: 2px dashed #4b5563; border-radius: 16px; height: 140px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; transition: border-color 0.2s;
+        }
         .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
         #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
-        #photo-preview-video { position: absolute; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 5; }
+        
+        /* VIDEO PREVIEW FOR FLASHLIGHT */
+        #photo-preview-video {
+            position: absolute; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 5;
+        }
+
         .camera-icon { width: 40px; height: 40px; fill: #cbd5e1; margin-bottom: 10px; z-index: 6; }
         .camera-title { font-size: 13px; font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: 4px; z-index: 6; }
         .camera-sub { font-size: 10px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; z-index: 6; }
+
+        /* --- MAP --- */
         #map { height: 180px; width: 100%; border-radius: var(--radius); margin-top: 10px; border: 1px solid #374151; }
         #gpsStatus { font-size: 11px; color: #4ade80; margin-top: 5px; text-align: right; display: none; }
+
+        /* --- HIDDEN NOTES --- */
         #otherNotesContainer { display: none; margin-top: 20px; animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        .submit-btn { width: 100%; background-color: var(--primary-blue); color: white; border: none; padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px; text-transform: uppercase; margin-top: 25px; cursor: pointer; box-shadow: 0 4px 20px var(--primary-glow); }
+
+        /* --- SUBMIT --- */
+        .submit-btn {
+            width: 100%; background-color: var(--primary-blue); color: white; border: none;
+            padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
+            text-transform: uppercase; margin-top: 25px; cursor: pointer;
+            box-shadow: 0 4px 20px var(--primary-glow);
+        }
     </style>
 </head>
 <body>
@@ -409,8 +543,7 @@ async function submitForm() {
         });
         const result = await res.json();
         if(result.success) {
-            alert("Report Submitted Successfully!");
-            window.location.href = '/';
+            window.location.href = '/success';
         } else {
             alert("Error: " + result.error);
             btn.innerText = "SUBMIT REPORT";
