@@ -23,10 +23,10 @@ self.addEventListener('push', function(event) {
 
     const options = {
         body: data.body,
-        icon: 'icon.jpg',    // The icon you have in your manifest
-        badge: 'icon.jpg',   // Small icon for the Android status bar
+        icon: '/icon.jpg',   // Added '/' to ensure it finds the image
+        badge: '/icon.jpg',  // Added '/' for Android status bar
         vibrate: [200, 100, 200], // Vibration pattern: Vibrate-Pause-Vibrate
-        tag: 'fleet-alert',  // grouping notifications
+        tag: 'fleet-alert',  // Groups notifications so they don't stack up
         renotify: true       // Vibrate again even if an old alert is still visible
     };
 
