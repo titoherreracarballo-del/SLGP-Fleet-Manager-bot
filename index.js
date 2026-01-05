@@ -103,7 +103,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     }
 });
 
-// --- REPORT SUBMISSION ENGINE ---
+// --- REPORT SUBMISSION ENGINE (PROFESSIONAL PDF) ---
 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -115,7 +115,8 @@ app.post('/submit-report', async (req, res) => {
         const drive = google.drive({ version: 'v3', auth });
         
         let targetFolderId = ACCIDENT_DRIVE_ID; 
-        if (data.reportType && data.reportType.toLowerCase().includes('issue')) {
+        // Checks if it is an issue report or accident
+        if (data.reportType && !data.reportType.includes('Accident')) {
             targetFolderId = ISSUE_DRIVE_ID;
         }
 
@@ -142,62 +143,108 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // 2. Generate PDF
+        // 2. Generate Professional PDF
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
-        const font = await doc.embedFont(StandardFonts.HelveticaBold);
-        const textFont = await doc.embedFont(StandardFonts.Helvetica);
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
         
-        page.drawRectangle({ x: 0, y: 740, width: 600, height: 60, color: rgb(0.1, 0.3, 0.7) });
-        page.drawText('SLGP FLEET REPORT', { x: 20, y: 760, size: 24, font: font, color: rgb(1,1,1) });
+        // --- HEADER BAR (Blue #2563EB) ---
+        page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.14, 0.38, 0.92) });
+        
+        // Header Text
+        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
+        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        let y = 700;
+        // Optional Logo (Upload 'logo.png' to server root if you want this)
+        try {
+            if (fs.existsSync('logo.png')) {
+                const logoBytes = fs.readFileSync('logo.png');
+                const logoImg = await doc.embedPng(logoBytes);
+                // Adjust scale as needed
+                page.drawImage(logoImg, { x: 500, y: 735, width: 50, height: 50 });
+            }
+        } catch(e) {}
+
+        let y = 680;
 
         const checkPage = () => {
             if (y < 50) { page = doc.addPage([600, 800]); y = 750; }
         };
 
-        const drawLabel = (label, value) => {
+        const drawField = (title, value) => {
             checkPage();
-            page.drawText(label, { x: 50, y, size: 10, font: font, color: rgb(0.5,0.5,0.5) });
-            y -= 15;
-            page.drawText(value || 'N/A', { x: 50, y, size: 14, font: textFont, color: rgb(0,0,0) });
-            y -= 30;
+            page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
+            page.drawText(value || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            y -= 25;
+            // Faint divider line
+            page.drawLine({ start: { x: 30, y: y+10 }, end: { x: 570, y: y+10 }, thickness: 0.5, color: rgb(0.9,0.9,0.9) });
+            y -= 10;
         };
 
-        drawLabel('REPORT TYPE', data.reportType);
-        drawLabel('DRIVER NAME', data.driverName);
-        drawLabel('DATE', new Date().toLocaleString());
-
-        if (data.reportType === 'Accident / Incident') {
-             drawLabel('INCIDENT TYPE', data.subType);
-             drawLabel('STATEMENT', data.statement);
+        // --- REPORT DETAILS ---
+        drawField('REPORT CATEGORY', data.reportType.toUpperCase());
+        drawField('DRIVER NAME', data.driverName);
+        drawField('VIN (LAST 4)', data.vinLast4);
+        drawField('VEHICLE TYPE', data.vehicleType);
+        drawField('DATE & TIME', `${data.date} at ${data.time}`);
+        
+        if (data.reportType.includes('Road')) {
+            drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
         } else {
-             if (data.tags) drawLabel('TAGS', data.tags.join(', '));
-             drawLabel('DESCRIPTION', data.otherDescription);
+            drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
         }
+        
+        // Notes Section
+        checkPage();
+        y -= 10;
+        page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
+        y -= 20;
+        
+        const notes = data.otherDescription || "No additional notes provided.";
+        // Simple text wrap
+        const words = notes.split(' ');
+        let line = '';
+        for (const word of words) {
+            if ((line + word).length > 85) {
+                page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+                y -= 15;
+                line = '';
+                checkPage();
+            }
+            line += word + ' ';
+        }
+        page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+        y -= 40;
 
+        // --- PHOTOS SECTION ---
         if (photoBuffers.length > 0) {
             checkPage();
-            y -= 20;
-            page.drawText('ATTACHED PHOTOS:', { x: 50, y, size: 12, font: font, color: rgb(0,0,0) });
-            y -= 20;
+            if(y < 200) { page = doc.addPage([600, 800]); y = 750; }
+            
+            // Blue Sub-header for photos
+            page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.95, 0.95, 0.95) });
+            page.drawText('ATTACHED EVIDENCE PHOTOS', { x: 40, y: y+8, size: 10, font: fontBold, color: rgb(0.14, 0.38, 0.92) });
+            y -= 30;
 
             for (const buffer of photoBuffers) {
                 try {
                     const img = await doc.embedJpg(buffer);
-                    const imgDims = img.scale(0.5);
+                    // Scale image to fit max width
+                    const maxW = 500;
+                    const dims = img.scaleToFit(maxW, 400);
                     
-                    if (y - imgDims.height < 50) { 
+                    if (y - dims.height < 50) { 
                         page = doc.addPage([600, 800]); 
                         y = 750; 
                     }
                     
                     page.drawImage(img, {
-                        x: 50, y: y - imgDims.height,
-                        width: imgDims.width, height: imgDims.height,
+                        x: 50, // Centered roughly
+                        y: y - dims.height,
+                        width: dims.width, height: dims.height,
                     });
-                    y -= (imgDims.height + 20);
+                    y -= (dims.height + 20);
                 } catch (e) {
                     console.log("Photo embed skipped (format error)");
                 }
@@ -207,28 +254,26 @@ app.post('/submit-report', async (req, res) => {
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
 
-        // --- 3. EMAIL ROUTING (UPDATED TO USE RAILWAY VARIABLES) ---
-        
-        // This connects using the variables you set in Railway
+        // --- 3. EMAIL ROUTING (UPDATED) ---
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { 
-                user: process.env.EMAIL_USER, // Will read 'slgpfleetmanager@gmail.com'
-                pass: process.env.EMAIL_PASS  // Will read your 16-char App Password
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
             }
         });
 
-        // Determine who gets the email
+        // Determine recipients
         const recipients = data.reportType.includes('Accident') 
             ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com']
             : ['slgpfleetmanager@gmail.com'];
 
         await transporter.sendMail({
-            from: process.env.EMAIL_USER, // Send from the authenticated account
+            from: process.env.EMAIL_USER,
             to: recipients,
-            subject: `REPORT: ${data.driverName} - ${data.reportType}`,
-            text: `A new report has been submitted.\n\nType: ${data.reportType}\nDriver: ${data.driverName}\n\nSee PDF attached.\n\nFiles: https://drive.google.com/drive/folders/${folderId}`,
-            attachments: [{ filename: 'Report_Snapshot.pdf', path: pdfPath }]
+            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
+            text: `A new vehicle report has been submitted.\n\nCategory: ${data.reportType}\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nThe official PDF report is attached to this email.\n\nView Full Files: https://drive.google.com/drive/folders/${folderId}`,
+            attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
         fs.unlinkSync(pdfPath);
