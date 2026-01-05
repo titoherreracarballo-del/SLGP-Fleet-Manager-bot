@@ -9,10 +9,12 @@
     <link rel="apple-touch-icon" href="icon.jpg">
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
-        /* --- DIGITAL HUD THEME STYLES --- */
+        /* --- DIGITAL HUD THEME --- */
         :root {
             --bg-dark: #050B14;
-            --bg-card-dark: linear-gradient(135deg, #1a1f2c, #0d1117);
+            /* Metallic Card Gradient background */
+            --bg-card-metal: linear-gradient(135deg, #242a38 0%, #121621 100%);
+            --border-glass: rgba(255, 255, 255, 0.1);
             --text-primary: #E2E8F0;
             --text-dim: #64748B;
             
@@ -25,12 +27,11 @@
 
         body {
             background-color: var(--bg-dark);
-            /* Abstract circuit/grid background */
+            /* Tech Grid Background Pattern */
             background-image: 
-                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 60%),
                 linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 100% 100%, 30px 30px, 30px 30px;
+            background-size: 40px 40px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: var(--text-primary);
             display: flex;
@@ -42,123 +43,113 @@
             box-sizing: border-box;
         }
 
-        /* --- HEADER ELEMENTS --- */
+        /* --- HEADER & LOGO --- */
         .system-header {
-            width: 100%; max-width: 360px; display: flex; justify-content: space-between;
+            width: 100%; max-width: 340px; display: flex; justify-content: space-between;
             font-size: 10px; color: var(--neon-blue); text-transform: uppercase;
             letter-spacing: 2px; margin-bottom: 20px; opacity: 0.8; font-weight: 700;
         }
 
         .logo-container { 
-            width: 100%; max-width: 300px;
+            width: 100%; max-width: 280px;
             background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; 
-            border-radius: 20px; margin-bottom: 30px; 
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-glass); padding: 20px; 
+            border-radius: 24px; margin-bottom: 30px; 
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            position: relative; overflow: hidden;
         }
         .logo-container img { width: 100%; display: block; border-radius: 12px; }
         
         /* --- MENU GRID --- */
         .menu-grid {
-            width: 100%; max-width: 360px;
-            display: flex; flex-direction: column; gap: 20px;
+            width: 100%; max-width: 340px;
+            display: flex; flex-direction: column; gap: 25px;
         }
 
-        /* --- DIGITAL CREDIT CARD STYLE --- */
-        .menu-card {
+        /* --- DIGITAL CREDIT CARD CONTAINER STYLE --- */
+        .menu-btn {
             position: relative;
-            display: block;
-            width: 100%;
-            height: 160px; /* Credit card aspect ratio */
-            border-radius: 20px;
+            display: flex; flex-direction: column; 
+            width: 100%; 
+            /* Credit Card Shape */
+            border-radius: 16px; 
             text-decoration: none;
-            background: var(--bg-card-dark);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            /* Dark Metallic Background */
+            background: var(--bg-card-metal);
+            /* Thicker glowing borders */
+            border: 2px solid var(--border-glass);
+            overflow: hidden;
             box-shadow: 0 10px 25px rgba(0,0,0,0.6);
         }
 
-        .menu-card:active { transform: scale(0.98); }
-        .menu-card:hover { transform: translateY(-5px); }
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn:hover { transform: translateY(-5px); }
 
-        /* Background Image Integration */
-        .card-bg {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background-size: cover; background-position: center;
-            opacity: 0.15; /* Subtle background texture */
-            mix-blend-mode: luminosity;
-            z-index: 0; transition: opacity 0.3s;
-        }
-        .menu-card:hover .card-bg { opacity: 0.3; }
-
-        /* Card Overlays (Scanlines/Glare) */
-        .menu-card::after {
+        /* Subtle tech pattern overlay on the card background */
+        .menu-btn::after {
             content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
-            background-size: 100% 3px; pointer-events: none; z-index: 1; opacity: 0.3;
+            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.02) 10px, rgba(255,255,255,0.02) 20px);
+            pointer-events: none; z-index: 0;
         }
 
-        /* Content Layout */
-        .card-content {
-            position: relative; z-index: 2; height: 100%; padding: 20px;
-            display: flex; flex-direction: column; justify-content: space-between;
+        /* --- IMAGE AREA (Top Half) --- */
+        .btn-img-box { 
+            width: 100%; height: 130px; overflow: hidden; position: relative;
+            border-bottom: 2px solid rgba(0,0,0,0.3); z-index: 1;
+            background: #000; /* Dark background behind image to make colors pop */
         }
-
-        /* Top Section (Chips/Icons) */
-        .card-top { display: flex; justify-content: space-between; align-items: center; }
         
-        /* Fake EMV Chip */
-        .chip {
-            width: 45px; height: 35px;
-            background: linear-gradient(135deg, #d4af37, #a8860b);
-            border-radius: 6px; position: relative; overflow: hidden;
-            border: 1px solid rgba(0,0,0,0.2);
+        .btn-img { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transition: transform 0.5s; opacity: 1;
         }
-        .chip::before {
-            content: ""; position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(0,0,0,0.3);
-        }
-        .chip::after {
-             content: ""; position: absolute; left: 33%; top: 0; width: 33%; height: 100%; border-left: 1px solid rgba(0,0,0,0.3); border-right: 1px solid rgba(0,0,0,0.3);
-        }
+        .menu-btn:hover .btn-img { transform: scale(1.05); }
 
-        .contactless { width: 24px; height: 24px; fill: rgba(255,255,255,0.7); transform: rotate(90deg); }
-
-        /* Bottom Section (Title/Arrow) */
-        .card-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
+        /* --- TEXT LABEL AREA (Bottom Half) --- */
+        .btn-content {
+            padding: 18px 20px; z-index: 1;
+            display: flex; justify-content: space-between; align-items: center;
+            /* Slightly lighter footer area for contrast */
+            background: rgba(255,255,255,0.02);
+        }
 
         .btn-label {
-            font-size: 18px; font-weight: 900; color: white;
+            font-size: 15px; font-weight: 900; color: white;
             text-transform: uppercase; letter-spacing: 1px;
-            text-shadow: 0 2px 5px rgba(0,0,0,0.8);
-            max-width: 80%;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
 
         .btn-icon {
             width: 24px; height: 24px; opacity: 0.7;
             transition: transform 0.3s, opacity 0.3s;
         }
-        .menu-card:hover .btn-icon { transform: translateX(5px); opacity: 1; }
+        .menu-btn:hover .btn-icon { transform: translateX(5px); opacity: 1; }
 
-        /* --- THEME GLOWS --- */
-        .theme-video { border-color: rgba(0, 242, 255, 0.4); }
+        /* --- THEME GLOWING BORDERS --- */
+        
+        /* VIDEO (Blue) */
+        .theme-video { border-color: var(--neon-blue); }
         .theme-video:hover { box-shadow: 0 0 25px rgba(0, 242, 255, 0.4); }
-        .theme-video .btn-icon, .theme-video .contactless { fill: var(--neon-blue); }
+        .theme-video .btn-icon { fill: var(--neon-blue); }
 
-        .theme-issue { border-color: rgba(255, 170, 0, 0.4); }
+        /* ISSUE (Orange) */
+        .theme-issue { border-color: var(--neon-orange); }
         .theme-issue:hover { box-shadow: 0 0 25px rgba(255, 170, 0, 0.4); }
-        .theme-issue .btn-icon, .theme-issue .contactless { fill: var(--neon-orange); }
+        .theme-issue .btn-icon { fill: var(--neon-orange); }
 
-        .theme-accident { border-color: rgba(255, 42, 42, 0.4); }
+        /* ACCIDENT (Red) */
+        .theme-accident { border-color: var(--neon-red); }
         .theme-accident:hover { box-shadow: 0 0 25px rgba(255, 42, 42, 0.4); }
-        .theme-accident .btn-icon, .theme-accident .contactless { fill: var(--neon-red); }
+        .theme-accident .btn-icon { fill: var(--neon-red); }
 
-        .theme-insurance { border-color: rgba(0, 255, 136, 0.4); }
+        /* INSURANCE (Green) */
+        .theme-insurance { border-color: var(--neon-green); }
         .theme-insurance:hover { box-shadow: 0 0 25px rgba(0, 255, 136, 0.4); }
-        .theme-insurance .btn-icon, .theme-insurance .contactless { fill: var(--neon-green); }
+        .theme-insurance .btn-icon { fill: var(--neon-green); }
 
         .footer { 
-            margin-top: 30px; font-size: 10px; color: var(--text-dim); 
+            margin-top: 40px; font-size: 10px; color: var(--text-dim); 
             letter-spacing: 1px; text-transform: uppercase;
         }
     </style>
@@ -166,8 +157,8 @@
 <body>
 
     <div class="system-header">
-        <span>SECURE ACCESS</span>
-        <span>SLGP-NET v6.3</span>
+        <span>System: Online</span>
+        <span>SLGP-NET v6.4</span>
     </div>
 
     <div class="logo-container">
@@ -175,59 +166,43 @@
     </div>
 
     <div class="menu-grid">
-        <a href="/video" class="menu-card theme-video">
-            <div class="card-bg" style="background-image: url('Pre & Post Fleet Vids.jpg');"></div>
-            <div class="card-content">
-                <div class="card-top">
-                    <div class="chip"></div>
-                    <svg class="contactless" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM7.1 13.54c.26-.26.62-.39.96-.36.82.06 1.63.3 2.38.73.98.55 1.58 1.55 1.58 2.66 0 .28-.05.55-.13.81-.15.48-.53.86-1.02 1.02-.26.08-.53.13-.81.13-1.11 0-2.11-.6-2.66-1.58-.43-.75-.67-1.56-.73-2.38-.03-.34.1-.7.36-.96-.01.01-.01.01-.01-.01zM12.4 6.03c-.28-.28-.66-.42-1.04-.39-1.4.11-2.76.62-3.97 1.49-1.56 1.12-2.49 2.93-2.49 4.87 0 .63.11 1.24.33 1.82.27 1.04 1.22 1.78 2.31 1.78.2 0 .4-.02.6-.07 1.35-.36 2.33-1.56 2.33-2.98 0-.77-.3-1.47-.82-1.99-.28-.28-.67-.42-1.05-.39-.56.04-1.1.25-1.59.6-1.12.8-1.78 2.1-1.78 3.49 0 .25.04.5.13.73.1.27.28.51.51.7.78.65 1.89.65 2.67 0 .23-.19.41-.43.51-.7.09-.23.13-.48.13-.73 0-1.39-.66-2.69-1.78-3.49-.49-.35-1.03-.56-1.59-.6-1.14-.09-2.24.33-3.04 1.13z"/></svg>
-                </div>
-                <div class="card-bottom">
-                    <div class="btn-label">Pre & Post Fleet Vids</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
+        <a href="/video" class="menu-btn theme-video">
+            <div class="btn-img-box">
+                <img src="Pre & Post Fleet Vids.jpg" class="btn-img" alt="Video">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Pre & Post Fleet Vids</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
             </div>
         </a>
 
-        <a href="/report?mode=issue" class="menu-card theme-issue">
-            <div class="card-bg" style="background-image: url('Report An Issue.jpg');"></div>
-            <div class="card-content">
-                <div class="card-top">
-                    <div class="chip"></div>
-                    <svg class="contactless" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM7.1 13.54c.26-.26.62-.39.96-.36.82.06 1.63.3 2.38.73.98.55 1.58 1.55 1.58 2.66 0 .28-.05.55-.13.81-.15.48-.53.86-1.02 1.02-.26.08-.53.13-.81.13-1.11 0-2.11-.6-2.66-1.58-.43-.75-.67-1.56-.73-2.38-.03-.34.1-.7.36-.96-.01.01-.01.01-.01zM12.4 6.03c-.28-.28-.66-.42-1.04-.39-1.4.11-2.76.62-3.97 1.49-1.56 1.12-2.49 2.93-2.49 4.87 0 .63.11 1.24.33 1.82.27 1.04 1.22 1.78 2.31 1.78.2 0 .4-.02.6-.07 1.35-.36 2.33-1.56 2.33-2.98 0-.77-.3-1.47-.82-1.99-.28-.28-.67-.42-1.05-.39-.56.04-1.1.25-1.59.6-1.12.8-1.78 2.1-1.78 3.49 0 .25.04.5.13.73.1.27.28.51.51.7.78.65 1.89.65 2.67 0 .23-.19.41-.43.51-.7.09-.23.13-.48.13-.73 0-1.39-.66-2.69-1.78-3.49-.49-.35-1.03-.56-1.59-.6-1.14-.09-2.24.33-3.04 1.13z"/></svg>
-                </div>
-                <div class="card-bottom">
-                    <div class="btn-label">Report Issue</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
+        <a href="/report?mode=issue" class="menu-btn theme-issue">
+            <div class="btn-img-box">
+                <img src="Report An Issue.jpg" class="btn-img" alt="Issue">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Report Issue</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
             </div>
         </a>
 
-        <a href="/report?mode=accident" class="menu-card theme-accident">
-            <div class="card-bg" style="background-image: url('Accident or Incident Reporting.jpg');"></div>
-            <div class="card-content">
-                <div class="card-top">
-                    <div class="chip"></div>
-                    <svg class="contactless" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM7.1 13.54c.26-.26.62-.39.96-.36.82.06 1.63.3 2.38.73.98.55 1.58 1.55 1.58 2.66 0 .28-.05.55-.13.81-.15.48-.53.86-1.02 1.02-.26.08-.53.13-.81.13-1.11 0-2.11-.6-2.66-1.58-.43-.75-.67-1.56-.73-2.38-.03-.34.1-.7.36-.96-.01.01-.01.01-.01zM12.4 6.03c-.28-.28-.66-.42-1.04-.39-1.4.11-2.76.62-3.97 1.49-1.56 1.12-2.49 2.93-2.49 4.87 0 .63.11 1.24.33 1.82.27 1.04 1.22 1.78 2.31 1.78.2 0 .4-.02.6-.07 1.35-.36 2.33-1.56 2.33-2.98 0-.77-.3-1.47-.82-1.99-.28-.28-.67-.42-1.05-.39-.56.04-1.1.25-1.59.6-1.12.8-1.78 2.1-1.78 3.49 0 .25.04.5.13.73.1.27.28.51.51.7.78.65 1.89.65 2.67 0 .23-.19.41-.43.51-.7.09-.23.13-.48.13-.73 0-1.39-.66-2.69-1.78-3.49-.49-.35-1.03-.56-1.59-.6-1.14-.09-2.24.33-3.04 1.13z"/></svg>
-                </div>
-                <div class="card-bottom">
-                    <div class="btn-label">Accident/Incident Report</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
+        <a href="/report?mode=accident" class="menu-btn theme-accident">
+            <div class="btn-img-box">
+                <img src="Accident or Incident Reporting.jpg" class="btn-img" alt="Accident">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Accident/Incident Report</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
             </div>
         </a>
 
-        <a href="/report?mode=insurance" class="menu-card theme-insurance">
-            <div class="card-bg" style="background-image: url('Vehicle Insurance Card.jpg');"></div>
-            <div class="card-content">
-                <div class="card-top">
-                    <div class="chip"></div>
-                    <svg class="contactless" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM7.1 13.54c.26-.26.62-.39.96-.36.82.06 1.63.3 2.38.73.98.55 1.58 1.55 1.58 2.66 0 .28-.05.55-.13.81-.15.48-.53.86-1.02 1.02-.26.08-.53.13-.81.13-1.11 0-2.11-.6-2.66-1.58-.43-.75-.67-1.56-.73-2.38-.03-.34.1-.7.36-.96-.01.01-.01.01-.01zM12.4 6.03c-.28-.28-.66-.42-1.04-.39-1.4.11-2.76.62-3.97 1.49-1.56 1.12-2.49 2.93-2.49 4.87 0 .63.11 1.24.33 1.82.27 1.04 1.22 1.78 2.31 1.78.2 0 .4-.02.6-.07 1.35-.36 2.33-1.56 2.33-2.98 0-.77-.3-1.47-.82-1.99-.28-.28-.67-.42-1.05-.39-.56.04-1.1.25-1.59.6-1.12.8-1.78 2.1-1.78 3.49 0 .25.04.5.13.73.1.27.28.51.51.7.78.65 1.89.65 2.67 0 .23-.19.41-.43.51-.7.09-.23.13-.48.13-.73 0-1.39-.66-2.69-1.78-3.49-.49-.35-1.03-.56-1.59-.6-1.14-.09-2.24.33-3.04 1.13z"/></svg>
-                </div>
-                <div class="card-bottom">
-                    <div class="btn-label">Insurance Cards</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
+        <a href="/report?mode=insurance" class="menu-btn theme-insurance">
+            <div class="btn-img-box">
+                <img src="Vehicle Insurance Card.jpg" class="btn-img" alt="Insurance">
+            </div>
+            <div class="btn-content">
+                <div class="btn-label">Insurance Cards</div>
+                <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
             </div>
         </a>
     </div>
