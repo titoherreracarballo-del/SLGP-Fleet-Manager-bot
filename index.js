@@ -115,7 +115,6 @@ app.post('/submit-report', async (req, res) => {
         const drive = google.drive({ version: 'v3', auth });
         
         let targetFolderId = ACCIDENT_DRIVE_ID; 
-        // Checks if it is an issue report or accident
         if (data.reportType && !data.reportType.includes('Accident')) {
             targetFolderId = ISSUE_DRIVE_ID;
         }
