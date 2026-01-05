@@ -6,7 +6,7 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
-const cron = require('node-cron'); 
+const cron = require('node-cron');
 const webpush = require('web-push');
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 
@@ -19,16 +19,16 @@ const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 
-// --- DISCORD BOT SETUP (RENAMED VARIABLE) ---
-// We are now looking for 'FLEET_BOT_SECRET' instead of the default name
-const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET; 
-const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID; 
+// --- DISCORD BOT SETUP ---
+// We are looking for 'FLEET_BOT_SECRET'
+const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent 
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -346,7 +346,7 @@ cron.schedule('30 23 * * *', async () => {
             page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
             page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 25;
-            page.drawText(`DRIVER: ${log.driverName}   |   VIN: ${log.vinLast4}   |   TIME: ${log.time}`, { x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) });
+            page.drawText(`DRIVER: ${log.driverName}    |    VIN: ${log.vinLast4}    |    TIME: ${log.time}`, { x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             if(log.tags && log.tags.length > 0) { page.drawText(`ISSUES: ${log.tags.join(', ')}`, { x: 30, y: y-15, size: 10, font: fontReg, color: rgb(0.2, 0.2, 0.2) }); y -= 15; }
             if(log.otherDescription) { 
