@@ -9,7 +9,6 @@
     <link rel="apple-touch-icon" href="icon.jpg">
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
-        /* --- AMAZON BLUE HUD THEME --- */
         :root {
             --bg-dark: #000000;
             --bg-card-metal: linear-gradient(135deg, #232F3E 0%, #131A22 100%);
@@ -38,7 +37,6 @@
             box-sizing: border-box;
         }
 
-        /* --- SECURITY GATE (RESPONSIVE & SIZED) --- */
         #security-gate {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -72,12 +70,7 @@
             color: var(--amazon-orange);
         }
 
-        .exclamation-symbol {
-            font-size: 50px;
-            font-weight: 900;
-            margin-bottom: 5px;
-            text-shadow: 0 0 15px var(--amazon-orange);
-        }
+        .exclamation-symbol { font-size: 50px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 15px var(--amazon-orange); }
 
         .main-disclaimer {
             font-size: 13px;
@@ -88,28 +81,11 @@
             line-height: 1.3;
         }
 
-        .checklist-container {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 15px;
-        }
+        .checklist-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
 
-        .check-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 11.5px;
-            color: var(--text-primary);
-            cursor: pointer;
-        }
+        .check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 11.5px; cursor: pointer; }
 
-        .check-item input[type="checkbox"] {
-            width: 17px;
-            height: 17px;
-            accent-color: var(--amazon-orange);
-            flex-shrink: 0;
-        }
+        .check-item input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--amazon-orange); flex-shrink: 0; }
 
         .policy-warning {
             font-size: 10.5px;
@@ -122,14 +98,7 @@
             margin-bottom: 15px;
         }
 
-        .ack-container { margin-top: 10px; }
-
-        .ack-label {
-            font-size: 10px;
-            color: var(--amazon-orange);
-            font-weight: bold;
-            text-transform: uppercase;
-        }
+        .ack-label { font-size: 10px; color: var(--amazon-orange); font-weight: bold; text-transform: uppercase; }
 
         .ack-input {
             width: 100%;
@@ -154,20 +123,13 @@
             font-weight: 900;
             text-transform: uppercase;
             cursor: not-allowed;
-            letter-spacing: 1px;
             opacity: 0.3;
             transition: 0.3s;
         }
 
-        .gate-btn.active {
-            cursor: pointer;
-            opacity: 1;
-            box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
-        }
+        .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 15px var(--amazon-orange); }
 
-        /* --- MAIN UI --- */
         #main-ui { display: none; width: 100%; max-width: 340px; }
-        .system-header { width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; font-weight: 700; }
         .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
         .logo-container img { width: 100%; border-radius: 12px; }
         .menu-grid { display: flex; flex-direction: column; gap: 20px; }
@@ -192,21 +154,18 @@
                 <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">Departure Requirements</h2>
             </div>
             
-            <p class="main-disclaimer">
-                All SLGP employees are required to adhere to the following standards prior to beginning their shift:
-            </p>
+            <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
 
             <div class="checklist-container">
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary operational tools (e.g., power bank, charging cable, gas card).</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van is equipped with a phone mount, unless operating an EDV.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete and submit the required pre‑check health video.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary operational tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van is equipped with a phone mount.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete and submit the required health video.</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete the DVIC within the Flex app.</span></label>
             </div>
 
             <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than your scheduled wave time</strong>. Once a DA leaves the facility, they are responsible for providing their own equipment to complete their route.<br><br>
-                By submitting, you confirm that all requirements above have been met. Failure to do so, or attempting to bypass this confirmation, is a breach of company policies. SLGP will not reimburse fuel purchases or equipment such as charging cables, power banks, gas cards, or other required tools.
+                Any equipment needs must be reported <strong>no later than your wave time</strong>. Drivers are responsible for equipment once they leave. Failure to adhere is a breach of policy. SLGP will not reimburse fuel or equipment purchases.
             </div>
 
             <div class="ack-container">
@@ -235,38 +194,40 @@
         const checkboxes = document.querySelectorAll('.gate-check');
         const nameInput = document.getElementById('da-name');
         const submitBtn = document.getElementById('gate-submit');
+
         checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
+
         function validateGate() {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             const nameEntered = nameInput.value.trim().length > 3;
             if (allChecked && nameEntered) submitBtn.classList.add('active');
             else submitBtn.classList.remove('active');
         }
-        function unlockPortal() {
+
+        async function unlockPortal() {
             if (!submitBtn.classList.contains('active')) return;
-            document.getElementById('security-gate').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('security-gate').style.display = 'none';
-                document.getElementById('main-ui').style.display = 'block';
-            }, 500);
+            const daName = nameInput.value.trim();
+            
+            await fetch('/log-gate-check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: daName })
+            });
+            
+            document.getElementById('security-gate').style.display = 'none';
+            document.getElementById('main-ui').style.display = 'block';
         }
-        async function updateVersion() {
-            try {
-                const res = await fetch('/version');
-                const data = await res.json();
-                document.getElementById('app-version').innerText = "Build: " + data.version;
-                document.getElementById('header-version').innerText = "v" + data.version;
-            } catch (e) {}
-        }
-        updateVersion();
+
         const btn = document.getElementById('notifyBtn');
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
+
         async function initializeUI() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
             btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
             btn.className = sub ? "notify-active" : "notify-inactive";
         }
+
         btn.addEventListener('click', async () => {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
@@ -281,6 +242,7 @@
                 initializeUI();
             }
         });
+
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
