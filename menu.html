@@ -95,7 +95,8 @@
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
             </div>
             <div class="policy-warning">
-                Report equipment <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.
+                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.<br><br>
+                By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
@@ -124,7 +125,7 @@
             const now = new Date();
             const currentHour = now.getHours();
             
-            // FOR TESTING: Change true to (currentHour >= 10 && currentHour < 18) for live schedule
+            // Set to true to show gate immediately for testing
             if (true) { 
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
@@ -158,7 +159,6 @@
             
             const daName = nameInput.value.trim();
             try {
-                // Fixed: Calls the backend route that generates the snapshot PDF receipt
                 await fetch('/log-gate-check', { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
