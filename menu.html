@@ -124,7 +124,7 @@
             const now = new Date();
             const currentHour = now.getHours();
             
-            // Set to true to show gate immediately for testing
+            // FOR TESTING: Change true to (currentHour >= 10 && currentHour < 18) for live schedule
             if (true) { 
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
@@ -158,6 +158,7 @@
             
             const daName = nameInput.value.trim();
             try {
+                // Fixed: Calls the backend route that generates the snapshot PDF receipt
                 await fetch('/log-gate-check', { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
