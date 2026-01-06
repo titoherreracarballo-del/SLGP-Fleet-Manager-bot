@@ -83,7 +83,7 @@
 
         .checklist-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
 
-        .check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 11.5px; cursor: pointer; }
+        .check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 11.5px; color: var(--text-primary); cursor: pointer; }
 
         .check-item input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--amazon-orange); flex-shrink: 0; }
 
@@ -92,10 +92,11 @@
             color: var(--text-dim);
             line-height: 1.4;
             padding: 12px;
-            background: rgba(0,0,0,0.4);
+            background: rgba(26, 31, 37, 0.9);
             border-radius: 8px;
-            border-left: 3px solid var(--amazon-orange);
+            border-left: 4px solid var(--amazon-orange);
             margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
         .ack-label { font-size: 10px; color: var(--amazon-orange); font-weight: bold; text-transform: uppercase; }
@@ -165,7 +166,8 @@
             </div>
 
             <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than your wave time</strong>. Drivers are responsible for equipment once they leave. Failure to adhere is a breach of policy. SLGP will not reimburse fuel or equipment purchases.
+                Any equipment needs must be reported <strong>no later than your scheduled wave time</strong>. Once a DA leaves the facility, they are responsible for providing their own equipment to complete their route.<br><br>
+                By submitting, you confirm that all requirements above have been met. Failure to do so, or attempting to bypass this confirmation, is a breach of company policies. SLGP will not reimburse fuel purchases or equipment such as charging cables, power banks, gas cards, or other required tools.
             </div>
 
             <div class="ack-container">
@@ -194,16 +196,13 @@
         const checkboxes = document.querySelectorAll('.gate-check');
         const nameInput = document.getElementById('da-name');
         const submitBtn = document.getElementById('gate-submit');
-
         checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
-
         function validateGate() {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             const nameEntered = nameInput.value.trim().length > 3;
             if (allChecked && nameEntered) submitBtn.classList.add('active');
             else submitBtn.classList.remove('active');
         }
-
         async function unlockPortal() {
             if (!submitBtn.classList.contains('active')) return;
             const daName = nameInput.value.trim();
@@ -217,17 +216,23 @@
             document.getElementById('security-gate').style.display = 'none';
             document.getElementById('main-ui').style.display = 'block';
         }
-
+        async function updateVersion() {
+            try {
+                const res = await fetch('/version');
+                const data = await res.json();
+                document.getElementById('app-version').innerText = "Build: " + data.version;
+                document.getElementById('header-version').innerText = "v" + data.version;
+            } catch (e) {}
+        }
+        updateVersion();
         const btn = document.getElementById('notifyBtn');
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
-
         async function initializeUI() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
             btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
             btn.className = sub ? "notify-active" : "notify-inactive";
         }
-
         btn.addEventListener('click', async () => {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
@@ -242,7 +247,6 @@
                 initializeUI();
             }
         });
-
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
