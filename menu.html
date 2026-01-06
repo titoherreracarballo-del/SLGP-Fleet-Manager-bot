@@ -38,7 +38,7 @@
             box-sizing: border-box;
         }
 
-        /* --- SECURITY GATE (RESIZED & RESPONSIVE) --- */
+        /* --- SECURITY GATE (RESPONSIVE & SIZED) --- */
         #security-gate {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -49,20 +49,18 @@
             align-items: center;
             padding: 10px;
             box-sizing: border-box;
-            overflow-y: auto; /* Allows scrolling if content is too tall for small screens */
+            overflow-y: auto;
         }
 
         .gate-content {
             width: 100%;
-            max-width: 420px;
+            max-width: 440px;
             padding: 20px;
             border: 2px solid var(--amazon-orange);
             border-radius: 15px;
             background: rgba(35, 47, 62, 0.98);
             box-shadow: 0 0 40px rgba(255, 153, 0, 0.2);
             box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
         }
 
         .disclaimer-header {
@@ -70,7 +68,7 @@
             flex-direction: column;
             align-items: center;
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             color: var(--amazon-orange);
         }
 
@@ -81,26 +79,19 @@
             text-shadow: 0 0 15px var(--amazon-orange);
         }
 
-        .gate-title {
-            margin: 0;
-            font-size: 1.2rem;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
         .main-disclaimer {
             font-size: 13px;
             color: #FFFFFF;
             font-weight: 800;
             margin-bottom: 15px;
             text-align: center;
-            line-height: 1.4;
+            line-height: 1.3;
         }
 
         .checklist-container {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 15px;
         }
 
@@ -108,38 +99,33 @@
             display: flex;
             align-items: flex-start;
             gap: 10px;
-            font-size: 12px;
+            font-size: 11.5px;
             color: var(--text-primary);
             cursor: pointer;
         }
 
         .check-item input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
+            width: 17px;
+            height: 17px;
             accent-color: var(--amazon-orange);
             flex-shrink: 0;
-            margin-top: 2px;
         }
 
         .policy-warning {
-            font-size: 11px;
+            font-size: 10.5px;
             color: var(--text-dim);
             line-height: 1.4;
-            padding: 10px;
+            padding: 12px;
             background: rgba(0,0,0,0.4);
             border-radius: 8px;
             border-left: 3px solid var(--amazon-orange);
             margin-bottom: 15px;
         }
 
-        .ack-container {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
+        .ack-container { margin-top: 10px; }
 
-        .da-label {
-            font-size: 11px;
+        .ack-label {
+            font-size: 10px;
             color: var(--amazon-orange);
             font-weight: bold;
             text-transform: uppercase;
@@ -154,6 +140,7 @@
             color: white;
             box-sizing: border-box;
             font-size: 14px;
+            margin-top: 5px;
         }
 
         .gate-btn {
@@ -202,7 +189,7 @@
         <div class="gate-content">
             <div class="disclaimer-header">
                 <span class="exclamation-symbol">!</span>
-                <h2 class="gate-title">Departure Requirements</h2>
+                <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">Departure Requirements</h2>
             </div>
             
             <p class="main-disclaimer">
@@ -211,19 +198,20 @@
 
             <div class="checklist-container">
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary operational tools.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van is equipped with a phone mount (unless EDV).</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete and submit required health video.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary operational tools (e.g., power bank, charging cable, gas card).</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van is equipped with a phone mount, unless operating an EDV.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete and submit the required pre‑check health video.</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete the DVIC within the Flex app.</span></label>
             </div>
 
             <div class="policy-warning">
-                Report equipment needs <strong>no later than your wave time</strong>. Drivers are responsible for equipment once they leave the facility. SLGP will not reimburse for fuel or personal tool purchases. Bypassing this is a breach of policy.
+                Any equipment needs must be reported <strong>no later than your scheduled wave time</strong>. Once a DA leaves the facility, they are responsible for providing their own equipment to complete their route.<br><br>
+                By submitting, you confirm that all requirements above have been met. Failure to do so, or attempting to bypass this confirmation, is a breach of company policies. SLGP will not reimburse fuel purchases or equipment such as charging cables, power banks, gas cards, or other required tools.
             </div>
 
             <div class="ack-container">
-                <label class="da-label">DA Acknowledgment</label>
-                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate()">
+                <label class="ack-label">DA Acknowledgment</label>
+                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name to Confirm" oninput="validateGate()">
             </div>
 
             <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
