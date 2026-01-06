@@ -13,11 +13,12 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const app = express();
 
 // --- 1. CONFIGURATION ---
-const APP_VERSION = Date.now();
+const APP_VERSION = "1.0.2";
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
+const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 
 // --- DISCORD BOT SETUP ---
 const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
@@ -32,7 +33,6 @@ const client = new Client({
 });
 
 // --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
-// Cleans keys of any invisible characters or quotes from Railway
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -60,11 +60,8 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
-    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-
-        console.log(`Received Discord Alert: ${message.content}`);
 
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
@@ -82,27 +79,25 @@ if (DISCORD_BOT_TOKEN) {
             const activeSubs = [];
             let changed = false;
 
-            // map through subscriptions to handle failures
             const pushPromises = subs.map(async (sub) => {
                 try {
                     await webpush.sendNotification(sub, payload);
-                    activeSubs.push(sub); // Keep valid subscription
+                    activeSubs.push(sub);
                 } catch (error) {
-                    changed = true; // Flag that we found a bad subscription
+                    changed = true;
                     if (error.statusCode === 410 || error.statusCode === 404) {
                         console.warn("🧹 Scrubbing expired subscription.");
                     } else if (error.statusCode === 403) {
                         console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
                     } else {
                         console.error("❌ Unexpected Push Error:", error.message);
-                        activeSubs.push(sub); // Keep if error is temporary
+                        activeSubs.push(sub);
                     }
                 }
             });
 
             await Promise.all(pushPromises);
 
-            // Automatically clean the subscriptions.json file
             if (changed) {
                 fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
                 console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
@@ -115,7 +110,7 @@ if (DISCORD_BOT_TOKEN) {
     });
 }
 
-// Ensure upload directory exists
+// Ensure directories exist
 if (!fs.existsSync(UPLOAD_DIR)) {
     try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
     catch (e) { console.log("Using /tmp for uploads"); }
@@ -125,6 +120,18 @@ const upload = multer({ dest: UPLOAD_DIR });
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+// --- NEW SECURITY GATE LOGGING ROUTE ---
+app.post('/log-gate-check', (req, res) => {
+    const { name } = req.body;
+    let logs = [];
+    if (fs.existsSync(GATE_LOG_FILE)) {
+        try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
+    }
+    logs.push({ name: name, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York" }) });
+    fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+    res.json({ success: true });
+});
 
 // --- ROUTES ---
 app.get('/', (req, res) => {
@@ -159,7 +166,7 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- GOOGLE DRIVE & PDF LOGIC (PRESERVED) ---
+// --- GOOGLE DRIVE & PDF LOGIC ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -169,7 +176,7 @@ function logReportLocally(data) {
     if (fs.existsSync(DAILY_LOG_FILE)) {
         try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
     }
-    data.timestamp = new Date();
+    data.loggedAt = new Date();
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 }
@@ -333,11 +340,18 @@ app.post('/submit-report', async (req, res) => {
 
 // --- CRON JOB SUMMARY ---
 cron.schedule('30 23 * * *', async () => {
-    if (!fs.existsSync(DAILY_LOG_FILE)) return;
     try {
-        const rawData = fs.readFileSync(DAILY_LOG_FILE);
-        const allLogs = JSON.parse(rawData);
-        if (allLogs.length === 0) return;
+        let gateSummary = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
+        if (fs.existsSync(GATE_LOG_FILE)) {
+            const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
+            gateLogs.forEach(log => gateSummary += `${log.timestamp}: ${log.name} confirmed all requirements.\n`);
+            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
+        }
+
+        let allLogs = [];
+        if (fs.existsSync(DAILY_LOG_FILE)) {
+            allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
+        }
 
         if (client.isReady()) {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -382,7 +396,7 @@ cron.schedule('30 23 * * *', async () => {
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'], 
             subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
-            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}`,
+            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${gateSummary}`,
             attachments: [{ filename: 'Daily_Summary.pdf', path: summaryPath }]
         });
 
