@@ -41,8 +41,6 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
-    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -62,22 +60,12 @@ if (DISCORD_BOT_TOKEN) {
 
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-
         console.log(`Received Discord Alert: ${message.content}`);
 
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
-            try {
-                subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
-            } catch (e) {
-                console.error("Error reading subscriptions file", e);
-            }
-
-            const payload = JSON.stringify({ 
-                title: "📢 FLEET ALERT", 
-                body: message.content 
-            });
-
+            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) { console.error(e); }
+            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
             const activeSubs = [];
             let changed = false;
 
@@ -87,34 +75,20 @@ if (DISCORD_BOT_TOKEN) {
                     activeSubs.push(sub); 
                 } catch (error) {
                     changed = true; 
-                    if (error.statusCode === 410 || error.statusCode === 404) {
-                        console.warn("🧹 Scrubbing expired subscription.");
-                    } else if (error.statusCode === 403) {
-                        console.error("🚨 Scrubbing VAPID Mismatch.");
-                    } else {
-                        console.error("❌ Unexpected Push Error:", error.message);
-                        activeSubs.push(sub); 
-                    }
+                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("🧹 Scrubbing subscription.");
+                    else if (error.statusCode === 403) console.error("🚨 VAPID Mismatch.");
+                    else activeSubs.push(sub);
                 }
             });
-
             await Promise.all(pushPromises);
-
-            if (changed) {
-                fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-                console.log(`✅ Subscription list cleaned. ${activeSubs.length} users remaining.`);
-            }
-            
+            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
             message.react('✅');
-        } else {
-            message.reply("No subscribers found yet!");
-        }
+        } else { message.reply("No subscribers found!"); }
     });
 }
 
 if (!fs.existsSync(UPLOAD_DIR)) {
-    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
-    catch (e) { console.log("Using /tmp for uploads"); }
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
@@ -122,71 +96,66 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW ROUTE: LOG SECURITY GATE ENTRY + REAL-TIME PDF RECEIPT ---
+// --- NEW ROUTE: LOG ENTRY + REAL-TIME PDF SNAPSHOT EMAIL ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-    
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) {
         try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
     }
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
     logs.push({ name, timestamp });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 700]);
+        const page = doc.addPage([400, 750]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 700, color: rgb(0.05, 0.08, 0.12) });
-        page.drawText('!', { x: 190, y: 640, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText('DEPARTURE REQUIREMENTS', { x: 60, y: 600, size: 18, font: fontBold, color: rgb(1, 0.6, 0) });
+        // Styling PDF like Mobile Form
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
+        page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
 
-        const items = [
-            "Ensure work device is fully functional.",
-            "Verify van bag contains all necessary tools.",
-            "Confirm van has a phone mount.",
-            "Complete and submit pre-check health video.",
-            "Complete the DVIC within the Flex app."
-        ];
-
-        let yPos = 550;
+        const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
+        let yPos = 600;
         items.forEach(text => {
-            page.drawRectangle({ x: 40, y: yPos, width: 12, height: 12, color: rgb(1, 1, 1) });
-            page.drawText('X', { x: 42, y: yPos + 2, size: 10, font: fontBold, color: rgb(0, 0, 0) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
-            yPos -= 25;
+            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
+            yPos -= 30;
         });
 
-        page.drawRectangle({ x: 35, y: yPos - 100, width: 330, height: 90, color: rgb(0.1, 0.12, 0.15) });
-        page.drawRectangle({ x: 35, y: yPos - 100, width: 4, height: 90, color: rgb(1, 0.6, 0) });
-        page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.7, 0.7, 0.7) });
+        // Restored Full Disclaimer Layout
+        page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+        page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 120, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 145, size: 12, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 175, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 130, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 155, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 180, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
         fs.writeFileSync(snapshotPath, pdfBytes);
 
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
-            subject: `GATE RECEIPT: ${name}`,
-            text: `Digital snapshot for ${name} attached.`,
-            attachments: [{ filename: `${name}_Receipt.pdf`, path: snapshotPath }]
+            subject: `CHECKLIST ALERT: ${name}`,
+            text: `DA ${name} completion snapshot attached.`,
+            attachments: [{ filename: `Snapshot_${name}.pdf`, path: snapshotPath }]
         });
         fs.unlinkSync(snapshotPath);
-    } catch (e) { console.error("PDF Fail:", e); }
-
-    res.json({ success: true });
+        
+        // CRITICAL FIX: Send success response to browser to stop "Processing" state
+        res.status(200).json({ success: true });
+    } catch (e) {
+        console.error("PDF Fail:", e);
+        res.status(500).json({ success: false });
+    }
 });
 // --- 2. ROUTES ---
 app.get('/', (req, res) => {
@@ -221,6 +190,7 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
+// --- GOOGLE DRIVE & PDF LOGIC (PRESERVED FULL) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
