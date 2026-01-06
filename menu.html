@@ -239,9 +239,10 @@
             const currentHour = now.getHours();
             
             // Show gate only between 10:00 AM (10) and 6:00 PM (18)
-            if (currentHour >= 10 && currentHour < 18) {
-                document.getElementById('security-gate').style.display = 'flex';
-                document.getElementById('main-ui').style.display = 'none';
+            if (true) { // Force the gate to show regardless of the time
+    document.getElementById('security-gate').style.display = 'flex';
+    document.getElementById('main-ui').style.display = 'none';
+}
             } else {
                 document.getElementById('security-gate').style.display = 'none';
                 document.getElementById('main-ui').style.display = 'block';
