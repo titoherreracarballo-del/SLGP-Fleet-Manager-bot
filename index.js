@@ -13,7 +13,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const app = express();
 
 // --- 1. CONFIGURATION ---
-const APP_VERSION = "1.0.2";
+const APP_VERSION = Date.now();
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -63,6 +63,8 @@ if (DISCORD_BOT_TOKEN) {
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
 
+        console.log(`Received Discord Alert: ${message.content}`);
+
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
             try {
@@ -82,9 +84,9 @@ if (DISCORD_BOT_TOKEN) {
             const pushPromises = subs.map(async (sub) => {
                 try {
                     await webpush.sendNotification(sub, payload);
-                    activeSubs.push(sub);
+                    activeSubs.push(sub); 
                 } catch (error) {
-                    changed = true;
+                    changed = true; 
                     if (error.statusCode === 410 || error.statusCode === 404) {
                         console.warn("🧹 Scrubbing expired subscription.");
                     } else if (error.statusCode === 403) {
@@ -110,7 +112,6 @@ if (DISCORD_BOT_TOKEN) {
     });
 }
 
-// Ensure directories exist
 if (!fs.existsSync(UPLOAD_DIR)) {
     try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
     catch (e) { console.log("Using /tmp for uploads"); }
@@ -121,7 +122,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW SECURITY GATE LOGGING ROUTE ---
+// --- NEW ROUTE: LOG SECURITY GATE ---
 app.post('/log-gate-check', (req, res) => {
     const { name } = req.body;
     let logs = [];
@@ -133,7 +134,6 @@ app.post('/log-gate-check', (req, res) => {
     res.json({ success: true });
 });
 
-// --- ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
@@ -166,7 +166,6 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- GOOGLE DRIVE & PDF LOGIC ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -176,7 +175,7 @@ function logReportLocally(data) {
     if (fs.existsSync(DAILY_LOG_FILE)) {
         try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
     }
-    data.loggedAt = new Date();
+    data.timestamp = new Date();
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 }
@@ -338,7 +337,6 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// --- CRON JOB SUMMARY ---
 cron.schedule('30 23 * * *', async () => {
     try {
         let gateSummary = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
@@ -348,10 +346,10 @@ cron.schedule('30 23 * * *', async () => {
             fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
         }
 
-        let allLogs = [];
-        if (fs.existsSync(DAILY_LOG_FILE)) {
-            allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
-        }
+        if (!fs.existsSync(DAILY_LOG_FILE)) return;
+        const rawData = fs.readFileSync(DAILY_LOG_FILE);
+        const allLogs = JSON.parse(rawData);
+        if (allLogs.length === 0 && gateSummary.length < 40) return;
 
         if (client.isReady()) {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
