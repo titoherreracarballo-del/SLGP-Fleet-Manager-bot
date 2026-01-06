@@ -16,7 +16,6 @@
             --border-glass: rgba(255, 255, 255, 0.1);
             --text-primary: #FFFFFF;
             --text-dim: #A9B2BD;
-            --amazon-blue: #232F3E;
             --amazon-orange: #FF9900;
             --neon-blue: #00A8E1;
             --neon-red: #ff2a2a;
@@ -35,11 +34,11 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            padding: 20px;
+            padding: 10px;
             box-sizing: border-box;
         }
 
-        /* --- SECURITY GATE SCREEN --- */
+        /* --- SECURITY GATE (RESIZED & RESPONSIVE) --- */
         #security-gate {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -48,19 +47,22 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 10px;
             box-sizing: border-box;
-            overflow-y: auto;
+            overflow-y: auto; /* Allows scrolling if content is too tall for small screens */
         }
 
         .gate-content {
             width: 100%;
-            max-width: 480px;
-            padding: 30px;
+            max-width: 420px;
+            padding: 20px;
             border: 2px solid var(--amazon-orange);
-            border-radius: 20px;
-            background: rgba(35, 47, 62, 0.95);
+            border-radius: 15px;
+            background: rgba(35, 47, 62, 0.98);
             box-shadow: 0 0 40px rgba(255, 153, 0, 0.2);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
         }
 
         .disclaimer-header {
@@ -68,71 +70,96 @@
             flex-direction: column;
             align-items: center;
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             color: var(--amazon-orange);
         }
 
         .exclamation-symbol {
-            font-size: 70px;
+            font-size: 50px;
             font-weight: 900;
-            margin-bottom: 10px;
-            text-shadow: 0 0 20px var(--amazon-orange);
+            margin-bottom: 5px;
+            text-shadow: 0 0 15px var(--amazon-orange);
+        }
+
+        .gate-title {
+            margin: 0;
+            font-size: 1.2rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .main-disclaimer {
+            font-size: 13px;
+            color: #FFFFFF;
+            font-weight: 800;
+            margin-bottom: 15px;
+            text-align: center;
+            line-height: 1.4;
         }
 
         .checklist-container {
-            margin: 20px 0;
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 10px;
+            margin-bottom: 15px;
         }
 
         .check-item {
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-            font-size: 14px;
+            gap: 10px;
+            font-size: 12px;
             color: var(--text-primary);
-        }
-
-        .check-item input[type="checkbox"] {
-            width: 22px;
-            height: 22px;
-            accent-color: var(--amazon-orange);
-            flex-shrink: 0;
             cursor: pointer;
         }
 
+        .check-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--amazon-orange);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
         .policy-warning {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-dim);
-            line-height: 1.5;
-            margin: 20px 0;
-            padding: 15px;
-            background: rgba(0,0,0,0.3);
+            line-height: 1.4;
+            padding: 10px;
+            background: rgba(0,0,0,0.4);
             border-radius: 8px;
             border-left: 3px solid var(--amazon-orange);
+            margin-bottom: 15px;
         }
 
         .ack-container {
-            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .da-label {
+            font-size: 11px;
+            color: var(--amazon-orange);
+            font-weight: bold;
+            text-transform: uppercase;
         }
 
         .ack-input {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             background: #131A22;
             border: 1px solid var(--neon-blue);
-            border-radius: 8px;
+            border-radius: 6px;
             color: white;
-            margin-top: 10px;
             box-sizing: border-box;
-            font-size: 16px;
+            font-size: 14px;
         }
 
         .gate-btn {
             width: 100%;
-            margin-top: 25px;
-            padding: 18px;
+            margin-top: 15px;
+            padding: 14px;
             background: var(--amazon-orange);
             color: #131A22;
             border: none;
@@ -140,7 +167,7 @@
             font-weight: 900;
             text-transform: uppercase;
             cursor: not-allowed;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             opacity: 0.3;
             transition: 0.3s;
         }
@@ -148,54 +175,25 @@
         .gate-btn.active {
             cursor: pointer;
             opacity: 1;
-            box-shadow: 0 0 20px rgba(255, 153, 0, 0.4);
+            box-shadow: 0 0 15px rgba(255, 153, 0, 0.4);
         }
 
         /* --- MAIN UI --- */
         #main-ui { display: none; width: 100%; max-width: 340px; }
-
-        .system-header {
-            width: 100%; display: flex; justify-content: space-between;
-            font-size: 10px; color: var(--neon-blue); text-transform: uppercase;
-            letter-spacing: 2px; margin-bottom: 20px; font-weight: 700;
-        }
-
-        .logo-container { 
-            width: 100%; background: var(--bg-card-metal); 
-            border: 1px solid var(--border-glass); padding: 20px; 
-            border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box;
-        }
+        .system-header { width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; font-weight: 700; }
+        .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
         .logo-container img { width: 100%; border-radius: 12px; }
-        
-        .menu-grid { display: flex; flex-direction: column; gap: 25px; }
-
-        .menu-btn {
-            display: flex; flex-direction: column; width: 100%; border-radius: 16px; 
-            text-decoration: none; background: var(--bg-card-metal); 
-            border: 2px solid var(--border-glass); overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-        }
-
-        .btn-img-box { width: 100%; height: 130px; overflow: hidden; background: #000; }
+        .menu-grid { display: flex; flex-direction: column; gap: 20px; }
+        .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        .btn-img-box { width: 100%; height: 120px; overflow: hidden; background: #000; }
         .btn-img { width: 100%; height: 100%; object-fit: cover; }
-
-        .btn-content {
-            padding: 18px 20px; display: flex; justify-content: space-between; align-items: center;
-        }
-
-        .btn-label { font-size: 15px; font-weight: 900; color: white; text-transform: uppercase; }
-        .btn-icon { width: 24px; height: 24px; fill: var(--neon-blue); }
-
-        #notifyBtn {
-            width: 100%; padding: 15px; margin-bottom: 20px;
-            background: rgba(0, 168, 225, 0.1); border: 1px solid var(--neon-blue);
-            color: var(--neon-blue); font-weight: bold; border-radius: 12px;
-        }
-        
+        .btn-content { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-label { font-size: 14px; font-weight: 900; color: white; text-transform: uppercase; }
+        .btn-icon { width: 20px; height: 20px; fill: var(--neon-blue); }
+        #notifyBtn { width: 100%; padding: 12px; margin-bottom: 20px; background: rgba(0, 168, 225, 0.1); border: 1px solid var(--neon-blue); color: var(--neon-blue); font-weight: bold; border-radius: 12px; }
         .notify-active { border-color: var(--neon-red) !important; color: var(--neon-red) !important; }
         .notify-inactive { border-color: #00ff88 !important; color: #00ff88 !important; }
-
-        .footer { margin-top: 40px; font-size: 10px; color: var(--text-dim); text-align: center; }
+        .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); text-align: center; }
     </style>
 </head>
 <body>
@@ -204,44 +202,28 @@
         <div class="gate-content">
             <div class="disclaimer-header">
                 <span class="exclamation-symbol">!</span>
-                <h2 style="margin:0; letter-spacing: 1px;">SLGP STANDARDS</h2>
+                <h2 class="gate-title">Departure Requirements</h2>
             </div>
             
-            <p style="font-size: 14px; color: #FFFFFF; font-weight: 800; margin-bottom: 20px; text-align: center;">
+            <p class="main-disclaimer">
                 All SLGP employees are required to adhere to the following standards prior to beginning their shift:
             </p>
 
             <div class="checklist-container">
-                <label class="check-item">
-                    <input type="checkbox" class="gate-check">
-                    <span>Ensure that their work device is fully functional.</span>
-                </label>
-                <label class="check-item">
-                    <input type="checkbox" class="gate-check">
-                    <span>Verify that their van bag contains all necessary operational tools (e.g., power bank, charging cable, gas card).</span>
-                </label>
-                <label class="check-item">
-                    <input type="checkbox" class="gate-check">
-                    <span>Confirm that their van is equipped with a phone mount, unless operating an EDV.</span>
-                </label>
-                <label class="check-item">
-                    <input type="checkbox" class="gate-check">
-                    <span>Complete and submit the required pre‑check health video.</span>
-                </label>
-                <label class="check-item">
-                    <input type="checkbox" class="gate-check">
-                    <span>Complete the DVIC within the Flex app.</span>
-                </label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary operational tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van is equipped with a phone mount (unless EDV).</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete and submit required health video.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete the DVIC within the Flex app.</span></label>
             </div>
 
             <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than your scheduled wave time</strong>. Once a DA leaves the facility, they are responsible for providing their own equipment to complete their route.<br><br>
-                By submitting, you confirm that all requirements above have been met. Failure to do so is a breach of company policies. SLGP will not reimburse fuel or equipment purchases.
+                Report equipment needs <strong>no later than your wave time</strong>. Drivers are responsible for equipment once they leave the facility. SLGP will not reimburse for fuel or personal tool purchases. Bypassing this is a breach of policy.
             </div>
 
             <div class="ack-container">
-                <label style="font-size: 12px; color: var(--amazon-orange); font-weight: bold;">DA ACKNOWLEDGMENT</label>
-                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name to Confirm" oninput="validateGate()">
+                <label class="da-label">DA Acknowledgment</label>
+                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate()">
             </div>
 
             <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
@@ -249,75 +231,29 @@
     </div>
 
     <div id="main-ui">
-        <div class="system-header">
-            <span>System: Online</span>
-            <span>SLGP-NET Build v1.0.2</span>
-        </div>
-
-        <div class="logo-container">
-            <img src="Final-01.jpg" alt="SLGP Logo">
-        </div>
-
+        <div class="system-header"><span>System: Online</span><span id="header-version">v1.0.2</span></div>
+        <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
         <button id="notifyBtn">Checking Connection...</button>
-
         <div class="menu-grid">
-            <a href="/video" class="menu-btn" style="border-color: var(--neon-blue);">
-                <div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div>
-                <div class="btn-content">
-                    <div class="btn-label">Fleet Inspection Vids</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </a>
-
-            <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);">
-                <div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div>
-                <div class="btn-content">
-                    <div class="btn-label">Report Issue</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </a>
-
-            <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);">
-                <div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div>
-                <div class="btn-content">
-                    <div class="btn-label">Accident Report</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </a>
-
-            <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;">
-                <div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div>
-                <div class="btn-content">
-                    <div class="btn-label">Insurance Cards</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </a>
+            <a href="/video" class="menu-btn" style="border-color: var(--neon-blue);"><div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Fleet Inspection Vids</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);"><div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Report Issue</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
         </div>
-
-        <div class="footer">
-            Secure Fleet Portal • <span id="app-version">v1.0.2</span>
-        </div>
+        <div class="footer">Secure Fleet Portal • <span id="app-version">v1.0.2</span></div>
     </div>
 
     <script>
-        // GATE LOGIC
         const checkboxes = document.querySelectorAll('.gate-check');
         const nameInput = document.getElementById('da-name');
         const submitBtn = document.getElementById('gate-submit');
-
         checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
-
         function validateGate() {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             const nameEntered = nameInput.value.trim().length > 3;
-            
-            if (allChecked && nameEntered) {
-                submitBtn.classList.add('active');
-            } else {
-                submitBtn.classList.remove('active');
-            }
+            if (allChecked && nameEntered) submitBtn.classList.add('active');
+            else submitBtn.classList.remove('active');
         }
-
         function unlockPortal() {
             if (!submitBtn.classList.contains('active')) return;
             document.getElementById('security-gate').style.opacity = '0';
@@ -326,29 +262,23 @@
                 document.getElementById('main-ui').style.display = 'block';
             }, 500);
         }
-
-        // VERSION & PUSH LOGIC (Preserved from existing)
         async function updateVersion() {
             try {
                 const res = await fetch('/version');
                 const data = await res.json();
                 document.getElementById('app-version').innerText = "Build: " + data.version;
+                document.getElementById('header-version').innerText = "v" + data.version;
             } catch (e) {}
         }
         updateVersion();
-
         const btn = document.getElementById('notifyBtn');
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
-        }
-
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
         async function initializeUI() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
             btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
             btn.className = sub ? "notify-active" : "notify-inactive";
         }
-
         btn.addEventListener('click', async () => {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
@@ -359,15 +289,10 @@
                 const key = urlBase64ToUint8Array(data.publicKey);
                 await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
                 const newSub = await reg.pushManager.getSubscription();
-                await fetch('/subscribe', {
-                    method: 'POST',
-                    body: JSON.stringify(newSub),
-                    headers: { 'content-type': 'application/json' }
-                });
+                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(newSub), headers: { 'content-type': 'application/json' } });
                 initializeUI();
             }
         });
-
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
