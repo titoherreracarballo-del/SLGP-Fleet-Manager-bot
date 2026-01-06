@@ -41,8 +41,6 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
-    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -62,8 +60,6 @@ if (DISCORD_BOT_TOKEN) {
 
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-
-        console.log(`Received Discord Alert: ${message.content}`);
 
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
@@ -90,9 +86,8 @@ if (DISCORD_BOT_TOKEN) {
                     if (error.statusCode === 410 || error.statusCode === 404) {
                         console.warn("🧹 Scrubbing expired subscription.");
                     } else if (error.statusCode === 403) {
-                        console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
+                        console.error("🚨 Scrubbing VAPID Mismatch.");
                     } else {
-                        console.error("❌ Unexpected Push Error:", error.message);
                         activeSubs.push(sub);
                     }
                 }
@@ -102,12 +97,9 @@ if (DISCORD_BOT_TOKEN) {
 
             if (changed) {
                 fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-                console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
             }
             
             message.react('✅');
-        } else {
-            message.reply("No subscribers found yet!");
         }
     });
 }
@@ -122,14 +114,27 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-app.post('/log-gate-check', (req, res) => {
+// --- UPDATED ROUTE: LOG ENTRY + DISCORD ALERT ---
+app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) {
         try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
     }
-    logs.push({ name: name, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York" }) });
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    logs.push({ name: name, timestamp: timestamp });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+
+    // REAL-TIME DISCORD ALERT
+    if (client.isReady()) {
+        try {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            if (channel) {
+                channel.send(`✅ **Departure Requirements Confirmed**\n**DA Name:** ${name}\n**Time:** ${timestamp}`);
+            }
+        } catch(e) { console.log("Alert Error:", e); }
+    }
+
     res.json({ success: true });
 });
 
@@ -138,7 +143,7 @@ app.get('/', (req, res) => {
     else res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
+app.get('/version', (req, res) => res.json({ version: "1.0.2" }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
 app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
@@ -336,54 +341,22 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
+// --- NIGHTLY REPORT CRON (11:30 PM) ---
 cron.schedule('30 23 * * *', async () => {
     try {
-        let gateSummary = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
+        let gateSummaryText = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
         if (fs.existsSync(GATE_LOG_FILE)) {
             const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
-            gateLogs.forEach(log => gateSummary += `${log.timestamp}: ${log.name} confirmed all requirements.\n`);
+            gateLogs.forEach(log => {
+                gateSummaryText += `${log.timestamp}: ${log.name} confirmed all requirements.\n`;
+            });
             fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
+        } else {
+            gateSummaryText += "No security gate completions recorded today.";
         }
 
-        if (!fs.existsSync(DAILY_LOG_FILE)) return;
-        const rawData = fs.readFileSync(DAILY_LOG_FILE);
-        const allLogs = JSON.parse(rawData);
-        if (allLogs.length === 0 && gateSummary.length < 40) return;
-
-        if (client.isReady()) {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            if (channel) channel.send(`📋 **DAILY SUMMARY:** ${allLogs.length} reports submitted today.`);
-        }
-
-        const doc = await PDFDocument.create();
-        let page = doc.addPage([600, 800]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
-        page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
-        page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
-        page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 14, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
-
-        let y = 680;
-        allLogs.forEach((log, index) => {
-            if (y < 150) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
-            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) });
-            y -= 25;
-            page.drawText(`DRIVER: ${log.driverName}    |    VIN: ${log.vinLast4}    |    TIME: ${log.time}`, { x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) });
-            y -= 20;
-            if(log.tags && log.tags.length > 0) { page.drawText(`ISSUES: ${log.tags.join(', ')}`, { x: 30, y: y-15, size: 10, font: fontReg, color: rgb(0.2, 0.2, 0.2) }); y -= 15; }
-            if(log.otherDescription) { 
-                const short = log.otherDescription.length > 70 ? log.otherDescription.substring(0, 70) + "..." : log.otherDescription;
-                page.drawText(`NOTE: ${short}`, { x: 30, y: y-15, size: 10, font: fontBold, color: rgb(0.8, 0, 0) }); y -= 15; 
-            }
-            page.drawLine({ start: { x: 30, y: y-10 }, end: { x: 570, y: y-10 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-            y -= 30; 
-        });
-
-        const summaryPath = path.join(UPLOAD_DIR, `Daily_Summary_${Date.now()}.pdf`);
-        fs.writeFileSync(summaryPath, await doc.save());
-
+        let allLogs = fs.existsSync(DAILY_LOG_FILE) ? JSON.parse(fs.readFileSync(DAILY_LOG_FILE)) : [];
+        
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -392,13 +365,11 @@ cron.schedule('30 23 * * *', async () => {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'], 
-            subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
-            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${gateSummary}`,
-            attachments: [{ filename: 'Daily_Summary.pdf', path: summaryPath }]
+            subject: `DAILY FLEET REPORT: ${new Date().toLocaleDateString()}`,
+            text: `Daily Summary Processed. Attached are the vehicle reports.\nTotal vehicle reports: ${allLogs.length}\n${gateSummaryText}`
         });
 
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
-        fs.unlinkSync(summaryPath);
     } catch (e) { console.error("Cron Error:", e); }
 }, { timezone: "America/New_York" });
 
