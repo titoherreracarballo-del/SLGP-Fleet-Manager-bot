@@ -9,6 +9,7 @@
     <link rel="apple-touch-icon" href="icon.jpg">
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
+        /* --- AMAZON BLUE HUD THEME --- */
         :root {
             --bg-dark: #000000;
             --bg-card-metal: linear-gradient(135deg, #232F3E 0%, #131A22 100%);
@@ -31,6 +32,7 @@
             display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box;
         }
 
+        /* --- SECURITY GATE --- */
         #security-gate {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark);
             z-index: 9999; display: none; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; overflow-y: auto;
@@ -58,7 +60,21 @@
         .gate-btn { width: 100%; margin-top: 15px; padding: 14px; background: var(--amazon-orange); color: #131A22; border: none; border-radius: 8px; font-weight: 900; text-transform: uppercase; cursor: not-allowed; opacity: 0.3; transition: 0.3s; }
         .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 15px rgba(255, 153, 0, 0.4); }
 
+        /* --- MAIN UI (RESTORED FEATURES) --- */
         #main-ui { display: block; width: 100%; max-width: 340px; }
+        .system-header { width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; font-weight: 700; }
+        .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
+        .logo-container img { width: 100%; border-radius: 12px; }
+        .menu-grid { display: flex; flex-direction: column; gap: 20px; }
+        .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        .btn-img-box { width: 100%; height: 120px; overflow: hidden; background: #000; }
+        .btn-img { width: 100%; height: 100%; object-fit: cover; }
+        .btn-content { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-label { font-size: 14px; font-weight: 900; color: white; text-transform: uppercase; }
+        .btn-icon { width: 20px; height: 20px; fill: var(--neon-blue); }
+        #notifyBtn { width: 100%; padding: 12px; margin-bottom: 20px; background: rgba(0, 168, 225, 0.1); border: 1px solid var(--neon-blue); color: var(--neon-blue); font-weight: bold; border-radius: 12px; }
+        .notify-active { border-color: var(--neon-red) !important; color: var(--neon-red) !important; }
+        .notify-inactive { border-color: #00ff88 !important; color: #00ff88 !important; }
         .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); text-align: center; }
     </style>
 </head>
@@ -72,14 +88,14 @@
             </div>
             <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
             <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure work device is functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains necessary tools.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all operational tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount (unless EDV).</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit health pre-check video.</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
             </div>
             <div class="policy-warning">
-                Report equipment <strong>no later than wave time</strong>. Drivers are responsible for equipment once they leave. Failure is a breach of policy.
+                Report equipment <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
@@ -91,30 +107,39 @@
 
     <div id="main-ui">
         <div class="system-header"><span>System: Online</span><span id="header-version">v1.0.2</span></div>
-        <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo" style="width: 100%; border-radius: 12px;"></div>
-        <div class="menu-grid" style="display: flex; flex-direction: column; gap: 20px;">
-            <a href="/video" style="text-decoration: none; background: var(--bg-card-metal); padding: 20px; border-radius: 12px; color: white; border: 1px solid var(--neon-blue);">FLEET INSPECTION VIDS</a>
-            <a href="/report?mode=issue" style="text-decoration: none; background: var(--bg-card-metal); padding: 20px; border-radius: 12px; color: white; border: 1px solid var(--amazon-orange);">REPORT ISSUE</a>
+        <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
+        <button id="notifyBtn">Checking Connection...</button>
+        <div class="menu-grid">
+            <a href="/video" class="menu-btn" style="border-color: var(--neon-blue);"><div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Fleet Inspection Vids</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);"><div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Report Issue</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
         </div>
         <div class="footer">Secure Fleet Portal • <span id="app-version">v1.0.2</span></div>
     </div>
 
     <script>
+        // --- 1. TIME RESTRICTION LOGIC ---
         function checkGateTiming() {
             const now = new Date();
             const currentHour = now.getHours();
             
-            // Show gate only between 10:00 AM (10) and 6:00 PM (18)
-            if (true) { // FOR TESTING: Forced to show
+            // Set to true to show gate immediately for testing
+            if (true) { 
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
+            } else {
+                document.getElementById('security-gate').style.display = 'none';
+                document.getElementById('main-ui').style.display = 'block';
             }
         }
         checkGateTiming();
 
+        // --- 2. VALIDATION & TAP PROTECTION ---
         const checkboxes = document.querySelectorAll('.gate-check');
         const nameInput = document.getElementById('da-name');
         const submitBtn = document.getElementById('gate-submit');
+        
         checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
         function validateGate() {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
@@ -123,7 +148,7 @@
             else submitBtn.classList.remove('active');
         }
 
-        let isSubmitting = false; // Prevents duplicate taps
+        let isSubmitting = false;
         async function unlockPortal() {
             if (!submitBtn.classList.contains('active') || isSubmitting) return;
             
@@ -146,6 +171,51 @@
                 isSubmitting = false;
                 submitBtn.innerText = "CONFIRM & ENTER";
             }
+        }
+
+        // --- 3. VERSION & NOTIFICATIONS ---
+        async function updateVersion() {
+            try {
+                const res = await fetch('/version');
+                const data = await res.json();
+                document.getElementById('app-version').innerText = "Build: " + data.version;
+                document.getElementById('header-version').innerText = "v" + data.version;
+            } catch (e) {}
+        }
+        updateVersion();
+
+        const btn = document.getElementById('notifyBtn');
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
+        
+        async function initializeUI() {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
+            btn.className = sub ? "notify-active" : "notify-inactive";
+        }
+
+        btn.addEventListener('click', async () => {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) { await sub.unsubscribe(); initializeUI(); } 
+            else {
+                const res = await fetch('/vapid-key');
+                const data = await res.json();
+                const key = urlBase64ToUint8Array(data.publicKey);
+                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+                const newSub = await reg.pushManager.getSubscription();
+                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(newSub), headers: { 'content-type': 'application/json' } });
+                initializeUI();
+            }
+        });
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+            return outputArray;
         }
     </script>
 </body>
