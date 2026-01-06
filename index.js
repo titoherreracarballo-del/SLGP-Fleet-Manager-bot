@@ -42,6 +42,8 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
+    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
+    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -123,29 +125,54 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW ROUTE: LOG SECURITY GATE ENTRY ---
+// --- NEW ROUTE: LOG SECURITY GATE ENTRY + REAL-TIME PDF RECEIPT ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) {
         try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
     }
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-    logs.push({ 
-        name: name, 
-        timestamp: timestamp 
-    });
+    logs.push({ name, timestamp });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
-    // REAL-TIME EMAIL ALERT WITH PDF
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([600, 450]);
+        const page = doc.addPage([400, 700]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        page.drawRectangle({ x: 0, y: 380, width: 600, height: 70, color: rgb(0.14, 0.18, 0.24) });
-        page.drawText('DEPARTURE ACKNOWLEDGMENT', { x: 30, y: 410, size: 20, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(`DA NAME: ${name}`, { x: 30, y: 340, size: 14, font: fontBold });
-        page.drawText(`TIMESTAMP: ${timestamp}`, { x: 30, y: 320, size: 12 });
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+        // Mimic Dark Mobile Theme
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 700, color: rgb(0.05, 0.08, 0.12) });
+        page.drawText('!', { x: 190, y: 640, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText('DEPARTURE REQUIREMENTS', { x: 60, y: 600, size: 18, font: fontBold, color: rgb(1, 0.6, 0) });
+
+        const items = [
+            "Ensure work device is fully functional.",
+            "Verify van bag contains all necessary tools.",
+            "Confirm van has a phone mount.",
+            "Complete and submit pre-check health video.",
+            "Complete the DVIC within the Flex app."
+        ];
+
+        let yPos = 550;
+        items.forEach(text => {
+            page.drawRectangle({ x: 40, y: yPos, width: 12, height: 12, color: rgb(1, 1, 1) });
+            page.drawText('X', { x: 42, y: yPos + 2, size: 10, font: fontBold, color: rgb(0, 0, 0) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+            yPos -= 25;
+        });
+
+        // Policy Box
+        page.drawRectangle({ x: 35, y: yPos - 100, width: 330, height: 90, color: rgb(0.1, 0.12, 0.15) });
+        page.drawRectangle({ x: 35, y: yPos - 100, width: 4, height: 90, color: rgb(1, 0.6, 0) });
+        page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.7, 0.7, 0.7) });
+
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 120, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 145, size: 12, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 175, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
         fs.writeFileSync(snapshotPath, pdfBytes);
@@ -157,12 +184,12 @@ app.post('/log-gate-check', async (req, res) => {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
-            subject: `CHECKLIST COMPLETED: ${name}`,
-            text: `DA ${name} has acknowledged all departure requirements.`,
-            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
+            subject: `GATE RECEIPT: ${name}`,
+            text: `Digital snapshot for ${name} attached.`,
+            attachments: [{ filename: `${name}_Receipt.pdf`, path: snapshotPath }]
         });
         fs.unlinkSync(snapshotPath);
-    } catch (e) { console.error("Real-time email failed", e); }
+    } catch (e) { console.error("PDF Fail:", e); }
 
     res.json({ success: true });
 });
@@ -375,28 +402,19 @@ app.post('/submit-report', async (req, res) => {
 // --- 3. CRON JOB SUMMARY & SECURITY GATE LOG REPORT ---
 cron.schedule('30 23 * * *', async () => {
     try {
-        // --- PREPARE SECURITY GATE LOGS ---
         let gateSummaryText = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
         if (fs.existsSync(GATE_LOG_FILE)) {
             const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
             gateLogs.forEach(log => {
                 gateSummaryText += `${log.timestamp}: ${log.name} confirmed all requirements.\n`;
             });
-            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); // Clear for next day
-        } else {
-            gateSummaryText += "No security gate completions recorded today.";
+            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
         }
 
-        // --- PREPARE PDF SUMMARY ---
         if (!fs.existsSync(DAILY_LOG_FILE)) return;
         const rawData = fs.readFileSync(DAILY_LOG_FILE);
         const allLogs = JSON.parse(rawData);
         if (allLogs.length === 0 && gateSummaryText.length < 40) return;
-
-        if (client.isReady()) {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            if (channel) channel.send(`📋 **DAILY SUMMARY:** ${allLogs.length} reports submitted today.`);
-        }
 
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
@@ -405,23 +423,13 @@ cron.schedule('30 23 * * *', async () => {
 
         page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
         page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
-        page.drawText(`DATE: ${new Date().toLocaleDateString()}`, { x: 30, y: 745, size: 14, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
         let y = 680;
         allLogs.forEach((log, index) => {
             if (y < 150) { page = doc.addPage([600, 800]); y = 750; }
             page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
             page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) });
-            y -= 25;
-            page.drawText(`DRIVER: ${log.driverName}    |    VIN: ${log.vinLast4}    |    TIME: ${log.time}`, { x: 30, y: y-15, size: 11, font: fontBold, color: rgb(0,0,0) });
-            y -= 20;
-            if(log.tags && log.tags.length > 0) { page.drawText(`ISSUES: ${log.tags.join(', ')}`, { x: 30, y: y-15, size: 10, font: fontReg, color: rgb(0.2, 0.2, 0.2) }); y -= 15; }
-            if(log.otherDescription) { 
-                const short = log.otherDescription.length > 70 ? log.otherDescription.substring(0, 70) + "..." : log.otherDescription;
-                page.drawText(`NOTE: ${short}`, { x: 30, y: y-15, size: 10, font: fontBold, color: rgb(0.8, 0, 0) }); y -= 15; 
-            }
-            page.drawLine({ start: { x: 30, y: y-10 }, end: { x: 570, y: y-10 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-            y -= 30; 
+            y -= 60;
         });
 
         const summaryPath = path.join(UPLOAD_DIR, `Daily_Summary_${Date.now()}.pdf`);
@@ -436,7 +444,7 @@ cron.schedule('30 23 * * *', async () => {
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'], 
             subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
-            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${gateSummaryText}`,
+            text: `Daily Summary Attached.\n${gateSummaryText}`,
             attachments: [{ filename: 'Daily_Summary.pdf', path: summaryPath }]
         });
 
