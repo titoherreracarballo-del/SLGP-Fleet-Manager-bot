@@ -18,6 +18,7 @@ const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
+// New file for gate tracking
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 
 // --- DISCORD BOT SETUP ---
@@ -60,6 +61,7 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
+    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
 
@@ -93,7 +95,7 @@ if (DISCORD_BOT_TOKEN) {
                         console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
                     } else {
                         console.error("❌ Unexpected Push Error:", error.message);
-                        activeSubs.push(sub);
+                        activeSubs.push(sub); 
                     }
                 }
             });
@@ -112,6 +114,7 @@ if (DISCORD_BOT_TOKEN) {
     });
 }
 
+// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
     try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
     catch (e) { console.log("Using /tmp for uploads"); }
@@ -122,18 +125,22 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- SECURITY GATE LOGGING ---
+// --- NEW ROUTE: LOG SECURITY GATE ENTRY ---
 app.post('/log-gate-check', (req, res) => {
     const { name } = req.body;
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) {
         try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
     }
-    logs.push({ name: name, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York" }) });
+    logs.push({ 
+        name: name, 
+        timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York" }) 
+    });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
     res.json({ success: true });
 });
 
+// --- 2. ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
@@ -166,6 +173,7 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
+// --- GOOGLE DRIVE & PDF LOGIC (PRESERVED) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -337,19 +345,26 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
+// --- 3. CRON JOB SUMMARY & SECURITY GATE LOG REPORT ---
 cron.schedule('30 23 * * *', async () => {
     try {
-        let gateSummary = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
+        // --- PREPARE SECURITY GATE LOGS ---
+        let gateSummaryText = "\n--- DEPARTURE CHECKLIST LOGS ---\n";
         if (fs.existsSync(GATE_LOG_FILE)) {
             const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
-            gateLogs.forEach(log => gateSummary += `${log.timestamp}: ${log.name} confirmed all requirements.\n`);
-            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
+            gateLogs.forEach(log => {
+                gateSummaryText += `${log.timestamp}: ${log.name} confirmed all requirements.\n`;
+            });
+            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); // Clear for next day
+        } else {
+            gateSummaryText += "No security gate completions recorded today.";
         }
 
+        // --- PREPARE PDF SUMMARY ---
         if (!fs.existsSync(DAILY_LOG_FILE)) return;
         const rawData = fs.readFileSync(DAILY_LOG_FILE);
         const allLogs = JSON.parse(rawData);
-        if (allLogs.length === 0 && gateSummary.length < 40) return;
+        if (allLogs.length === 0 && gateSummaryText.length < 40) return;
 
         if (client.isReady()) {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -394,7 +409,7 @@ cron.schedule('30 23 * * *', async () => {
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'], 
             subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
-            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${gateSummary}`,
+            text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${gateSummaryText}`,
             attachments: [{ filename: 'Daily_Summary.pdf', path: summaryPath }]
         });
 
