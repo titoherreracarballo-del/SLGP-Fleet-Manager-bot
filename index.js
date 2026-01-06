@@ -122,7 +122,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW ROUTE: LOG SECURITY GATE ---
+// --- SECURITY GATE LOGGING ---
 app.post('/log-gate-check', (req, res) => {
     const { name } = req.body;
     let logs = [];
