@@ -18,7 +18,6 @@ const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
-// New file for gate tracking
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 
 // --- DISCORD BOT SETUP ---
@@ -42,8 +41,6 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
-    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -61,11 +58,8 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
-    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-
-        console.log(`Received Discord Alert: ${message.content}`);
 
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
@@ -75,11 +69,7 @@ if (DISCORD_BOT_TOKEN) {
                 console.error("Error reading subscriptions file", e);
             }
 
-            const payload = JSON.stringify({ 
-                title: "📢 FLEET ALERT", 
-                body: message.content 
-            });
-
+            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
             const activeSubs = [];
             let changed = false;
 
@@ -92,29 +82,20 @@ if (DISCORD_BOT_TOKEN) {
                     if (error.statusCode === 410 || error.statusCode === 404) {
                         console.warn("🧹 Scrubbing expired subscription.");
                     } else if (error.statusCode === 403) {
-                        console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
+                        console.error("🚨 Scrubbing VAPID Mismatch.");
                     } else {
-                        console.error("❌ Unexpected Push Error:", error.message);
                         activeSubs.push(sub); 
                     }
                 }
             });
 
             await Promise.all(pushPromises);
-
-            if (changed) {
-                fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-                console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
-            }
-            
+            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
             message.react('✅');
-        } else {
-            message.reply("No subscribers found yet!");
         }
     });
 }
 
-// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
     try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
     catch (e) { console.log("Using /tmp for uploads"); }
@@ -125,7 +106,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW ROUTE: LOG SECURITY GATE ENTRY + REAL-TIME PDF RECEIPT ---
+// --- SECURITY GATE ENTRY ROUTE ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -143,7 +124,6 @@ app.post('/log-gate-check', async (req, res) => {
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // Mimic Dark Mobile Theme
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 700, color: rgb(0.05, 0.08, 0.12) });
         page.drawText('!', { x: 190, y: 640, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
         page.drawText('DEPARTURE REQUIREMENTS', { x: 60, y: 600, size: 18, font: fontBold, color: rgb(1, 0.6, 0) });
@@ -164,7 +144,6 @@ app.post('/log-gate-check', async (req, res) => {
             yPos -= 25;
         });
 
-        // Policy Box
         page.drawRectangle({ x: 35, y: yPos - 100, width: 330, height: 90, color: rgb(0.1, 0.12, 0.15) });
         page.drawRectangle({ x: 35, y: yPos - 100, width: 4, height: 90, color: rgb(1, 0.6, 0) });
         page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.7, 0.7, 0.7) });
@@ -194,33 +173,17 @@ app.post('/log-gate-check', async (req, res) => {
     res.json({ success: true });
 });
 
-// --- 2. ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
     else res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
-app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
-app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
-
-app.get('/report', (req, res) => {
-    const mode = req.query.mode;
-    if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
-    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident - report.html'));
-    else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
-    else res.status(404).send('Unknown report type.');
-});
-
 app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
 app.post('/subscribe', (req, res) => {
     const subscription = req.body;
-    let subs = [];
-    if (fs.existsSync(SUBSCRIPTION_FILE)) {
-        try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch(e) {}
-    }
+    let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
     subs.push(subscription);
     const unique = subs.filter((v,i,a)=>a.findIndex(t=>(t.endpoint === v.endpoint))===i);
     fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(unique));
@@ -256,11 +219,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             fields: 'id', supportsAllDrives: true
         });
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        if (client.isReady()) {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            if (channel) channel.send(`🎥 **Video Uploaded:** ${driverName} (${inspectionType})`);
-        }
         res.status(200).send('Upload Complete');
     } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
@@ -268,14 +226,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     logReportLocally(data);
-
-    if (client.isReady()) {
-        try {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            const title = data.reportType.includes('Accident') ? "🚨 **ACCIDENT REPORT**" : "⚠️ **ISSUE REPORT**";
-            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.otherDescription || 'None'}`);
-        } catch(e) { console.log("Discord Send Error", e); }
-    }
 
     try {
         const auth = new google.auth.GoogleAuth({
@@ -314,53 +264,22 @@ app.post('/submit-report', async (req, res) => {
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
         page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        try {
-            const logoPath = path.join(__dirname, 'Final-01.jpg');
-            if (fs.existsSync(logoPath)) {
-                const logoImg = await doc.embedJpg(fs.readFileSync(logoPath));
-                const dims = logoImg.scaleToFit(180, 70); 
-                page.drawImage(logoImg, { x: 570 - dims.width, y: 760 - (dims.height/2), width: dims.width, height: dims.height });
-            }
-        } catch(e) {}
-
         let y = 680;
         const checkPage = () => { if (y < 50) { page = doc.addPage([600, 800]); y = 750; } };
         const drawField = (title, value) => {
             checkPage();
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
             page.drawText(value || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-            y -= 25;
-            page.drawLine({ start: { x: 30, y: y+10 }, end: { x: 570, y: y+10 }, thickness: 0.5, color: rgb(0.9,0.9,0.9) });
-            y -= 10;
+            y -= 35;
         };
 
         drawField('REPORT CATEGORY', data.reportType.toUpperCase());
         drawField('DRIVER NAME', data.driverName);
         drawField('VIN (LAST 4)', data.vinLast4);
-        drawField('VEHICLE TYPE', data.vehicleType);
         drawField('DATE & TIME', `${data.date} at ${data.time}`);
-        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
-        else drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
         
-        checkPage();
-        y -= 10;
-        page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-        y -= 20;
-        const notes = data.otherDescription || "No notes.";
-        const words = notes.split(' ');
-        let line = '';
-        for (const word of words) {
-            if ((line + word).length > 85) { page.drawText(line, { x: 30, y, size: 11, font: fontReg }); y -= 15; line = ''; checkPage(); }
-            line += word + ' ';
-        }
-        page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-        y -= 40;
-
         if (photoBuffers.length > 0) {
             checkPage();
-            if(y < 200) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.95, 0.95, 0.95) });
-            page.drawText('ATTACHED EVIDENCE PHOTOS', { x: 40, y: y+8, size: 10, font: fontBold, color: rgb(0.14, 0.38, 0.92) });
             y -= 30;
             for (const buffer of photoBuffers) {
                 try {
@@ -389,7 +308,6 @@ app.post('/submit-report', async (req, res) => {
             from: process.env.EMAIL_USER,
             to: recipients,
             subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
@@ -416,25 +334,6 @@ cron.schedule('30 23 * * *', async () => {
         const allLogs = JSON.parse(rawData);
         if (allLogs.length === 0 && gateSummaryText.length < 40) return;
 
-        const doc = await PDFDocument.create();
-        let page = doc.addPage([600, 800]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
-        page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.1, 0.1, 0.1) });
-        page.drawText('DAILY FLEET SUMMARY', { x: 30, y: 765, size: 24, font: fontBold, color: rgb(1,1,1) });
-
-        let y = 680;
-        allLogs.forEach((log, index) => {
-            if (y < 150) { page = doc.addPage([600, 800]); y = 750; }
-            page.drawRectangle({ x: 30, y: y, width: 540, height: 25, color: rgb(0.9, 0.9, 0.9) });
-            page.drawText(`REPORT #${index + 1} - ${log.reportType.toUpperCase()}`, { x: 40, y: y+8, size: 12, font: fontBold, color: rgb(0,0,0) });
-            y -= 60;
-        });
-
-        const summaryPath = path.join(UPLOAD_DIR, `Daily_Summary_${Date.now()}.pdf`);
-        fs.writeFileSync(summaryPath, await doc.save());
-
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -444,12 +343,10 @@ cron.schedule('30 23 * * *', async () => {
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'], 
             subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
-            text: `Daily Summary Attached.\n${gateSummaryText}`,
-            attachments: [{ filename: 'Daily_Summary.pdf', path: summaryPath }]
+            text: `Daily Summary Processed.\n${gateSummaryText}`
         });
 
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
-        fs.unlinkSync(summaryPath);
     } catch (e) { console.error("Cron Error:", e); }
 }, { timezone: "America/New_York" });
 
