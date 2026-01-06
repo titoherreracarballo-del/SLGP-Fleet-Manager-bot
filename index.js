@@ -18,6 +18,7 @@ const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
+// New file for gate tracking
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 
 // --- DISCORD BOT SETUP ---
@@ -41,6 +42,8 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
+    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
+    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
 } else {
     console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
@@ -58,14 +61,25 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
+    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
+
         console.log(`Received Discord Alert: ${message.content}`);
 
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
-            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) { console.error(e); }
-            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
+            try {
+                subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
+            } catch (e) {
+                console.error("Error reading subscriptions file", e);
+            }
+
+            const payload = JSON.stringify({ 
+                title: "📢 FLEET ALERT", 
+                body: message.content 
+            });
+
             const activeSubs = [];
             let changed = false;
 
@@ -75,20 +89,35 @@ if (DISCORD_BOT_TOKEN) {
                     activeSubs.push(sub); 
                 } catch (error) {
                     changed = true; 
-                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("🧹 Scrubbing subscription.");
-                    else if (error.statusCode === 403) console.error("🚨 VAPID Mismatch.");
-                    else activeSubs.push(sub);
+                    if (error.statusCode === 410 || error.statusCode === 404) {
+                        console.warn("🧹 Scrubbing expired subscription.");
+                    } else if (error.statusCode === 403) {
+                        console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
+                    } else {
+                        console.error("❌ Unexpected Push Error:", error.message);
+                        activeSubs.push(sub); 
+                    }
                 }
             });
+
             await Promise.all(pushPromises);
-            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
+
+            if (changed) {
+                fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
+                console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
+            }
+            
             message.react('✅');
-        } else { message.reply("No subscribers found!"); }
+        } else {
+            message.reply("No subscribers found yet!");
+        }
     });
 }
 
+// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
-    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
+    catch (e) { console.log("Using /tmp for uploads"); }
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
@@ -96,14 +125,15 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- NEW ROUTE: LOG ENTRY + REAL-TIME PDF SNAPSHOT EMAIL ---
+// --- UPDATED ROUTE: LOG SECURITY GATE ENTRY + REAL-TIME PDF SNAPSHOT ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) {
         try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
     }
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
     logs.push({ name, timestamp });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
@@ -128,35 +158,41 @@ app.post('/log-gate-check', async (req, res) => {
         });
 
         // Restored Full Disclaimer Layout
-        page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+        page.drawRectangle({ x: 35, y: yPos - 130, width: 330, height: 120, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: yPos - 130, width: 4, height: 120, color: rgb(1, 0.6, 0) });
         page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('Drivers are responsible for equipment once they leave facility.', { x: 45, y: yPos - 45, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('SLGP will not reimburse purchases of charging cables or power banks.', { x: 45, y: yPos - 60, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
 
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 130, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 155, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 180, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 175, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 200, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
         fs.writeFileSync(snapshotPath, pdfBytes);
 
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
-            subject: `CHECKLIST ALERT: ${name}`,
-            text: `DA ${name} completion snapshot attached.`,
-            attachments: [{ filename: `Snapshot_${name}.pdf`, path: snapshotPath }]
+            subject: `CHECKLIST COMPLETED: ${name}`,
+            text: `Digital receipt for DA ${name} attached.`,
+            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
         });
         fs.unlinkSync(snapshotPath);
         
-        // CRITICAL FIX: Send success response to browser to stop "Processing" state
+        // FIX: Return success to stop "PROCESSING..." hang in UI
         res.status(200).json({ success: true });
     } catch (e) {
         console.error("PDF Fail:", e);
         res.status(500).json({ success: false });
     }
 });
+
 // --- 2. ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
@@ -302,6 +338,8 @@ app.post('/submit-report', async (req, res) => {
         drawField('VIN (LAST 4)', data.vinLast4);
         drawField('VEHICLE TYPE', data.vehicleType);
         drawField('DATE & TIME', `${data.date} at ${data.time}`);
+        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
+        else drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
         
         checkPage();
         y -= 10;
