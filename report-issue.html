@@ -8,12 +8,12 @@
     <style>
         /* --- THEME SETTINGS --- */
         :root {
-            --bg-body: #0F1115;       
-            --bg-card: #161B28;       
-            --bg-input: #0b0d12;      
-            --primary-blue: #2563EB;  
+            --bg-body: #0F1115;        
+            --bg-card: #161B28;        
+            --bg-input: #0b0d12;       
+            --primary-blue: #2563EB;   
             --primary-glow: rgba(37, 99, 235, 0.4);
-            --text-label: #3B82F6;    
+            --text-label: #3B82F6;     
             --text-white: #ffffff;
             --text-gray: #94a3b8;
             --border-color: #2d3748;
@@ -184,7 +184,9 @@
             padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
             text-transform: uppercase; margin-top: 25px; cursor: pointer;
             box-shadow: 0 4px 20px var(--primary-glow);
+            transition: 0.3s;
         }
+        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -353,6 +355,7 @@ const vinDatabase = {
 let activeTab = 'high';
 let photos = [];
 let map;
+let isSubmitting = false; // Processing Lock
 
 // --- INITIALIZATION (CRASH PROOF) ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -490,6 +493,8 @@ function checkForOther() {
 }
 
 async function submitForm() {
+    if (isSubmitting) return; // Prevent double taps
+
     const driverName = document.getElementById('driverName').value;
     const vin = document.getElementById('vinInput').value;
     const vehicleType = document.getElementById('vehicleType').value;
@@ -516,6 +521,12 @@ async function submitForm() {
     const anyOther = selectedTags.some(t => t.includes("Other"));
     if(anyOther && !notes) { alert("Please describe the issue in Additional Notes."); return; }
 
+    isSubmitting = true; // Lock the button
+    const btn = document.querySelector('.submit-btn');
+    btn.innerText = "UPLOADING...";
+    btn.style.opacity = "0.7";
+    btn.disabled = true;
+
     const payload = {
         reportType: reportType,
         driverName: driverName,
@@ -531,10 +542,6 @@ async function submitForm() {
         photos: photos
     };
 
-    const btn = document.querySelector('.submit-btn');
-    btn.innerText = "UPLOADING...";
-    btn.style.opacity = "0.7";
-
     try {
         const res = await fetch('/submit-report', {
             method: 'POST',
@@ -545,15 +552,15 @@ async function submitForm() {
         if(result.success) {
             window.location.href = '/success';
         } else {
-            alert("Error: " + result.error);
-            btn.innerText = "SUBMIT REPORT";
-            btn.style.opacity = "1";
+            throw new Error(result.error);
         }
     } catch (e) {
         console.error(e);
-        alert("Network Error");
+        alert("Upload Error. Please try again.");
+        isSubmitting = false; // Unlock on error
         btn.innerText = "SUBMIT REPORT";
         btn.style.opacity = "1";
+        btn.disabled = false;
     }
 }
 </script>
