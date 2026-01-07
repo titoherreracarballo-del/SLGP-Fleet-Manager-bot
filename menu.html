@@ -17,6 +17,7 @@
             --text-dim: #A9B2BD;
             --amazon-orange: #FF9900;
             --neon-blue: #00A8E1;
+            --neon-green: #00ff88;
             --neon-red: #ff2a2a;
         }
 
@@ -31,6 +32,7 @@
             display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box;
         }
 
+        /* --- GATES --- */
         .gate-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark);
             z-index: 9999; display: none; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; overflow-y: auto;
@@ -40,15 +42,14 @@
             width: 100%; max-width: 440px; padding: 20px; border: 2px solid var(--amazon-orange); border-radius: 15px; background: rgba(35, 47, 62, 0.98); box-shadow: 0 0 40px rgba(255, 153, 0, 0.2); box-sizing: border-box;
         }
         
-        /* --- AMAZON BLUE ARRIVAL THEME --- */
-        #security-gate-arrival .gate-content { border-color: var(--neon-blue); box-shadow: 0 0 40px rgba(0, 168, 225, 0.2); }
-        #security-gate-arrival .disclaimer-header { color: var(--neon-blue); }
-        #security-gate-arrival .exclamation-symbol { text-shadow: 0 0 15px var(--neon-blue); }
-        #security-gate-arrival .gate-btn { background: var(--neon-blue); color: #fff; }
-        #security-gate-arrival .gate-btn.active { box-shadow: 0 0 15px rgba(0, 168, 225, 0.4); }
-        #security-gate-arrival .check-item input[type="checkbox"] { accent-color: var(--neon-blue); }
-        #security-gate-arrival .policy-warning { border-left-color: var(--neon-blue); }
-        #security-gate-arrival .ack-label { color: var(--neon-blue); }
+        #security-gate-arrival .gate-content { border-color: var(--neon-green); box-shadow: 0 0 40px rgba(0, 255, 136, 0.2); }
+        #security-gate-arrival .disclaimer-header { color: var(--neon-green); }
+        #security-gate-arrival .exclamation-symbol { text-shadow: 0 0 15px var(--neon-green); }
+        #security-gate-arrival .gate-btn { background: var(--neon-green); color: #000; }
+        #security-gate-arrival .gate-btn.active { box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); }
+        #security-gate-arrival .check-item input[type="checkbox"] { accent-color: var(--neon-green); }
+        #security-gate-arrival .policy-warning { border-left-color: var(--neon-green); }
+        #security-gate-arrival .ack-label { color: var(--neon-green); }
 
         .disclaimer-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 12px; color: var(--amazon-orange); }
         .exclamation-symbol { font-size: 50px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 15px var(--amazon-orange); }
@@ -121,24 +122,14 @@
             </div>
             <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
             <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Remove all trash and belongings from work van, slgp is not responsible for any lost personal items.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Make sure Van keys, Power Bank, Cable, Phone, and any other accessories are inside your van bag and given to night closer.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete your post trip DVIC in flex.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Record and upload your post trip fleet check video.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Turn off all headlights and hazard lights on your work vehicle.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Do not leave any totes or unreturned packages inside the van.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Trash completely removed from van.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Work device plugged in to charge.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Van bag returned with all tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete Post-Trip DVIC in Flex.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Keys returned to dispatch.</span></label>
             </div>
             <div class="policy-warning">
-                All SLGP vehicles must be returned fully fueled and free of any unsanitary or foreign materials. Drivers are required to remove and properly dispose of all trash, biohazardous waste, unreturned packages, and personal belongings prior to returning the vehicle.<br><br>
-                SLGP is not responsible for any personal items left behind.<br><br>
-                Drivers must also ensure the following before leaving the lot:<br>
-                Do not leave headlights or hazard lights on. Confirm all exterior and interior lights are turned off before parking your vehicle.<br>
-                Any and all vehicle issues must be reported using the “Report Issue” feature on the Fleet Check app.<br><br>
-                For operators of EDVs, you are required to:<br>
-                Plug in the vehicle upon return<br>
-                Ensure all doors are fully closed<br>
-                Turn off all dashboard lighting and accessories<br><br>
-                Failure to follow these requirements may result in corrective action.
+                Ensure vehicle is locked and no personal items remain. Failure to clean van may result in disciplinary action.
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
@@ -189,7 +180,7 @@
             }
         }
 
-        // --- 2. VALIDATION ---
+        // --- 2. VALIDATION & TAP PROTECTION ---
         document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
         document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
         
@@ -211,9 +202,11 @@
         async function handleSubmission(btnId, inputId, endpoint) {
             const btn = document.getElementById(btnId);
             if (!btn.classList.contains('active') || isSubmitting) return;
+            
             isSubmitting = true;
             btn.innerText = "PROCESSING...";
             btn.style.opacity = "0.5";
+            btn.disabled = true; // HARD DISABLE
             
             try {
                 await fetch(endpoint, { 
@@ -226,6 +219,7 @@
                 isSubmitting = false;
                 btn.innerText = "CONFIRM";
                 btn.style.opacity = "1";
+                btn.disabled = false;
             }
         }
 
