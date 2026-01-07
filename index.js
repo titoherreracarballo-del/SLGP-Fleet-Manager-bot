@@ -18,7 +18,6 @@ const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
-// New file for gate tracking
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 
 // --- DISCORD BOT SETUP ---
@@ -33,7 +32,7 @@ const client = new Client({
     ]
 });
 
-// --- VAPID KEYS (SAFE LOADING WITH SCRUBBER) ---
+// --- VAPID KEYS (SAFE LOADING) ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -42,17 +41,9 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log("VAPID_PUBLIC_KEY:", publicVapidKey);
-    console.log("VAPID_PRIVATE_KEY:", privateVapidKey);
-} else {
-    console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
 }
 
-webpush.setVapidDetails(
-    'mailto:slgpfleetmanager@gmail.com',
-    publicVapidKey,
-    privateVapidKey
-);
+webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, privateVapidKey);
 
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
@@ -61,63 +52,33 @@ if (DISCORD_BOT_TOKEN) {
         console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
     });
 
-    // --- THE BRIDGE: DISCORD -> APP (WITH AUTO-CLEANUP) ---
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-
-        console.log(`Received Discord Alert: ${message.content}`);
-
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
-            try {
-                subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE));
-            } catch (e) {
-                console.error("Error reading subscriptions file", e);
-            }
-
-            const payload = JSON.stringify({ 
-                title: "📢 FLEET ALERT", 
-                body: message.content 
-            });
-
+            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
+            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
             const activeSubs = [];
             let changed = false;
-
             const pushPromises = subs.map(async (sub) => {
                 try {
                     await webpush.sendNotification(sub, payload);
                     activeSubs.push(sub); 
                 } catch (error) {
                     changed = true; 
-                    if (error.statusCode === 410 || error.statusCode === 404) {
-                        console.warn("🧹 Scrubbing expired subscription.");
-                    } else if (error.statusCode === 403) {
-                        console.error("🚨 Scrubbing VAPID Mismatch (User needs to re-subscribe).");
-                    } else {
-                        console.error("❌ Unexpected Push Error:", error.message);
-                        activeSubs.push(sub); 
-                    }
+                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("Scrubbing expired subscription.");
+                    else activeSubs.push(sub);
                 }
             });
-
             await Promise.all(pushPromises);
-
-            if (changed) {
-                fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-                console.log(`✅ Subscription list cleaned. ${activeSubs.length} active users remaining.`);
-            }
-            
+            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
             message.react('✅');
-        } else {
-            message.reply("No subscribers found yet!");
         }
     });
 }
 
-// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
-    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } 
-    catch (e) { console.log("Using /tmp for uploads"); }
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
 }
 const upload = multer({ dest: UPLOAD_DIR });
 
@@ -125,7 +86,7 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- UPDATED ROUTE: LOG SECURITY GATE ENTRY + REAL-TIME PDF SNAPSHOT ---
+// --- ROUTE: LOG GATE CHECK + PDF RECEIPT ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -143,7 +104,7 @@ app.post('/log-gate-check', async (req, res) => {
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // Styling PDF like Mobile Form
+        // Dark Background
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
         page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
         page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
@@ -157,16 +118,18 @@ app.post('/log-gate-check', async (req, res) => {
             yPos -= 30;
         });
 
-        // Restored Full Disclaimer Layout
+        // --- FIXED DISCLAIMER TEXT SECTION ---
         page.drawRectangle({ x: 35, y: yPos - 130, width: 330, height: 120, color: rgb(0.12, 0.15, 0.2) });
         page.drawRectangle({ x: 35, y: yPos - 130, width: 4, height: 120, color: rgb(1, 0.6, 0) });
+        
         page.drawText('Any equipment needs must be reported no later than wave time.', { x: 45, y: yPos - 30, size: 8, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
-        page.drawText('Drivers are responsible for equipment once they leave facility.', { x: 45, y: yPos - 45, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
-        page.drawText('SLGP will not reimburse purchases of charging cables or power banks.', { x: 45, y: yPos - 60, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('Once a DA leaves, they are responsible. Failure is a breach of policy.', { x: 45, y: yPos - 45, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('By submitting, you confirm all requirements have been met.', { x: 45, y: yPos - 65, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('SLGP will not reimburse fuel or equipment purchases.', { x: 45, y: yPos - 80, size: 8, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
 
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 175, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 200, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 160, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 185, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 210, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
@@ -179,20 +142,18 @@ app.post('/log-gate-check', async (req, res) => {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
-            subject: `CHECKLIST COMPLETED: ${name}`,
-            text: `Digital receipt for DA ${name} attached.`,
+            subject: `CHECKLIST ALERT: ${name}`,
+            text: `Receipt attached for DA ${name}.`,
             attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
         });
         fs.unlinkSync(snapshotPath);
         
-        // FIX: Return success to stop "PROCESSING..." hang in UI
         res.status(200).json({ success: true });
     } catch (e) {
         console.error("PDF Fail:", e);
         res.status(500).json({ success: false });
     }
 });
-
 // --- 2. ROUTES ---
 app.get('/', (req, res) => {
     if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
@@ -226,7 +187,6 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- GOOGLE DRIVE & PDF LOGIC (PRESERVED FULL) ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -313,15 +273,6 @@ app.post('/submit-report', async (req, res) => {
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
         page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        try {
-            const logoPath = path.join(__dirname, 'Final-01.jpg');
-            if (fs.existsSync(logoPath)) {
-                const logoImg = await doc.embedJpg(fs.readFileSync(logoPath));
-                const dims = logoImg.scaleToFit(180, 70); 
-                page.drawImage(logoImg, { x: 570 - dims.width, y: 760 - (dims.height/2), width: dims.width, height: dims.height });
-            }
-        } catch(e) {}
-
         let y = 680;
         const checkPage = () => { if (y < 50) { page = doc.addPage([600, 800]); y = 750; } };
         const drawField = (title, value) => {
@@ -338,8 +289,6 @@ app.post('/submit-report', async (req, res) => {
         drawField('VIN (LAST 4)', data.vinLast4);
         drawField('VEHICLE TYPE', data.vehicleType);
         drawField('DATE & TIME', `${data.date} at ${data.time}`);
-        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet}, ${data.addressCity}`);
-        else drawField('ISSUES SELECTED', data.tags ? data.tags.join(', ') : 'None');
         
         checkPage();
         y -= 10;
