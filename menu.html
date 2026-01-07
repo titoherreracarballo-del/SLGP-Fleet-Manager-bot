@@ -1,224 +1,247 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="icon.jpg">
-    <link rel="icon" type="image/jpeg" href="icon.jpg">
-    <style>
-        /* --- AMAZON BLUE HUD THEME --- */
-        :root {
-            --bg-dark: #000000;
-            --bg-card-metal: linear-gradient(135deg, #232F3E 0%, #131A22 100%);
-            --border-glass: rgba(255, 255, 255, 0.1);
-            --text-primary: #FFFFFF;
-            --text-dim: #A9B2BD;
-            --amazon-orange: #FF9900;
-            --neon-blue: #00A8E1;
-            --neon-red: #ff2a2a;
+const express = require('express');
+const multer = require('multer');
+const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const stream = require('stream');
+const cron = require('node-cron');
+const webpush = require('web-push');
+const { Client, GatewayIntentBits, Events } = require('discord.js');
+
+const app = express();
+
+// --- 1. CONFIGURATION ---
+const APP_VERSION = Date.now();
+const VOLUME_PATH = '/app/meshcentral-data';
+const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
+const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
+const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
+const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
+
+// --- DISCORD BOT SETUP ---
+const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+// --- VAPID KEYS (SAFE LOADING) ---
+let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
+let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
+
+if (!publicVapidKey || !privateVapidKey) {
+    console.log("⚠️ Keys Missing or Invalid. Generating FRESH Keys...");
+    const vapidKeys = webpush.generateVAPIDKeys();
+    publicVapidKey = vapidKeys.publicKey;
+    privateVapidKey = vapidKeys.privateKey;
+} else {
+    console.log("✅ VAPID Keys Loaded & Cleaned Successfully.");
+}
+
+webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, privateVapidKey);
+
+if (DISCORD_BOT_TOKEN) {
+    client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
+    
+    client.once(Events.ClientReady, c => {
+        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
+    });
+
+    client.on(Events.MessageCreate, async message => {
+        if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
+        if (fs.existsSync(SUBSCRIPTION_FILE)) {
+            let subs = [];
+            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
+            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
+            const activeSubs = [];
+            let changed = false;
+            const pushPromises = subs.map(async (sub) => {
+                try {
+                    await webpush.sendNotification(sub, payload);
+                    activeSubs.push(sub); 
+                } catch (error) {
+                    changed = true; 
+                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("🧹 Scrubbing expired subscription.");
+                    else activeSubs.push(sub); 
+                }
+            });
+            await Promise.all(pushPromises);
+            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
+            message.react('✅');
         }
+    });
+}
 
-        body {
-            background-color: var(--bg-dark);
-            background-image: 
-                linear-gradient(rgba(0, 168, 225, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 168, 225, 0.03) 1px, transparent 1px);
-            background-size: 40px 40px;
-            font-family: "Amazon Ember", -apple-system, sans-serif;
-            color: var(--text-primary);
-            display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box;
-        }
+if (!fs.existsSync(UPLOAD_DIR)) {
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
+}
+const upload = multer({ dest: UPLOAD_DIR });
 
-        /* --- SECURITY GATE (Hidden by Default) --- */
-        #security-gate {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark);
-            z-index: 9999; display: none; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; overflow-y: auto;
-        }
+app.use(express.static(__dirname));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-        .gate-content {
-            width: 100%; max-width: 440px; padding: 20px; border: 2px solid var(--amazon-orange); border-radius: 15px; background: rgba(35, 47, 62, 0.98); box-shadow: 0 0 40px rgba(255, 153, 0, 0.2); box-sizing: border-box;
-        }
+// --- LOG GATE CHECK + PDF EMAIL ---
+app.post('/log-gate-check', async (req, res) => {
+    const { name } = req.body;
+    let logs = [];
+    if (fs.existsSync(GATE_LOG_FILE)) {
+        try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
+    }
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    logs.push({ name, timestamp });
+    fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
-        .disclaimer-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 12px; color: var(--amazon-orange); }
-        .exclamation-symbol { font-size: 50px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 15px var(--amazon-orange); }
-        .main-disclaimer { font-size: 13px; color: #FFFFFF; font-weight: 800; margin-bottom: 15px; text-align: center; line-height: 1.3; }
-        .checklist-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
-        .check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 11.5px; color: var(--text-primary); cursor: pointer; }
-        .check-item input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--amazon-orange); flex-shrink: 0; }
+    try {
+        const doc = await PDFDocument.create();
+        const page = doc.addPage([400, 750]);
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        .policy-warning {
-            font-size: 10.5px; color: var(--text-dim); line-height: 1.4; padding: 12px; background: rgba(26, 31, 37, 0.9);
-            border-radius: 8px; border-left: 4px solid var(--amazon-orange); margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
+        page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
 
-        .ack-container { margin-top: 10px; }
-        .ack-label { font-size: 10px; color: var(--amazon-orange); font-weight: bold; text-transform: uppercase; }
-        .ack-input { width: 100%; padding: 10px; background: #131A22; border: 1px solid var(--neon-blue); border-radius: 6px; color: white; box-sizing: border-box; font-size: 14px; margin-top: 5px; }
-        .gate-btn { width: 100%; margin-top: 15px; padding: 14px; background: var(--amazon-orange); color: #131A22; border: none; border-radius: 8px; font-weight: 900; text-transform: uppercase; cursor: not-allowed; opacity: 0.3; transition: 0.3s; }
-        .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 15px rgba(255, 153, 0, 0.4); }
-
-        /* --- MAIN UI --- */
-        #main-ui { display: block; width: 100%; max-width: 340px; }
-        .system-header { width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; font-weight: 700; }
-        .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
-        .logo-container img { width: 100%; border-radius: 12px; }
-        .menu-grid { display: flex; flex-direction: column; gap: 20px; }
-        /* Added cursor pointer since div doesn't have it by default */
-        .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); cursor: pointer; }
-        .btn-img-box { width: 100%; height: 120px; overflow: hidden; background: #000; }
-        .btn-img { width: 100%; height: 100%; object-fit: cover; }
-        .btn-content { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .btn-label { font-size: 14px; font-weight: 900; color: white; text-transform: uppercase; }
-        .btn-icon { width: 20px; height: 20px; fill: var(--neon-blue); }
-        #notifyBtn { width: 100%; padding: 12px; margin-bottom: 20px; background: rgba(0, 168, 225, 0.1); border: 1px solid var(--neon-blue); color: var(--neon-blue); font-weight: bold; border-radius: 12px; }
-        .notify-active { border-color: var(--neon-red) !important; color: var(--neon-red) !important; }
-        .notify-inactive { border-color: #00ff88 !important; color: #00ff88 !important; }
-        .footer { margin-top: 30px; font-size: 10px; color: var(--text-dim); text-align: center; }
-    </style>
-</head>
-<body>
-
-    <div id="security-gate">
-        <div class="gate-content">
-            <div class="disclaimer-header">
-                <span class="exclamation-symbol">!</span>
-                <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">Departure Requirements</h2>
-            </div>
-            <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
-            <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all operational tools.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount (unless EDV).</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit health pre-check video.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
-            </div>
-            <div class="policy-warning">
-                Report equipment <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.<br><br>
-                By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
-            </div>
-            <div class="ack-container">
-                <label class="ack-label">DA Acknowledgment</label>
-                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name to Confirm" oninput="validateGate()">
-            </div>
-            <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
-        </div>
-    </div>
-
-    <div id="main-ui">
-        <div class="system-header"><span>System: Online</span><span id="header-version">v1.0.2</span></div>
-        <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
-        <button id="notifyBtn">Checking Connection...</button>
-        <div class="menu-grid">
-            <div class="menu-btn" style="border-color: var(--neon-blue);" onclick="openSecurityGate()">
-                <div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div>
-                <div class="btn-content">
-                    <div class="btn-label">Fleet Inspection Vids</div>
-                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-                </div>
-            </div>
-            
-            <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);"><div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Report Issue</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
-            <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
-            <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
-        </div>
-        <div class="footer">Secure Fleet Portal • <span id="app-version">v1.0.2</span></div>
-    </div>
-
-    <script>
-        // --- 1. NEW LOGIC: Trigger Gate on Button Click ---
-        function openSecurityGate() {
-            document.getElementById('security-gate').style.display = 'flex';
-            document.getElementById('main-ui').style.display = 'none';
-        }
-
-        // --- 2. VALIDATION & TAP PROTECTION ---
-        const checkboxes = document.querySelectorAll('.gate-check');
-        const nameInput = document.getElementById('da-name');
-        const submitBtn = document.getElementById('gate-submit');
-        
-        checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
-        function validateGate() {
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            const nameEntered = nameInput.value.trim().length > 3;
-            if (allChecked && nameEntered) submitBtn.classList.add('active');
-            else submitBtn.classList.remove('active');
-        }
-
-        let isSubmitting = false;
-        async function unlockPortal() {
-            if (!submitBtn.classList.contains('active') || isSubmitting) return;
-            
-            isSubmitting = true;
-            submitBtn.innerText = "PROCESSING...";
-            submitBtn.style.opacity = "0.5";
-            
-            const daName = nameInput.value.trim();
-            try {
-                // Log Check & Send PDF Receipt
-                await fetch('/log-gate-check', { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ name: daName }) 
-                });
-                
-                // REDIRECT TO VIDEO PAGE AFTER CONFIRMATION
-                window.location.href = "/video";
-
-            } catch (e) {
-                console.error("Submission failed", e);
-                isSubmitting = false;
-                submitBtn.innerText = "CONFIRM & ENTER";
-                submitBtn.style.opacity = "1";
-            }
-        }
-
-        // --- 3. VERSION & NOTIFICATIONS ---
-        async function updateVersion() {
-            try {
-                const res = await fetch('/version');
-                const data = await res.json();
-                document.getElementById('app-version').innerText = "Build: " + data.version;
-                document.getElementById('header-version').innerText = "v" + data.version;
-            } catch (e) {}
-        }
-        updateVersion();
-
-        const btn = document.getElementById('notifyBtn');
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
-        
-        async function initializeUI() {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
-            btn.className = sub ? "notify-active" : "notify-inactive";
-        }
-
-        btn.addEventListener('click', async () => {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            if (sub) { await sub.unsubscribe(); initializeUI(); } 
-            else {
-                const res = await fetch('/vapid-key');
-                const data = await res.json();
-                const key = urlBase64ToUint8Array(data.publicKey);
-                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-                const newSub = await reg.pushManager.getSubscription();
-                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(newSub), headers: { 'content-type': 'application/json' } });
-                initializeUI();
-            }
+        const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
+        let yPos = 600;
+        items.forEach(text => {
+            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
+            yPos -= 30;
         });
 
-        function urlBase64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
-            return outputArray;
+        page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+        page.drawText('Report needs before wave time.', { x: 45, y: yPos - 30, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 130, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 155, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 180, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+
+        const pdfBytes = await doc.save();
+        const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
+        fs.writeFileSync(snapshotPath, pdfBytes);
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `CHECKLIST ALERT: ${name}`,
+            text: `Receipt attached for DA ${name}.`,
+            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
+        });
+        fs.unlinkSync(snapshotPath);
+        
+        res.status(200).json({ success: true }); // Critical: Stops frontend processing loop
+    } catch (e) {
+        console.error("PDF Fail:", e);
+        res.status(500).json({ success: false });
+    }
+});
+
+// --- ROUTES ---
+app.get('/', (req, res) => {
+    if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
+    else res.sendFile(path.join(__dirname, 'index.html'));
+});
+app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
+app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
+app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
+app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+    if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
+    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident - report.html'));
+    else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
+    else res.status(404).send('Unknown report type.');
+});
+app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
+app.post('/subscribe', (req, res) => {
+    const subscription = req.body;
+    let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
+    subs.push(subscription);
+    fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
+    res.status(201).json({});
+});
+
+// --- GOOGLE DRIVE LOGIC ---
+const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
+const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
+
+function logReportLocally(data) {
+    let currentLogs = fs.existsSync(DAILY_LOG_FILE) ? JSON.parse(fs.readFileSync(DAILY_LOG_FILE)) : [];
+    data.timestamp = new Date();
+    currentLogs.push(data);
+    fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
+}
+
+app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    try {
+        const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
+        const drive = google.drive({ version: 'v3', auth });
+        const { driverName, vin, inspectionType } = req.body;
+        await drive.files.create({
+            resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
+            fields: 'id', supportsAllDrives: true
+        });
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(200).send('Upload Complete');
+    } catch (error) { res.status(500).send(error.message); }
+});
+
+app.post('/submit-report', async (req, res) => {
+    const data = req.body;
+    logReportLocally(data);
+    try {
+        const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
+        const drive = google.drive({ version: 'v3', auth });
+        let targetFolderId = data.reportType.includes('Accident') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
+        const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
+        const folderId = folder.data.id;
+        const photoBuffers = [];
+        if (data.photos) {
+            for (let i = 0; i < data.photos.length; i++) {
+                const buffer = Buffer.from(data.photos[i].data, 'base64');
+                const bs = new stream.PassThrough(); bs.end(buffer);
+                await drive.files.create({ resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] }, media: { mimeType: 'image/jpeg', body: bs }, supportsAllDrives: true });
+            }
         }
-    </script>
-</body>
-</html>
+        const doc = await PDFDocument.create();
+        let page = doc.addPage([600, 800]);
+        const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
+        fs.writeFileSync(pdfPath, await doc.save());
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `REPORT: ${data.vinLast4}`, attachments: [{ filename: 'Report.pdf', path: pdfPath }] });
+        fs.unlinkSync(pdfPath);
+        res.json({ success: true });
+    } catch (error) { res.status(500).json({ success: false }); }
+});
+
+cron.schedule('30 23 * * *', async () => {
+    try {
+        let gateSummary = "\n--- DEPARTURE LOGS ---\n";
+        if (fs.existsSync(GATE_LOG_FILE)) {
+            const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
+            gateLogs.forEach(log => gateSummary += `${log.timestamp}: ${log.name}\n`);
+            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
+        }
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `DAILY SUMMARY`, text: `Processed.\n${gateSummary}` });
+    } catch (e) {}
+}, { timezone: "America/New_York" });
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
