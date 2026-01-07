@@ -17,6 +17,7 @@
             --text-dim: #A9B2BD;
             --amazon-orange: #FF9900;
             --neon-blue: #00A8E1;
+            --neon-green: #00ff88;
             --neon-red: #ff2a2a;
         }
 
@@ -31,8 +32,8 @@
             display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box;
         }
 
-        /* --- SECURITY GATE (Hidden by Default) --- */
-        #security-gate {
+        /* --- GATES --- */
+        .gate-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark);
             z-index: 9999; display: none; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; overflow-y: auto;
         }
@@ -40,6 +41,16 @@
         .gate-content {
             width: 100%; max-width: 440px; padding: 20px; border: 2px solid var(--amazon-orange); border-radius: 15px; background: rgba(35, 47, 62, 0.98); box-shadow: 0 0 40px rgba(255, 153, 0, 0.2); box-sizing: border-box;
         }
+        
+        /* Arrival Gate Green Theme Override */
+        #security-gate-arrival .gate-content { border-color: var(--neon-green); box-shadow: 0 0 40px rgba(0, 255, 136, 0.2); }
+        #security-gate-arrival .disclaimer-header { color: var(--neon-green); }
+        #security-gate-arrival .exclamation-symbol { text-shadow: 0 0 15px var(--neon-green); }
+        #security-gate-arrival .gate-btn { background: var(--neon-green); color: #000; }
+        #security-gate-arrival .gate-btn.active { box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); }
+        #security-gate-arrival .check-item input[type="checkbox"] { accent-color: var(--neon-green); }
+        #security-gate-arrival .policy-warning { border-left-color: var(--neon-green); }
+        #security-gate-arrival .ack-label { color: var(--neon-green); }
 
         .disclaimer-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 12px; color: var(--amazon-orange); }
         .exclamation-symbol { font-size: 50px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 15px var(--amazon-orange); }
@@ -64,10 +75,7 @@
         .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
         .logo-container img { width: 100%; border-radius: 12px; }
         .menu-grid { display: flex; flex-direction: column; gap: 20px; }
-        
-        /* Updated style to support click trigger */
         .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); cursor: pointer; }
-        
         .btn-img-box { width: 100%; height: 120px; overflow: hidden; background: #000; }
         .btn-img { width: 100%; height: 100%; object-fit: cover; }
         .btn-content { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
@@ -81,29 +89,54 @@
 </head>
 <body>
 
-    <div id="security-gate">
+    <div id="security-gate" class="gate-overlay">
         <div class="gate-content">
             <div class="disclaimer-header">
                 <span class="exclamation-symbol">!</span>
-                <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">Departure Requirements</h2>
+                <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase;">Departure Requirements</h2>
             </div>
             <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
             <div class="checklist-container">
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all necessary tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all operational tools.</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount (unless EDV).</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit health pre-check video.</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
             </div>
             <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.<br><br>
+                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible.<br><br>
                 By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
-                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name to Confirm" oninput="validateGate()">
+                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate('gate')">
             </div>
             <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
+        </div>
+    </div>
+
+    <div id="security-gate-arrival" class="gate-overlay">
+        <div class="gate-content">
+            <div class="disclaimer-header">
+                <span class="exclamation-symbol">!</span>
+                <h2 style="margin:0; font-size: 1.1rem; text-transform: uppercase;">Arrival Requirements</h2>
+            </div>
+            <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Trash completely removed from van.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Work device plugged in to charge.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Van bag returned with all tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete Post-Trip DVIC in Flex.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Keys returned to dispatch.</span></label>
+            </div>
+            <div class="policy-warning">
+                Ensure vehicle is locked and no personal items remain. Failure to clean van may result in disciplinary action.
+            </div>
+            <div class="ack-container">
+                <label class="ack-label">DA Acknowledgment</label>
+                <input type="text" id="arr-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate('arrival')">
+            </div>
+            <button id="arrival-submit" class="gate-btn" onclick="unlockArrival()">Confirm Arrival</button>
         </div>
     </div>
 
@@ -119,7 +152,6 @@
                     <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
                 </div>
             </div>
-            
             <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);"><div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Report Issue</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
             <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
             <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
@@ -128,99 +160,88 @@
     </div>
 
     <script>
-        // --- 1. GATE TRIGGER LOGIC (10AM - 6PM) ---
+        // --- 1. GATE TRIGGER LOGIC ---
         function openSecurityGate() {
             const now = new Date();
-            const currentHour = now.getHours();
+            const mins = (now.getHours() * 60) + now.getMinutes();
             
-            // Check if time is between 10:00 (10) and 18:00 (18)
-            if (currentHour >= 10 && currentHour < 18) {
+            // Departure: 10:00 AM (600) to 6:00 PM (1080)
+            if (mins >= 600 && mins < 1080) {
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
-            } else {
-                // If outside hours, bypass gate and go straight to video
-                // OR alert user. Based on "available from 10am-6pm only",
-                // assuming block access to gate but allow video for off-hours?
-                // Defaulting to: Bypass gate if outside hours (drivers working late/early).
-                // If you want to BLOCK access entirely, change this line to alert().
-                window.location.href = "/video"; 
+            } 
+            // Arrival: 6:15 PM (1095) to Midnight (1440) OR Midnight (0) to 9:00 AM (540)
+            else if (mins >= 1095 || mins < 540) {
+                document.getElementById('security-gate-arrival').style.display = 'flex';
+                document.getElementById('main-ui').style.display = 'none';
+            } 
+            // Gap times (e.g. 6:05 PM, 9:30 AM): Bypass
+            else {
+                window.location.href = "/video";
             }
         }
 
-        // --- 2. VALIDATION & TAP PROTECTION ---
-        const checkboxes = document.querySelectorAll('.gate-check');
-        const nameInput = document.getElementById('da-name');
-        const submitBtn = document.getElementById('gate-submit');
+        // --- 2. VALIDATION ---
+        document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
+        document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
         
-        checkboxes.forEach(cb => cb.addEventListener('change', validateGate));
-        function validateGate() {
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            const nameEntered = nameInput.value.trim().length > 3;
-            if (allChecked && nameEntered) submitBtn.classList.add('active');
-            else submitBtn.classList.remove('active');
+        function validateGate(type) {
+            const checks = document.querySelectorAll(type === 'gate' ? '.gate-check' : '.arrival-check');
+            const input = document.getElementById(type === 'gate' ? 'da-name' : 'arr-name');
+            const btn = document.getElementById(type === 'gate' ? 'gate-submit' : 'arrival-submit');
+            
+            const allChecked = Array.from(checks).every(cb => cb.checked);
+            if (allChecked && input.value.trim().length > 3) btn.classList.add('active');
+            else btn.classList.remove('active');
         }
 
         let isSubmitting = false;
-        async function unlockPortal() {
-            if (!submitBtn.classList.contains('active') || isSubmitting) return;
-            
+
+        async function unlockPortal() { handleSubmission('gate-submit', 'da-name', '/log-gate-check'); }
+        async function unlockArrival() { handleSubmission('arrival-submit', 'arr-name', '/log-arrival-check'); }
+
+        async function handleSubmission(btnId, inputId, endpoint) {
+            const btn = document.getElementById(btnId);
+            if (!btn.classList.contains('active') || isSubmitting) return;
             isSubmitting = true;
-            submitBtn.innerText = "PROCESSING...";
-            submitBtn.style.opacity = "0.5";
+            btn.innerText = "PROCESSING...";
+            btn.style.opacity = "0.5";
             
-            const daName = nameInput.value.trim();
             try {
-                // Submit to server for Logging + PDF Email
-                await fetch('/log-gate-check', { 
+                await fetch(endpoint, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ name: daName }) 
+                    body: JSON.stringify({ name: document.getElementById(inputId).value.trim() }) 
                 });
-                
-                // Redirect to Video Page after success
                 window.location.href = "/video";
-
             } catch (e) {
-                console.error("Submission failed", e);
                 isSubmitting = false;
-                submitBtn.innerText = "CONFIRM & ENTER";
-                submitBtn.style.opacity = "1";
+                btn.innerText = "CONFIRM";
+                btn.style.opacity = "1";
             }
         }
 
-        // --- 3. VERSION & NOTIFICATIONS ---
-        async function updateVersion() {
-            try {
-                const res = await fetch('/version');
-                const data = await res.json();
-                document.getElementById('app-version').innerText = "Build: " + data.version;
-                document.getElementById('header-version').innerText = "v" + data.version;
-            } catch (e) {}
-        }
-        updateVersion();
-
-        const btn = document.getElementById('notifyBtn');
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => initializeUI());
+        // --- 3. STANDARD UI LOGIC ---
+        const notifyBtn = document.getElementById('notifyBtn');
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(initPushUI);
         
-        async function initializeUI() {
+        async function initPushUI() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
-            btn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
-            btn.className = sub ? "notify-active" : "notify-inactive";
+            notifyBtn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
+            notifyBtn.className = sub ? "notify-active" : "notify-inactive";
         }
 
-        btn.addEventListener('click', async () => {
+        notifyBtn.addEventListener('click', async () => {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
-            if (sub) { await sub.unsubscribe(); initializeUI(); } 
+            if (sub) { await sub.unsubscribe(); initPushUI(); } 
             else {
                 const res = await fetch('/vapid-key');
                 const data = await res.json();
-                const key = urlBase64ToUint8Array(data.publicKey);
-                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-                const newSub = await reg.pushManager.getSubscription();
-                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(newSub), headers: { 'content-type': 'application/json' } });
-                initializeUI();
+                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(data.publicKey) });
+                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(await reg.pushManager.getSubscription()), headers: { 'content-type': 'application/json' } });
+                initPushUI();
             }
         });
 
