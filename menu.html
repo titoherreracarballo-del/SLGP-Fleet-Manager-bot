@@ -32,7 +32,7 @@
             display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 10px; box-sizing: border-box;
         }
 
-        /* --- SECURITY GATE --- */
+        /* --- SECURITY GATE (Hidden by Default) --- */
         #security-gate {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-dark);
             z-index: 9999; display: none; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; overflow-y: auto;
@@ -60,13 +60,14 @@
         .gate-btn { width: 100%; margin-top: 15px; padding: 14px; background: var(--amazon-orange); color: #131A22; border: none; border-radius: 8px; font-weight: 900; text-transform: uppercase; cursor: not-allowed; opacity: 0.3; transition: 0.3s; }
         .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 15px rgba(255, 153, 0, 0.4); }
 
-        /* --- MAIN UI (RESTORED FEATURES) --- */
+        /* --- MAIN UI --- */
         #main-ui { display: block; width: 100%; max-width: 340px; }
         .system-header { width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: var(--neon-blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; font-weight: 700; }
         .logo-container { width: 100%; background: var(--bg-card-metal); border: 1px solid var(--border-glass); padding: 20px; border-radius: 24px; margin-bottom: 30px; text-align: center; box-sizing: border-box; }
         .logo-container img { width: 100%; border-radius: 12px; }
         .menu-grid { display: flex; flex-direction: column; gap: 20px; }
-        .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); }
+        /* Added cursor pointer since div doesn't have it by default */
+        .menu-btn { display: flex; flex-direction: column; width: 100%; border-radius: 16px; text-decoration: none; background: var(--bg-card-metal); border: 2px solid var(--border-glass); overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.6); cursor: pointer; }
         .btn-img-box { width: 100%; height: 120px; overflow: hidden; background: #000; }
         .btn-img { width: 100%; height: 100%; object-fit: cover; }
         .btn-content { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
@@ -95,7 +96,7 @@
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
             </div>
             <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.<br><br>
+                Report equipment <strong>no later than wave time</strong>. Once a DA leaves, they are responsible. Failure is a breach of policy.<br><br>
                 By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
             </div>
             <div class="ack-container">
@@ -111,7 +112,14 @@
         <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
         <button id="notifyBtn">Checking Connection...</button>
         <div class="menu-grid">
-            <a href="/video" class="menu-btn" style="border-color: var(--neon-blue);"><div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Fleet Inspection Vids</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
+            <div class="menu-btn" style="border-color: var(--neon-blue);" onclick="openSecurityGate()">
+                <div class="btn-img-box"><img src="fleet.jpg" class="btn-img"></div>
+                <div class="btn-content">
+                    <div class="btn-label">Fleet Inspection Vids</div>
+                    <svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </div>
+            </div>
+            
             <a href="/report?mode=issue" class="menu-btn" style="border-color: var(--amazon-orange);"><div class="btn-img-box"><img src="issue.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Report Issue</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
             <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
             <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
@@ -120,21 +128,11 @@
     </div>
 
     <script>
-        // --- 1. TIME RESTRICTION LOGIC ---
-        function checkGateTiming() {
-            const now = new Date();
-            const currentHour = now.getHours();
-            
-            // Set to true to show gate immediately for testing
-            if (true) { 
-                document.getElementById('security-gate').style.display = 'flex';
-                document.getElementById('main-ui').style.display = 'none';
-            } else {
-                document.getElementById('security-gate').style.display = 'none';
-                document.getElementById('main-ui').style.display = 'block';
-            }
+        // --- 1. NEW LOGIC: Trigger Gate on Button Click ---
+        function openSecurityGate() {
+            document.getElementById('security-gate').style.display = 'flex';
+            document.getElementById('main-ui').style.display = 'none';
         }
-        checkGateTiming();
 
         // --- 2. VALIDATION & TAP PROTECTION ---
         const checkboxes = document.querySelectorAll('.gate-check');
@@ -159,18 +157,21 @@
             
             const daName = nameInput.value.trim();
             try {
+                // Log Check & Send PDF Receipt
                 await fetch('/log-gate-check', { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ name: daName }) 
                 });
                 
-                document.getElementById('security-gate').style.display = 'none';
-                document.getElementById('main-ui').style.display = 'block';
+                // REDIRECT TO VIDEO PAGE AFTER CONFIRMATION
+                window.location.href = "/video";
+
             } catch (e) {
                 console.error("Submission failed", e);
                 isSubmitting = false;
                 submitBtn.innerText = "CONFIRM & ENTER";
+                submitBtn.style.opacity = "1";
             }
         }
 
