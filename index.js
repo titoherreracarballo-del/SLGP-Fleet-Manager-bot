@@ -74,14 +74,36 @@ app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+// --- HELPER: CHECK FOR DUPLICATES (60-SEC WINDOW) ---
+function isDuplicate(file, name) {
+    if (!fs.existsSync(file)) return false;
+    try {
+        const logs = JSON.parse(fs.readFileSync(file));
+        if (logs.length === 0) return false;
+        const lastLog = logs[logs.length - 1];
+        const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
+        const now = Date.now();
+        // If same name and less than 60 seconds ago -> Duplicate
+        return (lastLog.name === name && (now - lastTime < 60000));
+    } catch (e) { return false; }
+}
+
 // --- DEPARTURE GATE ROUTE ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    
+    // SERVER-SIDE DEDUPING CHECK
+    if (isDuplicate(GATE_LOG_FILE, name)) {
+        console.log(`Blocked duplicate departure for ${name}`);
+        return res.json({ success: true }); // Return success silently
+    }
+
+    const now = new Date();
+    const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
     
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {} }
-    logs.push({ name, timestamp });
+    logs.push({ name, timestamp, rawTimestamp: now.getTime() });
     fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
     try {
@@ -128,38 +150,35 @@ app.post('/log-gate-check', async (req, res) => {
     } catch (e) { console.error("PDF Fail:", e); res.status(500).json({ success: false }); }
 });
 
-// --- ARRIVAL GATE ROUTE (UPDATED) ---
+// --- ARRIVAL GATE ROUTE ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    
+    // SERVER-SIDE DEDUPING CHECK
+    if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
+        console.log(`Blocked duplicate arrival for ${name}`);
+        return res.json({ success: true });
+    }
+
+    const now = new Date();
+    const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
     
     let logs = [];
     if (fs.existsSync(ARRIVAL_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE)); } catch(e) {} }
-    logs.push({ name, timestamp });
+    logs.push({ name, timestamp, rawTimestamp: now.getTime() });
     fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
 
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 800]); // Taller page for long disclaimer
+        const page = doc.addPage([400, 800]); 
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // Background
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 800, color: rgb(0.05, 0.08, 0.12) });
-        // Amazon Blue Header
         page.drawText('!', { x: 190, y: 740, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
         page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 700, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
 
-        // New 6 Checklist Items
-        const items = [
-            "Trash/belongings removed from van.",
-            "Keys, Power Bank, Cable, Phone in bag.",
-            "Complete post-trip DVIC in Flex.",
-            "Upload post-trip fleet check video.",
-            "Turn off headlights and hazard lights.",
-            "No totes/packages left in van."
-        ];
-
+        const items = ["Trash removed.", "Device plugged in.", "Van bag returned.", "Post-trip DVIC.", "Keys returned.", "Lights off."];
         let yPos = 650;
         items.forEach(text => {
             page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
@@ -168,7 +187,7 @@ app.post('/log-arrival-check', async (req, res) => {
             yPos -= 30;
         });
 
-        // Long Disclaimer Text (Formatted for PDF)
+        // Arrival Disclaimer (Full Text)
         yPos -= 20;
         page.drawRectangle({ x: 35, y: yPos - 220, width: 330, height: 220, color: rgb(0.12, 0.15, 0.2) });
         page.drawRectangle({ x: 35, y: yPos - 220, width: 4, height: 220, color: rgb(0, 0.66, 0.88) });
