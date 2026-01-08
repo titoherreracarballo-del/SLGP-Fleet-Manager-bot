@@ -33,7 +33,7 @@ const client = new Client({
     ]
 });
 
-// --- VAPID KEYS ---
+// --- VAPID KEYS (SAFE LOADING) ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -47,7 +47,11 @@ webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, pri
 
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
-    client.once(Events.ClientReady, c => console.log(`🤖 Fleet Bot Ready!`));
+    
+    client.once(Events.ClientReady, c => {
+        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
+    });
+
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
@@ -57,8 +61,14 @@ if (DISCORD_BOT_TOKEN) {
             const activeSubs = [];
             let changed = false;
             const pushPromises = subs.map(async (sub) => {
-                try { await webpush.sendNotification(sub, payload); activeSubs.push(sub); } 
-                catch (error) { changed = true; if (error.statusCode !== 410 && error.statusCode !== 404) activeSubs.push(sub); }
+                try {
+                    await webpush.sendNotification(sub, payload);
+                    activeSubs.push(sub); 
+                } catch (error) {
+                    changed = true; 
+                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("Scrubbing expired subscription.");
+                    else activeSubs.push(sub);
+                }
             });
             await Promise.all(pushPromises);
             if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
@@ -83,7 +93,6 @@ function isDuplicate(file, name) {
         const lastLog = logs[logs.length - 1];
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
         const now = Date.now();
-        // If same name and less than 60 seconds ago -> Duplicate
         return (lastLog.name === name && (now - lastTime < 60000));
     } catch (e) { return false; }
 }
@@ -92,11 +101,7 @@ function isDuplicate(file, name) {
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     
-    // SERVER-SIDE DEDUPING CHECK
-    if (isDuplicate(GATE_LOG_FILE, name)) {
-        console.log(`Blocked duplicate departure for ${name}`);
-        return res.json({ success: true }); // Return success silently
-    }
+    if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
 
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -150,15 +155,11 @@ app.post('/log-gate-check', async (req, res) => {
     } catch (e) { console.error("PDF Fail:", e); res.status(500).json({ success: false }); }
 });
 
-// --- ARRIVAL GATE ROUTE ---
+// --- ARRIVAL GATE ROUTE (UPDATED) ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
     
-    // SERVER-SIDE DEDUPING CHECK
-    if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
-        console.log(`Blocked duplicate arrival for ${name}`);
-        return res.json({ success: true });
-    }
+    if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
 
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -170,45 +171,60 @@ app.post('/log-arrival-check', async (req, res) => {
 
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 800]); 
+        const page = doc.addPage([400, 850]); // Increased height for long disclaimer
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 800, color: rgb(0.05, 0.08, 0.12) });
-        page.drawText('!', { x: 190, y: 740, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
-        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 700, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        // Background
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
+        // Amazon Blue Header (Arrival)
+        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
+        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
 
-        const items = ["Trash removed.", "Device plugged in.", "Van bag returned.", "Post-trip DVIC.", "Keys returned.", "Lights off."];
-        let yPos = 650;
+        // New 6 Checklist Items from Prompt
+        const items = [
+            "Remove trash & belongings. Not responsible for lost items.",
+            "Keys, Power Bank, Cable, Phone in bag -> Night Closer.",
+            "Complete post-trip DVIC in Flex.",
+            "Record/Upload post-trip fleet check video.",
+            "Turn off all headlights and hazard lights.",
+            "No totes or unreturned packages inside van."
+        ];
+
+        let yPos = 700;
         items.forEach(text => {
             page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
             page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 9, font: fontReg, color: rgb(1, 1, 1) }); // Smaller font for long lines
             yPos -= 30;
         });
 
-        // Arrival Disclaimer (Full Text)
+        // Expanded Disclaimer (Formatted for PDF)
         yPos -= 20;
-        page.drawRectangle({ x: 35, y: yPos - 220, width: 330, height: 220, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: yPos - 220, width: 4, height: 220, color: rgb(0, 0.66, 0.88) });
+        const disclaimerHeight = 280;
+        page.drawRectangle({ x: 35, y: yPos - disclaimerHeight, width: 330, height: disclaimerHeight, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: yPos - disclaimerHeight, width: 4, height: disclaimerHeight, color: rgb(0, 0.66, 0.88) });
         
         let dY = yPos - 20;
         const disclaimerLines = [
-            "All SLGP vehicles must be returned fully fueled and",
-            "free of unsanitary materials. Drivers must remove",
-            "trash, waste, and personal items.",
-            "SLGP is not responsible for lost items.",
+            "All SLGP vehicles must be returned fully fueled and free",
+            "of any unsanitary or foreign materials.",
+            "Drivers must remove/dispose of all trash, biohazardous",
+            "waste, unreturned packages, and personal belongings.",
+            "SLGP is not responsible for any personal items left behind.",
             "---",
-            "Do not leave headlights/hazards on. Confirm all",
-            "lights are off before parking.",
-            "Report all issues in Fleet Check app.",
+            "Drivers must ensure the following before leaving:",
+            "- Do not leave headlights or hazard lights on.",
+            "- Confirm all exterior/interior lights are off.",
+            "- Report all issues via 'Report Issue' in Fleet Check.",
             "---",
             "EDV OPERATORS:",
-            "1. Plug in vehicle.",
-            "2. Close all doors fully.",
-            "3. Turn off dashboard lighting.",
+            "1. Plug in the vehicle upon return.",
+            "2. Ensure all doors are fully closed.",
+            "3. Turn off all dashboard lighting and accessories.",
             "---",
-            "Failure to follow may result in corrective action."
+            "Failure to follow these requirements may result in",
+            "corrective action."
         ];
 
         disclaimerLines.forEach(line => {
@@ -216,9 +232,9 @@ app.post('/log-arrival-check', async (req, res) => {
             dY -= 14;
         });
 
-        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: yPos - 250, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 275, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 300, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: yPos - disclaimerHeight - 30, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText(name.toUpperCase(), { x: 50, y: yPos - disclaimerHeight - 55, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - disclaimerHeight - 80, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
