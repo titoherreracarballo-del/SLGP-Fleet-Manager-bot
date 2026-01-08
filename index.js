@@ -77,7 +77,9 @@ if (DISCORD_BOT_TOKEN) {
     });
 }
 
-if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {} }
+if (!fs.existsSync(UPLOAD_DIR)) {
+    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
+}
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(express.static(__dirname));
@@ -93,6 +95,7 @@ function isDuplicate(file, name) {
         const lastLog = logs[logs.length - 1];
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
         const now = Date.now();
+        // If same name and less than 60 seconds ago -> Duplicate
         return (lastLog.name === name && (now - lastTime < 60000));
     } catch (e) { return false; }
 }
@@ -101,7 +104,10 @@ function isDuplicate(file, name) {
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     
-    if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
+    // SERVER-SIDE DEDUPING CHECK
+    if (isDuplicate(GATE_LOG_FILE, name)) {
+        return res.json({ success: true }); // Return success silently
+    }
 
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -155,11 +161,14 @@ app.post('/log-gate-check', async (req, res) => {
     } catch (e) { console.error("PDF Fail:", e); res.status(500).json({ success: false }); }
 });
 
-// --- ARRIVAL GATE ROUTE (UPDATED) ---
+// --- ARRIVAL GATE ROUTE ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
     
-    if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
+    // SERVER-SIDE DEDUPING CHECK
+    if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
+        return res.json({ success: true });
+    }
 
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -171,35 +180,24 @@ app.post('/log-arrival-check', async (req, res) => {
 
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 850]); // Increased height for long disclaimer
+        const page = doc.addPage([400, 850]); 
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // Background
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
-        // Amazon Blue Header (Arrival)
-        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
-        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText('!', { x: 190, y: 740, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
+        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 700, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
 
-        // New 6 Checklist Items from Prompt
-        const items = [
-            "Remove trash & belongings. Not responsible for lost items.",
-            "Keys, Power Bank, Cable, Phone in bag -> Night Closer.",
-            "Complete post-trip DVIC in Flex.",
-            "Record/Upload post-trip fleet check video.",
-            "Turn off all headlights and hazard lights.",
-            "No totes or unreturned packages inside van."
-        ];
-
+        const items = ["Remove trash & belongings.", "Keys/Power Bank returned.", "Post-trip DVIC complete.", "Video uploaded.", "Lights off.", "No packages left."];
         let yPos = 700;
         items.forEach(text => {
             page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
             page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 9, font: fontReg, color: rgb(1, 1, 1) }); // Smaller font for long lines
+            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
             yPos -= 30;
         });
 
-        // Expanded Disclaimer (Formatted for PDF)
+        // Arrival Disclaimer (Full Text)
         yPos -= 20;
         const disclaimerHeight = 280;
         page.drawRectangle({ x: 35, y: yPos - disclaimerHeight, width: 330, height: disclaimerHeight, color: rgb(0.12, 0.15, 0.2) });
@@ -306,7 +304,32 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
-    logReportLocally(data);
+    
+    // SERVER-SIDE DEDUPING CHECK (Report Specific)
+    // Key is VIN + Report Type to allow distinct reports but block spam of same type
+    if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
+        return res.json({ success: true });
+    }
+
+    // Prepare data object with timestamp for both local log and deduping
+    data.timestamp = new Date();
+    data.rawTimestamp = Date.now();
+    data.name = (data.vinLast4 || '') + (data.reportType || ''); // Re-using "name" field for deduping logic
+
+    // Log locally
+    let currentLogs = [];
+    if (fs.existsSync(DAILY_LOG_FILE)) { try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} }
+    currentLogs.push(data);
+    fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
+
+    if (client.isReady()) {
+        try {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            const title = data.reportType.includes('Accident') ? "🚨 **ACCIDENT REPORT**" : "⚠️ **ISSUE REPORT**";
+            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.otherDescription || 'None'}`);
+        } catch(e) {}
+    }
+
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
         const drive = google.drive({ version: 'v3', auth });
@@ -321,15 +344,66 @@ app.post('/submit-report', async (req, res) => {
                 await drive.files.create({ resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] }, media: { mimeType: 'image/jpeg', body: bs }, supportsAllDrives: true });
             }
         }
+        
+        // --- PDF GENERATION WITH SAFETY CHECKS ---
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+        
+        page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.14, 0.38, 0.92) });
+        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
+        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+
+        let y = 680;
+        const drawField = (title, value) => {
+            page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
+            // Safety: Ensure value is a string and fallback to 'N/A'
+            const safeValue = value ? String(value) : 'N/A';
+            page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            y -= 35;
+        };
+
+        drawField('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
+        drawField('DRIVER NAME', data.driverName || 'N/A');
+        drawField('VIN (LAST 4)', data.vinLast4 || 'N/A');
+        drawField('VEHICLE TYPE', data.vehicleType || 'N/A');
+        drawField('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
+        
+        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet || ''}, ${data.addressCity || ''}`);
+        else drawField('ISSUES SELECTED', (data.tags && data.tags.length) ? data.tags.join(', ') : 'None');
+        
+        y -= 20;
+        page.drawText('NOTES / DESCRIPTION', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
+        y -= 20;
+        const notes = data.otherDescription || "No additional notes provided.";
+        // Simple text wrapping
+        const words = notes.split(' ');
+        let line = '';
+        for (const word of words) {
+            if ((line + word).length > 80) {
+                page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+                y -= 15; line = ''; 
+            }
+            line += word + ' ';
+        }
+        page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `REPORT: ${data.vinLast4}`, attachments: [{ filename: 'Report.pdf', path: pdfPath }] });
+        
+        // --- FIXED SUBJECT LINE ---
+        await transporter.sendMail({ 
+            from: process.env.EMAIL_USER, 
+            to: ['slgpfleetmanager@gmail.com'], 
+            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`, 
+            attachments: [{ filename: 'Report.pdf', path: pdfPath }] 
+        });
+        
         fs.unlinkSync(pdfPath);
         res.json({ success: true });
-    } catch (error) { res.status(500).json({ success: false }); }
+    } catch (error) { console.error("Report Error:", error); res.status(500).json({ success: false }); }
 });
 
 cron.schedule('30 23 * * *', async () => {
