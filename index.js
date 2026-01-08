@@ -22,7 +22,6 @@ const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
 // --- CRITICAL FIX: DRIVE IDS MOVED TO TOP ---
-// (This fixes the ReferenceError crashing your server)
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -32,11 +31,7 @@ const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 // --- VAPID KEYS ---
@@ -60,15 +55,10 @@ if (DISCORD_BOT_TOKEN) {
             let subs = [];
             try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
             const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
-            const activeSubs = [];
-            let changed = false;
             const pushPromises = subs.map(async (sub) => {
-                try { await webpush.sendNotification(sub, payload); activeSubs.push(sub); } 
-                catch (error) { changed = true; if (error.statusCode !== 410 && error.statusCode !== 404) activeSubs.push(sub); }
+                try { await webpush.sendNotification(sub, payload); } catch (e) {}
             });
             await Promise.all(pushPromises);
-            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-            message.react('✅');
         }
     });
 }
@@ -203,20 +193,15 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- REPORT ISSUE ROUTE (FIXED EMAIL & ID ERROR) ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
-    
-    // SERVER DEDUPING
-    if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
-        return res.json({ success: true });
-    }
+    if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) { try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} }
     data.timestamp = new Date();
     data.rawTimestamp = Date.now(); 
-    data.name = (data.vinLast4 || '') + (data.reportType || ''); // For deduping
+    data.name = (data.vinLast4 || '') + (data.reportType || ''); 
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 
@@ -245,7 +230,6 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // --- PDF GENERATION WITH SAFETY CHECKS ---
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -258,9 +242,7 @@ app.post('/submit-report', async (req, res) => {
         let y = 680;
         const drawField = (title, value) => {
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-            // Safety: Ensure value is a string and fallback to 'N/A'
-            const safeValue = value ? String(value) : 'N/A';
-            page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            page.drawText(String(value || "N/A"), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
             y -= 35;
         };
 
@@ -276,7 +258,7 @@ app.post('/submit-report', async (req, res) => {
         y -= 20;
         page.drawText('NOTES / DESCRIPTION', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
         y -= 20;
-        const notes = data.otherDescription || "No additional notes provided.";
+        const notes = data.otherDescription || "No additional notes.";
         const words = notes.split(' ');
         let line = '';
         for (const word of words) {
@@ -294,12 +276,11 @@ app.post('/submit-report', async (req, res) => {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
         const recipients = data.reportType.includes('Accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'];
 
-        // --- FIXED SUBJECT LINE & BODY ---
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: recipients,
-            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`, // Matches request
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`, // Matches request
+            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
+            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
@@ -309,7 +290,6 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
 });
 
-// --- ROUTES ---
 app.get('/', (req, res) => { if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html')); else res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
@@ -331,7 +311,6 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- GOOGLE DRIVE UPLOAD ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
@@ -343,16 +322,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             fields: 'id', supportsAllDrives: true
         });
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        if (client.isReady()) {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            if (channel) channel.send(`🎥 **Video Uploaded:** ${driverName} (${inspectionType})`);
-        }
         res.status(200).send('Upload Complete');
     } catch (error) { res.status(500).send(`Error: ${error.message}`); }
 });
 
-// --- CRON JOB ---
 cron.schedule('30 23 * * *', async () => {
     try {
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
