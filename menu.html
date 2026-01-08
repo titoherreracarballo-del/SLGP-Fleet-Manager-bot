@@ -42,14 +42,15 @@
             width: 100%; max-width: 440px; padding: 20px; border: 2px solid var(--amazon-orange); border-radius: 15px; background: rgba(35, 47, 62, 0.98); box-shadow: 0 0 40px rgba(255, 153, 0, 0.2); box-sizing: border-box;
         }
         
-        #security-gate-arrival .gate-content { border-color: var(--neon-green); box-shadow: 0 0 40px rgba(0, 255, 136, 0.2); }
-        #security-gate-arrival .disclaimer-header { color: var(--neon-green); }
-        #security-gate-arrival .exclamation-symbol { text-shadow: 0 0 15px var(--neon-green); }
-        #security-gate-arrival .gate-btn { background: var(--neon-green); color: #000; }
-        #security-gate-arrival .gate-btn.active { box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); }
-        #security-gate-arrival .check-item input[type="checkbox"] { accent-color: var(--neon-green); }
-        #security-gate-arrival .policy-warning { border-left-color: var(--neon-green); }
-        #security-gate-arrival .ack-label { color: var(--neon-green); }
+        /* --- AMAZON BLUE ARRIVAL THEME (Matches request) --- */
+        #security-gate-arrival .gate-content { border-color: var(--neon-blue); box-shadow: 0 0 40px rgba(0, 168, 225, 0.2); }
+        #security-gate-arrival .disclaimer-header { color: var(--neon-blue); }
+        #security-gate-arrival .exclamation-symbol { text-shadow: 0 0 15px var(--neon-blue); }
+        #security-gate-arrival .gate-btn { background: var(--neon-blue); color: #fff; }
+        #security-gate-arrival .gate-btn.active { box-shadow: 0 0 15px rgba(0, 168, 225, 0.4); }
+        #security-gate-arrival .check-item input[type="checkbox"] { accent-color: var(--neon-blue); }
+        #security-gate-arrival .policy-warning { border-left-color: var(--neon-blue); }
+        #security-gate-arrival .ack-label { color: var(--neon-blue); }
 
         .disclaimer-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 12px; color: var(--amazon-orange); }
         .exclamation-symbol { font-size: 50px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 15px var(--amazon-orange); }
@@ -122,14 +123,24 @@
             </div>
             <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
             <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Trash completely removed from van.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Work device plugged in to charge.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Van bag returned with all tools.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete Post-Trip DVIC in Flex.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Keys returned to dispatch.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Remove all trash and belongings from work van, slgp is not responsible for any lost personal items.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Make sure Van keys, Power Bank, Cable, Phone, and any other accessories are inside your van bag and given to night closer</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete your post trip DVIC in flex</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Record and upload your post trip fleet check video.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Turn off all headlights and hazard lights on your work vehicle.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Do not leave any totes or unreturned packages inside the van.</span></label>
             </div>
             <div class="policy-warning">
-                Ensure vehicle is locked and no personal items remain. Failure to clean van may result in disciplinary action.
+                All SLGP vehicles must be returned fully fueled and free of any unsanitary or foreign materials. Drivers are required to remove and properly dispose of all trash, biohazardous waste, unreturned packages, and personal belongings prior to returning the vehicle.<br><br>
+                SLGP is not responsible for any personal items left behind.<br><br>
+                Drivers must also ensure the following before leaving the lot:<br>
+                Do not leave headlights or hazard lights on. Confirm all exterior and interior lights are turned off before parking your vehicle.<br>
+                Any and all vehicle issues must be reported using the “Report Issue” feature on the Fleet Check app.<br><br>
+                For operators of EDVs, you are required to:<br>
+                Plug in the vehicle upon return<br>
+                Ensure all doors are fully closed<br>
+                Turn off all dashboard lighting and accessories<br><br>
+                Failure to follow these requirements may result in corrective action.
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
@@ -159,28 +170,31 @@
     </div>
 
     <script>
-        // --- 1. GATE TRIGGER LOGIC ---
+        const GATE_COOLDOWN_MS = 5 * 60 * 1000; // 5 Minutes
+
         function openSecurityGate() {
             const now = new Date();
             const mins = (now.getHours() * 60) + now.getMinutes();
+            const currentTime = Date.now();
             
+            const lastDep = localStorage.getItem('lastDepartureGate');
+            const lastArr = localStorage.getItem('lastArrivalGate');
+
             // Departure: 10:00 AM (600) to 6:00 PM (1080)
             if (mins >= 600 && mins < 1080) {
+                if (lastDep && (currentTime - lastDep < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
             } 
-            // Arrival: 6:15 PM (1095) to Midnight (1440) OR Midnight (0) to 9:00 AM (540)
+            // Arrival: 6:15 PM (1095) to 9:00 AM (540)
             else if (mins >= 1095 || mins < 540) {
+                if (lastArr && (currentTime - lastArr < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
                 document.getElementById('security-gate-arrival').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
             } 
-            // Gap times: Bypass
-            else {
-                window.location.href = "/video";
-            }
+            else { window.location.href = "/video"; }
         }
 
-        // --- 2. VALIDATION & TAP PROTECTION ---
         document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
         document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
         
@@ -196,26 +210,33 @@
 
         let isSubmitting = false;
 
-        async function unlockPortal() { handleSubmission('gate-submit', 'da-name', '/log-gate-check'); }
-        async function unlockArrival() { handleSubmission('arrival-submit', 'arr-name', '/log-arrival-check'); }
+        async function unlockPortal() { handleSubmission('gate-submit', 'da-name', '/log-gate-check', 'lastDepartureGate'); }
+        async function unlockArrival() { handleSubmission('arrival-submit', 'arr-name', '/log-arrival-check', 'lastArrivalGate'); }
 
-        async function handleSubmission(btnId, inputId, endpoint) {
+        async function handleSubmission(btnId, inputId, endpoint, storageKey) {
             const btn = document.getElementById(btnId);
             if (!btn.classList.contains('active') || isSubmitting) return;
             
             isSubmitting = true;
             btn.innerText = "PROCESSING...";
             btn.style.opacity = "0.5";
-            btn.disabled = true; // HARD DISABLE
+            btn.disabled = true;
             
             try {
-                await fetch(endpoint, { 
+                const response = await fetch(endpoint, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ name: document.getElementById(inputId).value.trim() }) 
                 });
-                window.location.href = "/video";
+                
+                if (response.ok) {
+                    localStorage.setItem(storageKey, Date.now());
+                    window.location.href = "/video";
+                } else {
+                    throw new Error("Server Error");
+                }
             } catch (e) {
+                console.error("Submission failed", e);
                 isSubmitting = false;
                 btn.innerText = "CONFIRM";
                 btn.style.opacity = "1";
@@ -223,7 +244,6 @@
             }
         }
 
-        // --- 3. STANDARD UI LOGIC ---
         const notifyBtn = document.getElementById('notifyBtn');
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(initPushUI);
         
