@@ -21,6 +21,12 @@ const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
+// --- GOOGLE DRIVE IDS ---
+// (Defined at the top to prevent ReferenceErrors)
+const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
+const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
+
 // --- DISCORD BOT SETUP ---
 const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
@@ -100,7 +106,7 @@ function isDuplicate(file, name) {
     } catch (e) { return false; }
 }
 
-// --- DEPARTURE GATE ROUTE ---
+// --- ROUTE 1: DEPARTURE GATE ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     
@@ -161,7 +167,7 @@ app.post('/log-gate-check', async (req, res) => {
     } catch (e) { console.error("PDF Fail:", e); res.status(500).json({ success: false }); }
 });
 
-// --- ARRIVAL GATE ROUTE ---
+// --- ROUTE 2: ARRIVAL GATE ROUTE ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
     
@@ -185,8 +191,8 @@ app.post('/log-arrival-check', async (req, res) => {
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
-        page.drawText('!', { x: 190, y: 740, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
-        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 700, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
+        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
 
         const items = ["Remove trash & belongings.", "Keys/Power Bank returned.", "Post-trip DVIC complete.", "Video uploaded.", "Lights off.", "No packages left."];
         let yPos = 700;
@@ -251,7 +257,7 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { console.error("Arrival PDF Fail:", e); res.status(500).json({ success: false }); }
 });
 
-// --- REPORT ISSUE ROUTE (FIXED EMAIL BODY & SUBJECT) ---
+// --- ROUTE 3: SUBMIT REPORT (Fixed Subject, Body, and Safety Checks) ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     
@@ -293,6 +299,7 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
+        // --- PDF GENERATION WITH SAFETY CHECKS ---
         const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -305,8 +312,9 @@ app.post('/submit-report', async (req, res) => {
         let y = 680;
         const drawField = (title, value) => {
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-            // Added || "N/A" to ensure blank fields don't cause issues
-            page.drawText(String(value || "N/A"), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            // Safety: Ensure value is a string and fallback to 'N/A'
+            const safeValue = value ? String(value) : 'N/A';
+            page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
             y -= 35;
         };
 
@@ -344,8 +352,8 @@ app.post('/submit-report', async (req, res) => {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: recipients,
-            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`, //
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`, //
+            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`, // Matches request
+            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
@@ -355,12 +363,17 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
 });
 
-// --- ROUTES ---
-app.get('/', (req, res) => { if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html')); else res.sendFile(path.join(__dirname, 'index.html')); });
+// --- STATIC ROUTES ---
+app.get('/', (req, res) => {
+    if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
+    else res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
 app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
+
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
@@ -368,7 +381,9 @@ app.get('/report', (req, res) => {
     else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
     else res.status(404).send('Unknown report type.');
 });
+
 app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
+
 app.post('/subscribe', (req, res) => {
     const subscription = req.body;
     let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
@@ -377,6 +392,28 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
+// --- GOOGLE DRIVE UPLOAD ---
+app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    try {
+        const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
+        const drive = google.drive({ version: 'v3', auth });
+        const { driverName, vin, inspectionType } = req.body;
+        await drive.files.create({
+            resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
+            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
+            fields: 'id', supportsAllDrives: true
+        });
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        
+        if (client.isReady()) {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            if (channel) channel.send(`🎥 **Video Uploaded:** ${driverName} (${inspectionType})`);
+        }
+        res.status(200).send('Upload Complete');
+    } catch (error) { res.status(500).send(`Error: ${error.message}`); }
+});
+
+// --- CRON JOB ---
 cron.schedule('30 23 * * *', async () => {
     try {
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
@@ -396,9 +433,9 @@ cron.schedule('30 23 * * *', async () => {
         const allLogs = JSON.parse(rawData);
         if (allLogs.length === 0 && summaryText.length < 40) return;
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `DAILY SUMMARY`, text: `Processed.\n${summaryText}` });
+        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`, text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${summaryText}` });
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
-    } catch (e) {}
+    } catch (e) { console.error("Cron Error:", e); }
 }, { timezone: "America/New_York" });
 
 const PORT = process.env.PORT || 8080;
