@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fleet Alerts</title>
+    <style>
+        :root {
+            --bg-dark: #000000;
+            --bg-card-metal: linear-gradient(135deg, #232F3E 0%, #131A22 100%);
+            --text-primary: #FFFFFF;
+            --text-dim: #A9B2BD;
+            --amazon-orange: #FF9900;
+            --neon-blue: #00A8E1;
+            --neon-red: #ff2a2a;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                linear-gradient(rgba(0, 168, 225, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 168, 225, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            font-family: "Amazon Ember", -apple-system, sans-serif;
+            color: var(--text-primary);
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;
+        }
+
+        .header { width: 100%; max-width: 400px; text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 22px; text-transform: uppercase; color: var(--neon-blue); margin: 0; letter-spacing: 1px; }
+        .header p { color: var(--text-dim); font-size: 12px; margin-top: 5px; }
+
+        .alert-card {
+            width: 100%; max-width: 400px; background: var(--bg-card-metal);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            padding: 20px; margin-bottom: 15px; box-sizing: border-box;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .alert-card.critical { border-left: 4px solid var(--neon-red); }
+        .alert-card.info { border-left: 4px solid var(--neon-blue); }
+        .alert-card.success { border-left: 4px solid #00ff88; }
+
+        .alert-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: white; display: flex; justify-content: space-between; }
+        .alert-date { font-size: 10px; color: var(--text-dim); font-weight: normal; }
+        .alert-body { font-size: 13px; color: #d1d5db; line-height: 1.4; }
+
+        .back-btn {
+            margin-top: 30px; padding: 12px 30px; border-radius: 8px;
+            background: transparent; border: 1px solid var(--text-dim);
+            color: var(--text-dim); font-size: 12px; font-weight: bold;
+            text-decoration: none; text-transform: uppercase;
+        }
+        .empty-state { color: var(--text-dim); font-size: 13px; text-align: center; margin-top: 50px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>System Alerts</h1>
+        <p>Real-time fleet notifications</p>
+    </div>
+
+    <div id="alerts-container">
+        <div class="empty-state" id="empty-msg">No active alerts at this time.</div>
+    </div>
+
+    <a href="/" class="back-btn">Return to Menu</a>
+
+    <script>
+        // Simulating fetching alerts from local storage or server
+        // In the future, this can pull from your index.js backend
+        const alerts = [
+            { type: 'critical', title: 'Severe Weather Warning', date: 'Today, 2:00 PM', msg: 'Heavy snow expected. Please drive with extreme caution and follow winter safety protocols.' },
+            { type: 'info', title: 'System Maintenance', date: 'Yesterday', msg: 'Fleet Portal will be undergoing maintenance tonight from 2 AM to 4 AM.' }
+        ];
+
+        const container = document.getElementById('alerts-container');
+        const emptyMsg = document.getElementById('empty-msg');
+
+        if (alerts.length === 0) {
+            emptyMsg.style.display = 'block';
+        } else {
+            alerts.forEach(alert => {
+                const card = document.createElement('div');
+                card.className = `alert-card ${alert.type}`;
+                card.innerHTML = `
+                    <div class="alert-title">${alert.title} <span class="alert-date">${alert.date}</span></div>
+                    <div class="alert-body">${alert.msg}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+    </script>
+
+</body>
+</html>

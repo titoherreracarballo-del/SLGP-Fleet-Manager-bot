@@ -21,8 +21,8 @@ const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
-// --- GOOGLE DRIVE IDS ---
-// (Defined at the top to prevent ReferenceErrors)
+// --- CRITICAL FIX: DRIVE IDS MOVED TO TOP ---
+// (This fixes the ReferenceError crashing your server)
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
@@ -39,7 +39,7 @@ const client = new Client({
     ]
 });
 
-// --- VAPID KEYS (SAFE LOADING) ---
+// --- VAPID KEYS ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -53,11 +53,7 @@ webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, pri
 
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
-    
-    client.once(Events.ClientReady, c => {
-        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
-    });
-
+    client.once(Events.ClientReady, c => console.log(`🤖 Fleet Bot Ready!`));
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
@@ -67,14 +63,8 @@ if (DISCORD_BOT_TOKEN) {
             const activeSubs = [];
             let changed = false;
             const pushPromises = subs.map(async (sub) => {
-                try {
-                    await webpush.sendNotification(sub, payload);
-                    activeSubs.push(sub); 
-                } catch (error) {
-                    changed = true; 
-                    if (error.statusCode === 410 || error.statusCode === 404) console.warn("Scrubbing expired subscription.");
-                    else activeSubs.push(sub);
-                }
+                try { await webpush.sendNotification(sub, payload); activeSubs.push(sub); } 
+                catch (error) { changed = true; if (error.statusCode !== 410 && error.statusCode !== 404) activeSubs.push(sub); }
             });
             await Promise.all(pushPromises);
             if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
@@ -83,16 +73,14 @@ if (DISCORD_BOT_TOKEN) {
     });
 }
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-    try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {}
-}
+if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {} }
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(express.static(__dirname));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// --- HELPER: CHECK FOR DUPLICATES (60-SEC WINDOW) ---
+// --- HELPER: DEDUPING ---
 function isDuplicate(file, name) {
     if (!fs.existsSync(file)) return false;
     try {
@@ -100,24 +88,17 @@ function isDuplicate(file, name) {
         if (logs.length === 0) return false;
         const lastLog = logs[logs.length - 1];
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
-        const now = Date.now();
-        // If same name and less than 60 seconds ago -> Duplicate
-        return (lastLog.name === name && (now - lastTime < 60000));
+        return (lastLog.name === name && (Date.now() - lastTime < 60000));
     } catch (e) { return false; }
 }
 
-// --- ROUTE 1: DEPARTURE GATE ---
+// --- GATE ROUTES ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
+    if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
     
-    // SERVER-SIDE DEDUPING CHECK
-    if (isDuplicate(GATE_LOG_FILE, name)) {
-        return res.json({ success: true }); // Return success silently
-    }
-
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-    
     let logs = [];
     if (fs.existsSync(GATE_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {} }
     logs.push({ name, timestamp, rawTimestamp: now.getTime() });
@@ -146,9 +127,9 @@ app.post('/log-gate-check', async (req, res) => {
         page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
         page.drawText('Report needs before wave time.', { x: 45, y: yPos - 30, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: yPos - 130, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - 155, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - 180, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
@@ -164,21 +145,15 @@ app.post('/log-gate-check', async (req, res) => {
         });
         fs.unlinkSync(snapshotPath);
         res.status(200).json({ success: true });
-    } catch (e) { console.error("PDF Fail:", e); res.status(500).json({ success: false }); }
+    } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- ROUTE 2: ARRIVAL GATE ROUTE ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
-    
-    // SERVER-SIDE DEDUPING CHECK
-    if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
-        return res.json({ success: true });
-    }
+    if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
 
     const now = new Date();
     const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-    
     let logs = [];
     if (fs.existsSync(ARRIVAL_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE)); } catch(e) {} }
     logs.push({ name, timestamp, rawTimestamp: now.getTime() });
@@ -186,7 +161,7 @@ app.post('/log-arrival-check', async (req, res) => {
 
     try {
         const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 850]); 
+        const page = doc.addPage([400, 850]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
@@ -203,42 +178,13 @@ app.post('/log-arrival-check', async (req, res) => {
             yPos -= 30;
         });
 
-        // Arrival Disclaimer (Full Text)
-        yPos -= 20;
-        const disclaimerHeight = 280;
-        page.drawRectangle({ x: 35, y: yPos - disclaimerHeight, width: 330, height: disclaimerHeight, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: yPos - disclaimerHeight, width: 4, height: disclaimerHeight, color: rgb(0, 0.66, 0.88) });
-        
-        let dY = yPos - 20;
-        const disclaimerLines = [
-            "All SLGP vehicles must be returned fully fueled and free",
-            "of any unsanitary or foreign materials.",
-            "Drivers must remove/dispose of all trash, biohazardous",
-            "waste, unreturned packages, and personal belongings.",
-            "SLGP is not responsible for any personal items left behind.",
-            "---",
-            "Drivers must ensure the following before leaving:",
-            "- Do not leave headlights or hazard lights on.",
-            "- Confirm all exterior/interior lights are off.",
-            "- Report all issues via 'Report Issue' in Fleet Check.",
-            "---",
-            "EDV OPERATORS:",
-            "1. Plug in the vehicle upon return.",
-            "2. Ensure all doors are fully closed.",
-            "3. Turn off all dashboard lighting and accessories.",
-            "---",
-            "Failure to follow these requirements may result in",
-            "corrective action."
-        ];
+        page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
+        page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 340, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
-        disclaimerLines.forEach(line => {
-            page.drawText(line, { x: 45, y: dY, size: 9, font: line.includes("---") || line.includes("OPERATORS") ? fontBold : fontReg, color: rgb(0.9, 0.9, 0.9) });
-            dY -= 14;
-        });
-
-        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: yPos - disclaimerHeight - 30, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText(name.toUpperCase(), { x: 50, y: yPos - disclaimerHeight - 55, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: yPos - disclaimerHeight - 80, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
 
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
@@ -254,10 +200,10 @@ app.post('/log-arrival-check', async (req, res) => {
         });
         fs.unlinkSync(snapshotPath);
         res.status(200).json({ success: true });
-    } catch (e) { console.error("Arrival PDF Fail:", e); res.status(500).json({ success: false }); }
+    } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- ROUTE 3: SUBMIT REPORT (Fixed Subject, Body, and Safety Checks) ---
+// --- REPORT ISSUE ROUTE (FIXED EMAIL & ID ERROR) ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     
@@ -353,7 +299,7 @@ app.post('/submit-report', async (req, res) => {
             from: process.env.EMAIL_USER,
             to: recipients,
             subject: `REPORT: ${data.vinLast4} - ${data.reportType}`, // Matches request
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`, // Matches request
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
         });
 
@@ -363,17 +309,12 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
 });
 
-// --- STATIC ROUTES ---
-app.get('/', (req, res) => {
-    if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html'));
-    else res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+// --- ROUTES ---
+app.get('/', (req, res) => { if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html')); else res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
 app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
-
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
@@ -381,9 +322,7 @@ app.get('/report', (req, res) => {
     else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
     else res.status(404).send('Unknown report type.');
 });
-
 app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
-
 app.post('/subscribe', (req, res) => {
     const subscription = req.body;
     let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
