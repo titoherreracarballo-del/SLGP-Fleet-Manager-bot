@@ -12,7 +12,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 
 const app = express();
 
-// --- 1. CRITICAL CONFIGURATION (DEFINED FIRST) ---
+// --- 1. CONFIGURATION ---
 const APP_VERSION = Date.now();
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
@@ -21,17 +21,21 @@ const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
-// --- GOOGLE DRIVE IDS (MUST BE HERE TO PREVENT CRASH) ---
-const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA'; 
+// --- GOOGLE DRIVE IDS (Must be defined here to prevent crashes) ---
+const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
-const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA'; 
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 
 // --- DISCORD BOT SETUP ---
 const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
 // --- VAPID KEYS ---
@@ -48,22 +52,21 @@ webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, pri
 
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
-    client.once(Events.ClientReady, c => console.log(`🤖 Fleet Bot Ready!`));
+    
+    client.once(Events.ClientReady, c => {
+        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
+    });
+
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
         if (fs.existsSync(SUBSCRIPTION_FILE)) {
             let subs = [];
             try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
             const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
-            const activeSubs = [];
-            let changed = false;
             const pushPromises = subs.map(async (sub) => {
-                try { await webpush.sendNotification(sub, payload); activeSubs.push(sub); } 
-                catch (error) { changed = true; if (error.statusCode !== 410 && error.statusCode !== 404) activeSubs.push(sub); }
+                try { await webpush.sendNotification(sub, payload); } catch (e) {}
             });
             await Promise.all(pushPromises);
-            if (changed) fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(activeSubs));
-            message.react('✅');
         }
     });
 }
@@ -120,7 +123,7 @@ app.post('/log-gate-check', async (req, res) => {
 
         page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
         page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
-        page.drawText('Report needs before wave time.', { x: 45, y: yPos - 30, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+        page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
         page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
         page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
@@ -198,9 +201,9 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- REPORT ISSUE ROUTE ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
+    // Server-Side Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
     let currentLogs = [];
@@ -248,7 +251,9 @@ app.post('/submit-report', async (req, res) => {
         let y = 680;
         const drawField = (title, value) => {
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-            page.drawText(String(value || "N/A"), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            // Safety: Ensure value is a string and fallback to 'N/A'
+            const safeValue = value ? String(value) : 'N/A';
+            page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
             y -= 35;
         };
 
