@@ -56,8 +56,28 @@
             transition: width 0.2s;
         }
 
-        /* --- HEADERS --- */
-        .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block; }
+        /* --- HEADERS & CONTROLS --- */
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; }
+        
+        .reset-btn {
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            color: #ef4444; /* Red Text */
+            font-size: 11px;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        .reset-btn:active { background-color: #1f2937; }
+
         .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
         h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
 
@@ -98,7 +118,11 @@
 <body>
 
 <div class="container">
-    <a href="/" class="back-link">← Back to Menu</a>
+    <div class="header-row">
+        <a href="/" class="back-link">← Back to Menu</a>
+        <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
+    </div>
+    
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
 
@@ -257,24 +281,30 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 3. VIDEO ENGINE WITH CRASH FIX ---
+    // --- 3. VIDEO ENGINE WITH CRASH FIX & FLASH SUPPORT ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
     let timerInterval;
     let seconds = 0;
     
-    // UPDATED CAMERA FUNCTION (CRASH FIX)
+    // UPDATED CAMERA FUNCTION (WITH RESET & TORCH)
     async function startCamera() {
         const preview = document.getElementById('preview');
         
-        // constraint options to try (in order of preference)
+        // 1. Clear any existing stream (Hard Reset)
+        if (preview.srcObject) {
+            const tracks = preview.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            preview.srcObject = null;
+        }
+
         const constraintSets = [
-            // 1. Ideal: Back camera, HD (720p is safer than 1080p for mobile web)
-            { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
-            // 2. Fallback: Back camera, any resolution
+            // Set 1: Ideal + Try to Force Flashlight (Torch)
+            { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 }, advanced: [{ torch: true }] }, audio: true },
+            // Set 2: Fallback (Standard)
             { video: { facingMode: "environment" }, audio: true },
-            // 3. Last Resort: Any camera (might be front), any resolution
+            // Set 3: Last Resort
             { video: true, audio: true }
         ];
 
@@ -282,20 +312,44 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 preview.srcObject = stream;
-                // Verify the video is actually playing
+                
+                // --- ATTEMPT TO TURN ON FLASH (If browser didn't do it automatically) ---
+                const track = stream.getVideoTracks()[0];
+                try {
+                   const capabilities = track.getCapabilities();
+                   if (capabilities.torch) {
+                       track.applyConstraints({ advanced: [{ torch: true }] })
+                       .catch(e => console.log("Flashlight Error:", e));
+                   }
+                } catch(e) { console.log("Torch not supported on this device."); }
+                
+                // Play
                 preview.onloadedmetadata = () => {
                     preview.play().catch(e => console.error("Play error:", e));
                 };
-                console.log("Camera started successfully with constraints:", constraints);
-                return; // Exit function if successful
+                
+                console.log("Camera active with:", constraints);
+                return; 
             } catch (err) {
                 console.warn("Constraint check failed:", constraints, err);
-                // Continue to next constraint set...
             }
         }
 
-        // If loop finishes without success:
-        alert("Camera Critical Failure: Unable to access any camera on this device. Please check browser permissions.");
+        alert("Camera Critical Failure: Please allow camera permissions or click 'Reset Camera'.");
+    }
+
+    // --- NEW: MANUAL RESET BUTTON FUNCTION ---
+    function resetCamera() {
+        console.log("Resetting Camera...");
+        const preview = document.getElementById('preview');
+        // Stop playback if in playback mode
+        preview.style.display = 'block';
+        document.getElementById('playback').style.display = 'none';
+        document.getElementById('playback').src = "";
+        
+        // Restart Camera
+        startCamera();
+        document.getElementById('status').innerText = "Camera Restarted.";
     }
     
     // Initialize Camera on Load
@@ -321,28 +375,21 @@
 
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-            // ACTIVATE WAKE LOCK to prevent sleeping
             requestWakeLock();
             const stream = document.getElementById('preview').srcObject;
             
             // --- H.265 + BANDWIDTH LIMIT ---
-            // Target Bitrate: 3.5 Mbps (3,500,000 bits)
-            const bitrate = 3500000;
+            const bitrate = 3500000; // 3.5 Mbps
             
-            // 1. Try H.265 (hvc1) first
             let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
-            
-            // 2. If unsupported, fallback to standard H.264
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                  options = { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: bitrate };
-                 
-                 // 3. If that fails (Chrome default), use VP9
                  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                      options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: bitrate };
                  }
             }
 
-            console.log("Recording with:", options.mimeType, "@ 3.5Mbps"); 
+            console.log("Recording with:", options.mimeType); 
             
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
@@ -376,7 +423,7 @@
         document.getElementById('btn-record').classList.remove('recording');
     }
 
-    // --- 4. UPLOAD ENGINE (FEATURE: PROGRESS BAR) ---
+    // --- 4. UPLOAD ENGINE ---
     function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
@@ -386,7 +433,6 @@
             return;
         }
 
-        // KEEP WAKE LOCK ON during upload
         requestWakeLock();
 
         const btn = document.getElementById('btn-upload');
@@ -394,8 +440,8 @@
         const progressBar = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
 
-        btn.style.display = 'none'; // Hide button during upload
-        progressBar.style.display = 'block'; // Show progress bar
+        btn.style.display = 'none'; 
+        progressBar.style.display = 'block';
         status.innerText = "Initializing Upload...";
 
         const formData = new FormData();
@@ -404,11 +450,9 @@
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
 
-        // USE XHR INSTEAD OF FETCH FOR PROGRESS TRACKING
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/upload-to-google-drive', true);
 
-        // TRACK PROGRESS
         xhr.upload.onprogress = function(e) {
             if (e.lengthComputable) {
                 const percentComplete = (e.loaded / e.total) * 100;
@@ -417,12 +461,11 @@
             }
         };
 
-        // ON SUCCESS
         xhr.onload = function() {
             if (wakeLock) wakeLock.release();
             if (xhr.status === 200) {
                 status.innerText = "Upload Complete!";
-                progressFill.style.backgroundColor = "#2563EB"; // Blue on success
+                progressFill.style.backgroundColor = "#2563EB"; 
                 alert("Inspection Uploaded Successfully!");
                 window.location.href = '/';
             } else {
@@ -431,7 +474,6 @@
             }
         };
 
-        // ON ERROR
         xhr.onerror = function() {
             if (wakeLock) wakeLock.release();
             alert("Network Error during upload.");
