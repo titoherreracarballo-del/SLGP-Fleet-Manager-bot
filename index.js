@@ -22,7 +22,6 @@ const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
 // --- GOOGLE DRIVE IDS ---
-// Ensure the Service Account has 'Editor' access to these folders
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
@@ -39,7 +38,7 @@ const client = new Client({
     ]
 });
 
-// --- VAPID KEYS (PUSH NOTIFICATIONS) ---
+// --- VAPID KEYS ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -203,7 +202,7 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- ROUTE: ISSUE/ACCIDENT REPORT ---
+// --- ROUTE: ISSUE/ACCIDENT REPORT (UPDATED PDF DESIGN) ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     // Server-Side Deduping
@@ -217,6 +216,7 @@ app.post('/submit-report', async (req, res) => {
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 
+    // Discord Alert
     if (client.isReady()) {
         try {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -232,6 +232,7 @@ app.post('/submit-report', async (req, res) => {
         const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
         const folderId = folder.data.id;
 
+        // Upload Photos
         const photoBuffers = [];
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
@@ -242,40 +243,72 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
+        // --- NEW PDF GENERATION (MATCHES DESIGN) ---
         const doc = await PDFDocument.create();
-        let page = doc.addPage([600, 800]);
+        let page = doc.addPage([600, 800]); // Letter-ish size
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
         
-        page.drawRectangle({ x: 0, y: 720, width: 600, height: 80, color: rgb(0.14, 0.38, 0.92) });
-        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 765, size: 22, font: fontBold, color: rgb(1,1,1) });
-        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 745, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+        // 1. HEADER (Blue Background)
+        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) }); // #2563EB
 
-        let y = 680;
-        const drawField = (title, value) => {
-            page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
+        // 2. HEADER TEXT
+        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+
+        // 3. LOGO (If available)
+        try {
+            const logoPath = path.join(__dirname, 'logo.png');
+            if (fs.existsSync(logoPath)) {
+                const logoBytes = fs.readFileSync(logoPath);
+                const logoImage = await doc.embedPng(logoBytes);
+                // Draw white box for logo
+                page.drawRectangle({ x: 380, y: 715, width: 200, height: 70, color: rgb(1,1,1) });
+                
+                // Scale logo to fit box
+                const logoDims = logoImage.scaleToFit(180, 60);
+                page.drawImage(logoImage, {
+                    x: 390 + (180 - logoDims.width) / 2, // Center horizontally in box
+                    y: 720 + (60 - logoDims.height) / 2, // Center vertically in box
+                    width: logoDims.width,
+                    height: logoDims.height
+                });
+            }
+        } catch(e) { console.log("Logo drawing failed, skipping."); }
+
+        // 4. DATA TABLE
+        let y = 650;
+        const drawRow = (label, value) => {
+            // Label (Gray, Uppercase)
+            page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
+            // Value (Black)
             const safeValue = value ? String(value) : 'N/A';
-            page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-            y -= 35;
+            page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+            // Divider Line
+            page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
+            y -= 40; // Spacing
         };
 
-        drawField('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
-        drawField('DRIVER NAME', data.driverName || 'N/A');
-        drawField('VIN (LAST 4)', data.vinLast4 || 'N/A');
-        drawField('VEHICLE TYPE', data.vehicleType || 'N/A');
-        drawField('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
+        drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
+        drawRow('DRIVER NAME', data.driverName || 'N/A');
+        drawRow('VIN (LAST 4)', data.vinLast4 || 'N/A');
+        drawRow('VEHICLE TYPE', data.vehicleType || 'N/A');
+        drawRow('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
         
-        if (data.reportType.includes('Road')) drawField('LOCATION', `${data.addressStreet || ''}, ${data.addressCity || ''}`);
-        else drawField('ISSUES SELECTED', (data.tags && data.tags.length) ? data.tags.join(', ') : 'None');
+        let issuesText = (data.tags && data.tags.length) ? data.tags.join(', ') : 'None';
+        if (data.reportType.includes('Road')) issuesText = `Location: ${data.addressStreet || ''}, ${data.addressCity || ''}`;
+        drawRow('ISSUES SELECTED', issuesText);
         
+        // 5. NOTES SECTION
         y -= 20;
-        page.drawText('NOTES / DESCRIPTION', { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-        y -= 20;
+        page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
+        y -= 25;
+        
         const notes = data.otherDescription || "No additional notes provided.";
         const words = notes.split(' ');
         let line = '';
         for (const word of words) {
-            if ((line + word).length > 80) {
+            if ((line + word).length > 85) { // Text Wrapping
                 page.drawText(line, { x: 30, y, size: 11, font: fontReg });
                 y -= 15; line = ''; 
             }
@@ -325,7 +358,7 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
-// --- ROUTE: VIDEO UPLOAD (FOR NEW VIDEO HTML) ---
+// --- ROUTE: VIDEO UPLOAD ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     console.log("🎥 Video Upload Started...");
     try {
