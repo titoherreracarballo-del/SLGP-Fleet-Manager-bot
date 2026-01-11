@@ -41,6 +41,16 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
+        /* --- LOGO STYLING --- */
+        .logo-header {
+            display: block;
+            margin: 0 auto 15px auto;
+            max-width: 100%;
+            width: 280px; /* Adjust this size if needed */
+            height: auto;
+            border-radius: 4px;
+        }
+
         /* --- HEADERS --- */
         .back-link {
             color: var(--text-gray); text-decoration: none; font-size: 14px; margin-bottom: 20px; display: block;
@@ -193,6 +203,8 @@
 
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
+    
+    <img src="./Final-01.jpg" alt="Strategic Logistics Logo" class="logo-header">
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Report Issue</h1>
     
@@ -488,7 +500,7 @@ function setTab(id) {
 function checkForOther() {
     const notesDiv = document.getElementById('otherNotesContainer');
     const anyOtherSelected = Array.from(document.querySelectorAll('.list-btn.selected'))
-                                  .some(btn => btn.innerText.includes("Other"));
+                                      .some(btn => btn.innerText.includes("Other"));
     notesDiv.style.display = anyOtherSelected ? 'block' : 'none';
 }
 
