@@ -21,7 +21,8 @@ const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 
-// --- GOOGLE DRIVE IDS (Must be defined here to prevent crashes) ---
+// --- GOOGLE DRIVE IDS ---
+// Ensure the Service Account has 'Editor' access to these folders
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
@@ -38,7 +39,7 @@ const client = new Client({
     ]
 });
 
-// --- VAPID KEYS ---
+// --- VAPID KEYS (PUSH NOTIFICATIONS) ---
 let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
 let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
 
@@ -90,7 +91,7 @@ function isDuplicate(file, name) {
     } catch (e) { return false; }
 }
 
-// --- GATE ROUTES ---
+// --- ROUTE: GATE CHECK ---
 app.post('/log-gate-check', async (req, res) => {
     const { name } = req.body;
     if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
@@ -122,7 +123,7 @@ app.post('/log-gate-check', async (req, res) => {
         });
 
         page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: yPos - 110, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+        page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
         page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
         page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
@@ -146,6 +147,7 @@ app.post('/log-gate-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
+// --- ROUTE: ARRIVAL CHECK ---
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
     if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
@@ -201,6 +203,7 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
+// --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     // Server-Side Deduping
@@ -251,7 +254,6 @@ app.post('/submit-report', async (req, res) => {
         let y = 680;
         const drawField = (title, value) => {
             page.drawText(title, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5,0.5,0.5) });
-            // Safety: Ensure value is a string and fallback to 'N/A'
             const safeValue = value ? String(value) : 'N/A';
             page.drawText(safeValue, { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
             y -= 35;
@@ -301,6 +303,7 @@ app.post('/submit-report', async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
 });
 
+// --- BASIC ROUTES ---
 app.get('/', (req, res) => { if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html')); else res.sendFile(path.join(__dirname, 'index.html')); });
 app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
 app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
@@ -322,21 +325,35 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({});
 });
 
+// --- ROUTE: VIDEO UPLOAD (FOR NEW VIDEO HTML) ---
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    console.log("🎥 Video Upload Started...");
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
         const drive = google.drive({ version: 'v3', auth });
+        
         const { driverName, vin, inspectionType } = req.body;
+        console.log(`Video Details: ${driverName} - ${vin} - ${inspectionType}`);
+
+        // Upload Video to the Video Folder
         await drive.files.create({
             resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
             media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
             fields: 'id', supportsAllDrives: true
         });
+
+        // Cleanup local file
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        
+        console.log("✅ Video Upload Successful");
         res.status(200).send('Upload Complete');
-    } catch (error) { res.status(500).send(`Error: ${error.message}`); }
+    } catch (error) { 
+        console.error("❌ Video Upload Failed:", error);
+        res.status(500).send(`Error: ${error.message}`); 
+    }
 });
 
+// --- CRON JOB: DAILY SUMMARY ---
 cron.schedule('30 23 * * *', async () => {
     try {
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
