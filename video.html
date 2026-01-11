@@ -45,14 +45,14 @@
             border-radius: 10px;
             margin-top: 15px;
             height: 10px;
-            display: none;
+            display: none; /* Hidden until upload starts */
             overflow: hidden;
         }
 
         #progress-fill {
             height: 100%;
             width: 0%;
-            background-color: #4ade80;
+            background-color: #4ade80; /* Green */
             transition: width 0.2s;
         }
 
@@ -71,33 +71,10 @@
         input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
         #vehicleType { font-size: 11px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
         input:focus { border-color: var(--text-label); }
-        
-        /* Readonly & Status Styling */
         input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
-        
-        /* Fuel Modes */
         input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
         input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
         input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
-
-        /* Tow Modes */
-        input[readonly].tow-yes { color: #4ade80 !important; border-color: #4ade80; } /* Green */
-        input[readonly].tow-no { color: #ea580c !important; border-color: #ea580c; } /* Dark Orange */
-
-        /* Warning Box */
-        .warning-msg {
-            background-color: rgba(234, 88, 12, 0.15);
-            border: 1px solid #ea580c;
-            color: #fdba74;
-            padding: 15px;
-            border-radius: var(--radius);
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            line-height: 1.5;
-            display: none; /* Hidden by default */
-            text-align: left;
-        }
 
         /* --- BUTTONS --- */
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -108,24 +85,6 @@
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
         #timer-display { position: absolute; top: 20px; right: 20px; background-color: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20; }
-        
-        /* Flash Toggle Button */
-        #btn-flash {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background-color: rgba(0,0,0,0.6);
-            border: 1px solid #fbbf24;
-            color: #fbbf24;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 20;
-            text-transform: uppercase;
-        }
-
         .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
         .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 10px; text-transform: uppercase; }
         #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
@@ -151,21 +110,12 @@
     <div class="form-group row-split">
         <div class="vin-col">
             <label>Last 4 VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" oninput="checkVin()" style="text-transform:uppercase;">
+            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
         </div>
         <div class="type-col">
             <label>Vehicle Type / Fuel</label>
             <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
         </div>
-    </div>
-
-    <div class="form-group">
-        <label>Tow Assistance Status</label>
-        <input type="text" id="towStatus" placeholder="Pending VIN..." readonly>
-    </div>
-
-    <div id="towWarning" class="warning-msg">
-        ⚠️ <strong>WARNING:</strong> Accessing customer driveways is strictly prohibited. For customers with long driveways, the Call-Text-Call procedure must be followed without exception. Any towing assistance required resulting from a violation of this policy will be at the driver's expense.
     </div>
 
     <label>Inspection Type</label>
@@ -176,7 +126,6 @@
 
     <div class="video-box">
         <div id="timer-display">00:00</div>
-        <button id="btn-flash" onclick="toggleFlash()">Flash: ON</button>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
         
@@ -202,6 +151,7 @@
     let localVersion = null;
     let wakeLock = null;
 
+    // Checks server version every 30s. Reloads if changed.
     async function checkForUpdates() {
         try {
             const res = await fetch('/version');
@@ -215,6 +165,7 @@
     setInterval(checkForUpdates, 30000);
     checkForUpdates();
 
+    // Forces screen to stay ON during recording/uploading
     async function requestWakeLock() {
         try {
             if ('wakeLock' in navigator) {
@@ -224,115 +175,77 @@
         } catch (err) { console.log('Wake Lock Error', err); }
     }
 
-    // --- 2. UPDATED VIN DATABASE (WITH TOW STATUS) ---
-    const vinDatabase = {
-        // --- NO TOW ASSISTANCE GROUP ---
-        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: false },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: false },
+    // --- 2. EXISTING VIN & TYPE LOGIC ---
+    function autoSelectInspection() {
+        const hour = new Date().getHours();
+        if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
+    }
 
-        // --- TOW ASSISTANCE ACTIVE GROUP ---
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel", hasTow: true },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", hasTow: true },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", hasTow: true },
-        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
-        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", hasTow: true },
-        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", hasTow: true },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true }
+    const vinDatabase = {
+        // --- DIESEL ---
+        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        "0213": { type: "Large Van (Diesel)", fuel: "diesel" },
+        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel" },
+        // --- ELECTRIC ---
+        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric" },
+        // --- GAS ---
+        "1051": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "3010": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "5344": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "3344": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
+        "0890": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "1853": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "7373": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "0876": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "8786": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "9651": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas" },
+        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas" },
+        "3754": { type: "Extra Large Van (Gas)", fuel: "gas" },
+        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas" },
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas" }
     };
 
     function checkVin() {
         let vin = document.getElementById('vinInput').value.toUpperCase();
-        
         const typeBox = document.getElementById('vehicleType');
-        const towBox = document.getElementById('towStatus');
-        const warningBox = document.getElementById('towWarning');
-
-        // Reset Styles
         typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        towBox.classList.remove('tow-yes', 'tow-no');
-        warningBox.style.display = 'none';
         
-        if (vin.length === 4) {
+        if (vin.length >= 4) {
             let found = vinDatabase[vin];
-            
-            if (vin.startsWith("W")) { 
-                typeBox.value = "Mercedes (Diesel)"; 
-                typeBox.classList.add('diesel-mode');
-                towBox.value = "Tow Assistance Active";
-                towBox.classList.add('tow-yes');
-                return; 
-            }
-
+            if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
+            if (vin.startsWith("W")) { typeBox.value = "Mercedes (Diesel)"; typeBox.classList.add('diesel-mode'); return; }
             if (found) {
-                // 1. Set Vehicle Type & Fuel Color
                 typeBox.value = found.type; 
                 if (found.fuel === 'diesel') typeBox.classList.add('diesel-mode');
                 else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
                 else typeBox.classList.add('gas-mode');
-
-                // 2. Set Tow Status & Warning
-                if (found.hasTow) {
-                    towBox.value = "Tow Assistance Active";
-                    towBox.classList.add('tow-yes');
-                } else {
-                    towBox.value = "NO TOW ASSISTANCE";
-                    towBox.classList.add('tow-no');
-                    warningBox.style.display = 'block'; // Show Warning
-                }
-
-            } else {
-                typeBox.value = "Unknown Vehicle";
-                towBox.value = "Unknown Status";
-            }
-        } else {
-            typeBox.value = "";
-            towBox.value = "";
-        }
-    }
-
-    // --- 3. AUTO-SELECT INSPECTION TYPE ---
-    function autoSelectInspection() {
-        const hour = new Date().getHours();
-        // If before 1:00 PM (13:00), it's Pre-Trip. Otherwise, Post-Trip.
-        if (hour < 13) {
-            selectType('Pre-Trip');
-        } else {
-            selectType('Post-Trip');
-        }
+            } else typeBox.value = "Unknown Vehicle";
+        } else typeBox.value = "";
     }
 
     let inspectionType = '';
@@ -344,54 +257,50 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 4. VIDEO ENGINE + FLASHLIGHT ---
+    // --- 3. VIDEO ENGINE WITH CRASH FIX ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
     let timerInterval;
     let seconds = 0;
-    let videoTrack = null;
-    let flashEnabled = true; // Auto-Enable by default
     
+    // UPDATED CAMERA FUNCTION (CRASH FIX)
     async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, 
-                audio: true 
-            });
-            document.getElementById('preview').srcObject = stream;
-            
-            videoTrack = stream.getVideoTracks()[0];
-            
-            // Auto-ON Flashlight
-            if (videoTrack) {
-                applyFlash(true);
+        const preview = document.getElementById('preview');
+        
+        // constraint options to try (in order of preference)
+        const constraintSets = [
+            // 1. Ideal: Back camera, HD (720p is safer than 1080p for mobile web)
+            { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+            // 2. Fallback: Back camera, any resolution
+            { video: { facingMode: "environment" }, audio: true },
+            // 3. Last Resort: Any camera (might be front), any resolution
+            { video: true, audio: true }
+        ];
+
+        for (const constraints of constraintSets) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                preview.srcObject = stream;
+                // Verify the video is actually playing
+                preview.onloadedmetadata = () => {
+                    preview.play().catch(e => console.error("Play error:", e));
+                };
+                console.log("Camera started successfully with constraints:", constraints);
+                return; // Exit function if successful
+            } catch (err) {
+                console.warn("Constraint check failed:", constraints, err);
+                // Continue to next constraint set...
             }
-
-        } catch (err) { alert("Camera Error: " + err.message); }
-    }
-    
-    function toggleFlash() {
-        flashEnabled = !flashEnabled;
-        applyFlash(flashEnabled);
-    }
-
-    function applyFlash(enable) {
-        if (videoTrack) {
-            videoTrack.applyConstraints({
-                advanced: [{ torch: enable }]
-            }).then(() => {
-                const btn = document.getElementById('btn-flash');
-                btn.innerText = enable ? "Flash: ON" : "Flash: OFF";
-                btn.style.color = enable ? "#fbbf24" : "white";
-                btn.style.borderColor = enable ? "#fbbf24" : "white";
-            }).catch(e => console.log("Flash not supported", e));
         }
+
+        // If loop finishes without success:
+        alert("Camera Critical Failure: Unable to access any camera on this device. Please check browser permissions.");
     }
     
-    // Call Functions at Startup
+    // Initialize Camera on Load
     startCamera();
-    autoSelectInspection();
+    autoSelectInspection(); 
 
     function startTimer() {
         seconds = 0;
@@ -412,20 +321,28 @@
 
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+            // ACTIVATE WAKE LOCK to prevent sleeping
             requestWakeLock();
             const stream = document.getElementById('preview').srcObject;
             
+            // --- H.265 + BANDWIDTH LIMIT ---
+            // Target Bitrate: 3.5 Mbps (3,500,000 bits)
             const bitrate = 3500000;
+            
+            // 1. Try H.265 (hvc1) first
             let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
             
+            // 2. If unsupported, fallback to standard H.264
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                  options = { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: bitrate };
+                 
+                 // 3. If that fails (Chrome default), use VP9
                  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
                      options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: bitrate };
                  }
             }
 
-            console.log("Recording with:", options.mimeType); 
+            console.log("Recording with:", options.mimeType, "@ 3.5Mbps"); 
             
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
@@ -440,7 +357,6 @@
                 document.getElementById('playback').style.display = 'block';
                 document.getElementById('playback').src = videoURL;
                 
-                document.getElementById('btn-flash').style.display = 'none'; 
                 document.getElementById('btn-record').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'none';
                 document.getElementById('btn-upload').style.display = 'block';
@@ -451,17 +367,16 @@
             startTimer();
             document.getElementById('btn-record').classList.add('recording');
             document.getElementById('btn-stop').style.display = 'flex';
-            document.getElementById('status').innerText = "Recording...";
+            document.getElementById('status').innerText = "Recording... Walk around vehicle.";
         }
     }
 
     function stopRecording() {
         mediaRecorder.stop();
         document.getElementById('btn-record').classList.remove('recording');
-        applyFlash(false);
     }
 
-    // --- 5. UPLOAD ENGINE ---
+    // --- 4. UPLOAD ENGINE (FEATURE: PROGRESS BAR) ---
     function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
@@ -471,6 +386,7 @@
             return;
         }
 
+        // KEEP WAKE LOCK ON during upload
         requestWakeLock();
 
         const btn = document.getElementById('btn-upload');
@@ -478,8 +394,8 @@
         const progressBar = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
 
-        btn.style.display = 'none';
-        progressBar.style.display = 'block';
+        btn.style.display = 'none'; // Hide button during upload
+        progressBar.style.display = 'block'; // Show progress bar
         status.innerText = "Initializing Upload...";
 
         const formData = new FormData();
@@ -488,9 +404,11 @@
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
 
+        // USE XHR INSTEAD OF FETCH FOR PROGRESS TRACKING
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/upload-to-google-drive', true);
 
+        // TRACK PROGRESS
         xhr.upload.onprogress = function(e) {
             if (e.lengthComputable) {
                 const percentComplete = (e.loaded / e.total) * 100;
@@ -499,11 +417,12 @@
             }
         };
 
+        // ON SUCCESS
         xhr.onload = function() {
             if (wakeLock) wakeLock.release();
             if (xhr.status === 200) {
                 status.innerText = "Upload Complete!";
-                progressFill.style.backgroundColor = "#2563EB"; 
+                progressFill.style.backgroundColor = "#2563EB"; // Blue on success
                 alert("Inspection Uploaded Successfully!");
                 window.location.href = '/';
             } else {
@@ -512,9 +431,10 @@
             }
         };
 
+        // ON ERROR
         xhr.onerror = function() {
             if (wakeLock) wakeLock.release();
-            alert("Network Error.");
+            alert("Network Error during upload.");
             resetUploadUI();
         };
 
