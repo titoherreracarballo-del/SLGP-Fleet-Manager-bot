@@ -75,8 +75,8 @@ if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: tr
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(express.static(__dirname));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(express.json({ limit: '150mb' })); // Increased limit for photos
+app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
 // --- HELPER: DEDUPING ---
 function isDuplicate(file, name) {
@@ -88,6 +88,26 @@ function isDuplicate(file, name) {
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
         return (lastLog.name === name && (Date.now() - lastTime < 60000));
     } catch (e) { return false; }
+}
+
+// --- HELPER: TEXT WRAPPING ---
+function wrapText(text, font, size, maxWidth) {
+    if (!text) return [];
+    const words = text.split(' ');
+    let lines = [];
+    let currentLine = words[0];
+
+    for (let i = 1; i < words.length; i++) {
+        const width = font.widthOfTextAtSize(currentLine + " " + words[i], size);
+        if (width < maxWidth) {
+            currentLine += " " + words[i];
+        } else {
+            lines.push(currentLine);
+            currentLine = words[i];
+        }
+    }
+    lines.push(currentLine);
+    return lines;
 }
 
 // --- ROUTE: GATE CHECK ---
@@ -204,8 +224,11 @@ app.post('/log-arrival-check', async (req, res) => {
 
 // --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
+    // Extend timeout for large uploads (5 mins)
+    req.setTimeout(300000);
+    
     const data = req.body;
-    // Server-Side Deduping
+    // Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
     let currentLogs = [];
@@ -232,7 +255,7 @@ app.post('/submit-report', async (req, res) => {
         const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
         const folderId = folder.data.id;
 
-        // Upload Photos to Drive
+        // Upload Photos to Drive (Backup)
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
@@ -241,94 +264,122 @@ app.post('/submit-report', async (req, res) => {
             }
         }
 
-        // --- SPECIFIC LOGIC FOR ACCIDENT REPORTS ---
+        const doc = await PDFDocument.create();
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+        // --- SPECIFIC PDF GENERATION FOR ACCIDENTS ---
         if (data.reportType === 'ACCIDENT_REPORT') {
-            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+            let page = doc.addPage([600, 800]);
             
-            // Build Attachments List (Photos + Signature)
-            const attachments = [
-                {
-                    filename: 'signature.png',
-                    content: data.signature,
-                    encoding: 'base64',
-                    cid: 'signature' // Matches <img src="cid:signature">
-                }
-            ];
+            // Header (Red for Accident)
+            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
+            page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            page.drawText('OFFICIAL INCIDENT DOCUMENTATION', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+
+            let y = 650;
+            const drawLabel = (txt, val) => {
+                page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
+                page.drawText(val || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+                y -= 25;
+            };
+
+            drawLabel('DRIVER NAME', data.driverName);
+            drawLabel('VIN', data.vinLast4);
+            drawLabel('DATE/TIME', `${data.date} ${data.time}`);
+            drawLabel('INCIDENT TYPE', data.incidentType);
+            drawLabel('POLICE REPORT #', data.policeReport);
+            drawLabel('LMET CASE #', data.lmetCase);
             
-            if (data.photos && data.photos.length) {
-                data.photos.forEach((photo, index) => {
-                    attachments.push({
-                        filename: `Evidence-${index + 1}.jpg`,
-                        content: photo.data,
-                        encoding: 'base64'
-                    });
-                });
-            }
+            y -= 10;
+            page.drawLine({ start: { x: 30, y }, end: { x: 570, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+            y -= 25;
 
-            // Send Rich HTML Email
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: ['slgpfleetmanager@gmail.com', 'slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'],
-                subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - VIN ${data.vinLast4}`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd;">
-                        <div style="background: #d32f2f; color: white; padding: 20px; text-align: center;">
-                            <h1 style="margin:0;">ACCIDENT REPORT</h1>
-                            <p>URGENT PRIORITY - IMMEDIATE ACTION REQUIRED</p>
-                        </div>
-                        
-                        <div style="padding: 20px; color: #333;">
-                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">DRIVER & VEHICLE</h3>
-                            <p><strong>Driver:</strong> ${data.driverName}</p>
-                            <p><strong>VIN:</strong> ${data.vinLast4}</p>
-                            <p><strong>Time:</strong> ${data.date} at ${data.time}</p>
-                            <p><strong>Incident Type:</strong> ${data.incidentType}</p>
+            // Address & Weather
+            page.drawText('LOCATION DETAILS', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            const loc = data.locationData || {};
+            drawLabel('ADDRESS', `${loc.street || ''}, ${loc.city || ''}, ${loc.state || ''} ${loc.zip || ''}`);
+            drawLabel('GPS COORDS', `${loc.gpsLat || ''}, ${loc.gpsLng || ''}`);
+            drawLabel('WEATHER', data.weather || 'Unknown');
 
-                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">DETAILS</h3>
-                            <p><strong>Police Report #:</strong> ${data.policeReport}</p>
-                            <p><strong>LMET Case #:</strong> ${data.lmetCase}</p>
-                            <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #d32f2f; margin: 10px 0;">
-                                <strong>Detailed Statement:</strong><br>
-                                ${data.statement}
-                            </div>
-
-                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">LOCATION & WEATHER</h3>
-                            <p><strong>Address:</strong> ${data.locationData.street}, ${data.locationData.city}, ${data.locationData.state} ${data.locationData.zip}</p>
-                            <p><strong>GPS:</strong> <a href="http://maps.google.com/maps?q=${data.locationData.gpsLat},${data.locationData.gpsLng}">Open Map (${data.locationData.gpsLat}, ${data.locationData.gpsLng})</a></p>
-                            <p><strong>Weather Conditions:</strong> ${data.weather}</p>
-
-                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">ACKNOWLEDGMENT</h3>
-                            <p><strong>The driver verified the following checklist:</strong></p>
-                            <ul>
-                                ${data.checklist.map(item => `<li>${item}</li>`).join('')}
-                            </ul>
-                            <div style="background: #eee; padding: 10px; font-size: 12px; margin-top: 10px; font-style: italic;">
-                                <strong>AFFIDAVIT SIGNED:</strong><br>
-                                ${data.affidavit}
-                            </div>
-                            
-                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">SIGNATURE</h3>
-                            <img src="cid:signature" style="width: 300px; border: 1px solid #ccc; background: white;">
-                            
-                            <p style="margin-top: 20px; font-size: 12px; color: #777;">
-                                Evidence photos attached to this email.<br>
-                                Backup available on Google Drive.
-                            </p>
-                        </div>
-                    </div>
-                `,
-                attachments: attachments
+            y -= 20;
+            // Statement
+            page.drawText('DRIVER STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            const stateLines = wrapText(data.statement || '', fontReg, 10, 540);
+            stateLines.forEach(line => {
+                page.drawText(line, { x: 30, y, size: 10, font: fontReg });
+                y -= 14;
             });
 
+            y -= 30;
+            // Checklist & Affidavit
+            page.drawText('AFFIDAVIT & ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            
+            if (data.checklist && Array.isArray(data.checklist)) {
+                data.checklist.forEach(item => {
+                    page.drawText('[X] ' + item, { x: 30, y, size: 9, font: fontReg });
+                    y -= 12;
+                });
+            }
+            y -= 10;
+            const affLines = wrapText(data.affidavit || '', fontReg, 9, 540);
+            affLines.forEach(line => {
+                page.drawText(line, { x: 30, y, size: 9, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
+                y -= 11;
+            });
+
+            // Signature
+            y -= 20;
+            page.drawText('SIGNED:', { x: 30, y, size: 10, font: fontBold });
+            if (data.signature) {
+                try {
+                    const sigImage = await doc.embedPng(data.signature); // Base64 is PNG
+                    const dims = sigImage.scale(0.5);
+                    page.drawImage(sigImage, { x: 80, y: y - 40, width: dims.width, height: dims.height });
+                } catch(e) { page.drawText('(Signature Error)', { x: 80, y }); }
+            }
+
+            // Photo Pages
+            if (data.photos && data.photos.length > 0) {
+                for (let i = 0; i < data.photos.length; i++) {
+                    const photoPage = doc.addPage([600, 800]);
+                    photoPage.drawText(`EVIDENCE PHOTO ${i + 1}`, { x: 30, y: 750, size: 16, font: fontBold });
+                    try {
+                        const imgBytes = Buffer.from(data.photos[i].data, 'base64');
+                        const jpgImage = await doc.embedJpg(imgBytes);
+                        const jpgDims = jpgImage.scaleToFit(540, 700);
+                        photoPage.drawImage(jpgImage, {
+                            x: 30,
+                            y: 700 - jpgDims.height,
+                            width: jpgDims.width,
+                            height: jpgDims.height
+                        });
+                    } catch(e) { photoPage.drawText('(Image Error)', { x: 30, y: 700 }); }
+                }
+            }
+
+            const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
+            fs.writeFileSync(pdfPath, await doc.save());
+
+            // Email to Specific Recipients
+            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
+                subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - ${data.vinLast4}`,
+                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report including statement, signature, and photos.\n\nGoogle Drive Folder: https://drive.google.com/drive/folders/${folderId}`,
+                attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
+            });
+
+            fs.unlinkSync(pdfPath);
             return res.json({ success: true });
         }
 
         // --- STANDARD REPORT LOGIC (FOR ISSUES) ---
-        const doc = await PDFDocument.create();
         let page = doc.addPage([600, 800]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-        
         // Header
         page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
@@ -371,13 +422,11 @@ app.post('/submit-report', async (req, res) => {
         y -= 25;
         
         const notes = data.otherDescription || "No additional notes provided.";
-        const words = notes.split(' ');
-        let line = '';
-        for (const word of words) {
-            if ((line + word).length > 85) { page.drawText(line, { x: 30, y, size: 11, font: fontReg }); y -= 15; line = ''; }
-            line += word + ' ';
-        }
-        page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+        const noteLines = wrapText(notes, fontReg, 11, 540);
+        noteLines.forEach(line => {
+            page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+            y -= 15;
+        });
 
         const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
         fs.writeFileSync(pdfPath, await doc.save());
