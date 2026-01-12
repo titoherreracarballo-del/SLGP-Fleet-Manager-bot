@@ -37,22 +37,46 @@
         /* --- SECURITY GATE OVERLAY --- */
         #accident-gate {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.95); z-index: 9999;
+            background: rgba(0,0,0,0.98); z-index: 9999;
             display: flex; justify-content: center; align-items: center;
-            padding: 20px; box-sizing: border-box;
+            padding: 10px; box-sizing: border-box; overflow-y: auto;
         }
         .gate-content {
             background: #161B28; border: 2px solid var(--primary-red);
-            padding: 30px; border-radius: 20px; max-width: 400px; text-align: center;
+            padding: 25px; border-radius: 20px; max-width: 420px; width: 100%;
             box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
+            display: flex; flex-direction: column; gap: 15px;
         }
-        .gate-icon { font-size: 50px; margin-bottom: 15px; display: block; }
-        .gate-title { color: var(--primary-red); font-size: 22px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
-        .gate-text { font-size: 13px; line-height: 1.6; color: #cbd5e1; margin-bottom: 25px; text-align: left; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary-red); }
+        .gate-icon { font-size: 40px; display: block; text-align: center; margin-bottom: 5px; }
+        .gate-title { 
+            color: var(--primary-red); font-size: 20px; font-weight: 900; 
+            text-transform: uppercase; text-align: center; margin-bottom: 10px; 
+        }
+
+        /* CHECKLIST STYLES */
+        .checklist-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
+        .check-item { 
+            display: flex; align-items: flex-start; gap: 12px; 
+            font-size: 13px; color: #cbd5e1; cursor: pointer; line-height: 1.4;
+            background: rgba(255, 255, 255, 0.03); padding: 10px; border-radius: 8px;
+        }
+        .gate-check { 
+            width: 18px; height: 18px; accent-color: var(--primary-red); 
+            flex-shrink: 0; margin-top: 2px; cursor: pointer;
+        }
+
+        .gate-text { 
+            font-size: 12px; line-height: 1.5; color: #94a3b8; 
+            background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; 
+            border-left: 3px solid var(--primary-red); 
+        }
+        
         .gate-btn {
-            background: var(--primary-red); color: white; border: none; padding: 15px;
-            width: 100%; font-weight: 800; border-radius: 10px; font-size: 14px; text-transform: uppercase; cursor: pointer;
+            background: var(--primary-red); color: white; border: none; padding: 16px;
+            width: 100%; font-weight: 900; border-radius: 10px; font-size: 14px; 
+            text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
         }
+        .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
         /* --- MAIN CONTAINER --- */
         .container {
@@ -81,7 +105,6 @@
         input:focus, textarea:focus { border-color: var(--primary-red); }
         input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
 
-        /* Char Counter */
         .char-count { font-size: 10px; color: #6b7280; text-align: right; margin-top: 4px; }
 
         /* --- INCIDENT BUTTONS --- */
@@ -128,12 +151,21 @@
         <div class="gate-content">
             <span class="gate-icon">⚠️</span>
             <div class="gate-title">Accident Protocol</div>
-            <div class="gate-text">
-                <strong>OFFICIAL AFFIDAVIT:</strong><br><br>
-                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
-                I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
+            
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit detailed written statement</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span><strong>AFFIDAVIT:</strong> I understand that falsifying information is a violation of company policy.</span></label>
             </div>
-            <button class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
+
+            <div class="gate-text">
+                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.
+            </div>
+
+            <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
         </div>
     </div>
 
@@ -254,7 +286,27 @@
         let map, photos = [], isSubmitting = false;
         let sigCanvas, sigCtx, drawing = false;
 
+        // --- GATE CHECKLIST LOGIC ---
+        document.querySelectorAll('.gate-check').forEach(cb => {
+            cb.addEventListener('change', validateAccidentGate);
+        });
+
+        function validateAccidentGate() {
+            const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
+            const btn = document.getElementById('gateBtn');
+            if (allChecked) {
+                btn.classList.add('active');
+                btn.disabled = false;
+            } else {
+                btn.classList.remove('active');
+                btn.disabled = true;
+            }
+        }
+
         function enterReport() {
+            // Double check validation
+            if (document.getElementById('gateBtn').disabled) return;
+            
             document.getElementById('accident-gate').style.display = 'none';
             document.getElementById('main-form').style.display = 'block';
             initMap(); // Start GPS only after gate
@@ -401,7 +453,7 @@
             const vin = document.getElementById('vinInput').value;
             const statement = document.getElementById('statement').value;
 
-            // --- NEW VALIDATION RULES ---
+            // --- VALIDATION RULES ---
             if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
             if(vin.length < 4) { alert("Please enter VIN"); return; }
             if(!statement) { alert("Statement is required"); return; }
