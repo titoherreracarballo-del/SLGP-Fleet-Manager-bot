@@ -2,20 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Accident Report</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    
     <style>
-        /* --- MATCHING THEME --- */
+        /* --- THEME SETTINGS (Matches Report Issue) --- */
         :root {
             --bg-body: #0F1115;
             --bg-card: #161B28;
             --bg-input: #0b0d12;
             --bg-btn: #242c3d;
-            --primary-blue: #2563EB;
-            --primary-red: #EF4444; /* Keep Red ONLY for header/submit urgency */
+            --primary-red: #EF4444; 
             --text-label: #3B82F6;
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
             --text-green: #4ade80;
             --radius: 12px;
+            --border-color: #2d3748;
         }
 
         body {
@@ -31,7 +36,7 @@
 
         .container {
             width: 100%;
-            max-width: 420px;
+            max-width: 450px;
             background-color: var(--bg-card);
             border-radius: 24px;
             padding: 24px;
@@ -39,83 +44,373 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
-        .back-link { color: #94a3b8; text-decoration: none; display: block; margin-bottom: 20px; }
+        /* --- LOGO --- */
+        .logo-header {
+            display: block; margin: 0 auto 15px auto;
+            max-width: 100%; width: 280px; height: auto; border-radius: 4px;
+        }
+
+        .back-link { color: var(--text-gray); text-decoration: none; display: block; margin-bottom: 20px; font-size: 14px; }
         .timestamp { color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
         
         h1 {
-            color: var(--primary-red); /* Red for accident urgency */
-            text-align: center; font-size: 24px; font-weight: 900; 
+            color: var(--primary-red); text-align: center; font-size: 24px; font-weight: 900; 
             text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
         }
 
-        .form-group { margin-bottom: 20px; }
+        h2 { font-size: 14px; color: var(--text-label); text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 25px; }
+
+        /* --- FORMS --- */
+        .form-group { margin-bottom: 15px; }
+        .row-split { display: flex; gap: 10px; }
+        .vin-col { flex: 0.3; min-width: 70px; } 
+        .type-col { flex: 0.7; }
+
         label {
             color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
-            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
         }
         input, textarea {
-            width: 100%; background-color: var(--bg-input); border: 1px solid #1f2937; color: white;
-            padding: 16px; border-radius: var(--radius); font-size: 16px; box-sizing: border-box; outline: none;
+            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
+            padding: 14px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
         }
         input:focus, textarea:focus { border-color: var(--primary-red); }
+        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
 
+        /* --- INCIDENT BUTTONS --- */
         .btn-option {
             width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
-            padding: 14px; border-radius: var(--radius); font-weight: 700; font-size: 13px;
-            text-transform: uppercase; cursor: pointer; margin-bottom: 10px; transition: all 0.2s;
+            padding: 12px; border-radius: var(--radius); font-weight: 700; font-size: 12px;
+            text-transform: uppercase; cursor: pointer; margin-bottom: 8px; transition: all 0.2s;
         }
-        .btn-option:hover { background-color: #334155; }
-        .btn-option.selected { background-color: #1e293b; border-color: var(--text-label); color: white; }
+        .btn-option.selected { 
+            background-color: #1e293b; border-color: var(--primary-red); color: white; 
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
+        }
 
+        /* --- MAP & GPS --- */
+        #map { height: 200px; width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: 5px; }
+        .gps-info { font-size: 11px; color: var(--text-gray); margin-top: 5px; display: flex; justify-content: space-between; }
+        .weather-box { 
+            background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; 
+            font-size: 11px; color: #fff; margin-top: 10px; border: 1px solid #333;
+        }
+
+        /* --- SIGNATURE PAD --- */
+        canvas { 
+            background: #1a1a1a; border: 1px solid var(--text-label); 
+            border-radius: var(--radius); cursor: crosshair; touch-action: none;
+            width: 100%; height: 150px;
+        }
+        .clear-sig { 
+            background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red);
+            font-size: 10px; padding: 5px 10px; border-radius: 4px; float: right; margin-top: 5px; cursor: pointer;
+        }
+
+        /* --- CAMERA --- */
+        .camera-box {
+            border: 2px dashed #4b5563; border-radius: 16px; height: 120px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; margin-bottom: 20px;
+        }
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; z-index: 10; }
+        .camera-icon { width: 30px; height: 30px; fill: #cbd5e1; margin-bottom: 5px; }
+        .camera-title { font-size: 12px; font-weight: 800; }
+
+        /* --- SUBMIT --- */
         .btn-submit {
             width: 100%; background-color: var(--primary-red); color: white; border: none;
             padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
-            text-transform: uppercase; margin-top: 10px; cursor: pointer;
+            text-transform: uppercase; margin-top: 25px; cursor: pointer;
             box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
         }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <a href="/" class="back-link">← Back to Menu</a>
-        <div class="timestamp">1/3/2026, 12:12:00 PM</div>
+        <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
+        <div class="timestamp" id="ts">Loading Time...</div>
         <h1>Accident Report</h1>
 
+        <h2>1. Driver & Vehicle</h2>
         <div class="form-group">
             <label>Driver Full Name</label>
-            <input type="text" placeholder="Name">
+            <input type="text" id="driverName" placeholder="Enter Full Name">
         </div>
 
+        <div class="form-group row-split">
+            <div class="vin-col">
+                <label>Last 4 VIN</label>
+                <input type="text" id="vinInput" placeholder="VIN" maxlength="4" style="text-transform:uppercase;">
+            </div>
+            <div class="type-col">
+                <label>Vehicle Type</label>
+                <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
+            </div>
+        </div>
+
+        <h2>2. Incident Details</h2>
         <div class="form-group">
             <label>Incident Type</label>
-            <button class="btn-option">Collision</button>
-            <button class="btn-option">Parked / Hit & Run</button>
-            <button class="btn-option">Theft / Vandalism</button>
-            <button class="btn-option">Property Damage</button>
+            <div id="incidentTypes">
+                <button class="btn-option">Slip / Trip / Fall</button>
+                <button class="btn-option">Dog Bite</button>
+                <button class="btn-option">Customer Altercation</button>
+                <button class="btn-option selected">Vehicle Accident</button>
+                <button class="btn-option">Property Damage</button>
+                <button class="btn-option">Other</button>
+            </div>
         </div>
 
         <div class="form-group">
-            <label>Location</label>
-            <input type="text" placeholder="Address or Intersection">
+            <label>Location (GPS Auto-Fill)</label>
+            <div id="map"></div>
+            <div class="gps-info">
+                <span>Lat: <span id="gpsLat">...</span></span>
+                <span>Lng: <span id="gpsLng">...</span></span>
+            </div>
+            <div class="weather-box" id="weatherBox">
+                Fetching Weather...
+            </div>
         </div>
 
         <div class="form-group">
-            <label>Statement</label>
-            <textarea style="min-height: 100px;" placeholder="Describe what happened..."></textarea>
+            <label>Detailed Statement</label>
+            <textarea id="statement" style="min-height: 100px;" placeholder="Describe exactly what happened..."></textarea>
         </div>
 
-        <button class="btn-submit">Submit Accident Report</button>
+        <div class="form-group row-split">
+            <div style="flex:1;">
+                <label>Police Report #</label>
+                <input type="text" id="policeReport" placeholder="If applicable">
+            </div>
+            <div style="flex:1;">
+                <label>LMET Case #</label>
+                <input type="text" id="lmetCase" placeholder="If applicable">
+            </div>
+        </div>
+
+        <h2>3. Evidence</h2>
+        <div class="form-group">
+            <label>Photos (Scene & Damage)</label>
+            <div class="camera-box">
+                <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
+                <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                <div class="camera-title">TAP TO ADD PHOTOS</div>
+                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Selected</div>
+            </div>
+        </div>
+
+        <h2>4. Employee Affidavit</h2>
+        <p style="font-size:11px; color:#94a3b8; margin-bottom:10px; line-height:1.4;">
+            I declare that the information provided in this report is true and complete to the best of my knowledge. I understand that falsifying information may result in disciplinary action.
+        </p>
+        <div class="form-group">
+            <label>Sign Here</label>
+            <canvas id="sigCanvas" height="150"></canvas>
+            <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
+        </div>
+
+        <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <script>
-        document.querySelectorAll('.btn-option').forEach(btn => {
-            btn.addEventListener('click', function() {
-                // Deselect siblings
-                this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
-                this.classList.add('selected');
+        // --- VIN DB ---
+        const vinDatabase = {
+            "7097": { type: "Custom Delivery Van 12ft (Gas)" }, "1288": { type: "Custom Delivery Van 12ft (Gas)" },
+            "1051": { type: "Extra Large Van (Gas)" }, "7863": { type: "Rivian MEDIUM (Electric)" },
+            "9418": { type: "Rivian MEDIUM (Electric)" }, "9488": { type: "Extra Large Van (Diesel)" },
+            "5490": { type: "Custom Delivery Van 16ft (Gas)" }, "3754": { type: "Extra Large Van (Gas)" }
+            // Add remaining VINs here if needed
+        };
+
+        let map, photos = [], isSubmitting = false;
+        let sigCanvas, sigCtx, drawing = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Time
+            document.getElementById('ts').innerText = new Date().toLocaleString();
+
+            // 2. Incident Buttons
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
+                });
+            });
+
+            // 3. VIN Logic
+            document.getElementById('vinInput').addEventListener('keyup', function() {
+                let vin = this.value.toUpperCase();
+                let type = "Unknown";
+                if(vin.length === 4) {
+                    if(vinDatabase[vin]) type = vinDatabase[vin].type;
+                    else if(vin.startsWith("W")) type = "Mercedes (Diesel)";
+                }
+                if(vin.length === 4) document.getElementById('vehicleType').value = type;
+            });
+
+            // 4. GPS & Map
+            initMap();
+
+            // 5. Signature Pad
+            initSignaturePad();
+
+            // 6. Camera
+            document.getElementById('photoInput').addEventListener('change', function(e) {
+                const files = Array.from(e.target.files);
+                if(files.length > 0) {
+                    document.getElementById('photoCount').innerText = `${files.length} Photos Attached`;
+                    document.getElementById('photoCount').style.color = "#4ade80";
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }
             });
         });
+
+        // --- MAP FUNCTIONS ---
+        function initMap() {
+            if(!navigator.geolocation) {
+                document.getElementById('weatherBox').innerText = "GPS Not Supported";
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                document.getElementById('gpsLat').innerText = lat.toFixed(5);
+                document.getElementById('gpsLng').innerText = lng.toFixed(5);
+
+                map = L.map('map').setView([lat, lng], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                L.marker([lat, lng]).addTo(map);
+
+                // Fetch Weather
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const w = data.current_weather;
+                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph | Code: ${w.weathercode}`;
+                    });
+            }, err => {
+                document.getElementById('weatherBox').innerText = "GPS Error: " + err.message;
+            }, { enableHighAccuracy: true });
+        }
+
+        // --- SIGNATURE FUNCTIONS ---
+        function initSignaturePad() {
+            sigCanvas = document.getElementById('sigCanvas');
+            // Resize canvas to fit container
+            sigCanvas.width = sigCanvas.offsetWidth;
+            sigCanvas.height = 150;
+            
+            sigCtx = sigCanvas.getContext('2d');
+            sigCtx.strokeStyle = "#3B82F6"; // Blue signature
+            sigCtx.lineWidth = 2;
+
+            // Mouse Events
+            sigCanvas.addEventListener('mousedown', startDraw);
+            sigCanvas.addEventListener('mousemove', draw);
+            sigCanvas.addEventListener('mouseup', stopDraw);
+            sigCanvas.addEventListener('mouseout', stopDraw);
+
+            // Touch Events
+            sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchend', stopDraw);
+        }
+
+        function startDraw(e) {
+            drawing = true;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.beginPath();
+            sigCtx.moveTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+        }
+
+        function draw(e) {
+            if(!drawing) return;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.lineTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+            sigCtx.stroke();
+        }
+
+        function stopDraw() { drawing = false; }
+        function clearSignature() { sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); }
+
+        // --- SUBMIT ---
+        async function submitReport() {
+            if(isSubmitting) return;
+
+            const name = document.getElementById('driverName').value;
+            const vin = document.getElementById('vinInput').value;
+            const statement = document.getElementById('statement').value;
+
+            // Validation (>= 2 chars for name)
+            if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
+            if(vin.length < 4) { alert("Please enter VIN"); return; }
+            if(!statement) { alert("Statement is required"); return; }
+
+            // Get selected incident
+            let incidentType = "Unknown";
+            const btn = document.querySelector('.btn-option.selected');
+            if(btn) incidentType = btn.innerText;
+
+            isSubmitting = true;
+            const sBtn = document.querySelector('.btn-submit');
+            sBtn.innerText = "UPLOADING...";
+            sBtn.disabled = true;
+
+            const payload = {
+                reportType: "ACCIDENT_REPORT",
+                driverName: name,
+                vinLast4: vin,
+                incidentType: incidentType,
+                statement: statement,
+                policeReport: document.getElementById('policeReport').value,
+                lmetCase: document.getElementById('lmetCase').value,
+                gps: {
+                    lat: document.getElementById('gpsLat').innerText,
+                    lng: document.getElementById('gpsLng').innerText,
+                    weather: document.getElementById('weatherBox').innerText
+                },
+                signature: sigCanvas.toDataURL().split(',')[1], // Base64 Signature
+                photos: photos,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString()
+            };
+
+            try {
+                const res = await fetch('/submit-report', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if(res.ok) {
+                    alert("Accident Report Filed Successfully.");
+                    window.location.href = "/";
+                } else {
+                    throw new Error("Server rejected report");
+                }
+            } catch(e) {
+                console.error(e);
+                alert("Upload Failed. Check connection.");
+                isSubmitting = false;
+                sBtn.innerText = "SUBMIT ACCIDENT REPORT";
+                sBtn.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
