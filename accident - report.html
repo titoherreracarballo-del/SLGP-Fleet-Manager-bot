@@ -161,7 +161,7 @@
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
             </div>
 
-            <div class="gate-text">
+            <div class="gate-text" id="affidavitText">
                 <strong>AFFIDAVIT:</strong><br><br>
                 I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
                 I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
@@ -394,7 +394,6 @@
                     });
 
                 // 2. Fetch Address (Reverse Geocoding)
-                // This triggers AUTOMATICALLY when map loads
                 fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
                     .then(response => response.json())
                     .then(data => {
@@ -473,6 +472,10 @@
             const btn = document.querySelector('.btn-option.selected');
             if(btn) incidentType = btn.innerText;
 
+            // SCRAPE CHECKLIST & AFFIDAVIT
+            const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
+            const affidavitText = document.getElementById('affidavitText').innerText;
+
             isSubmitting = true;
             const sBtn = document.querySelector('.btn-submit');
             sBtn.innerText = "UPLOADING...";
@@ -497,6 +500,8 @@
                 weather: document.getElementById('weatherBox').innerText,
                 signature: sigCanvas.toDataURL().split(',')[1],
                 photos: photos,
+                checklist: checklistItems, // Sending the list they agreed to
+                affidavit: affidavitText,  // Sending the text they agreed to
                 date: new Date().toLocaleDateString(),
                 time: new Date().toLocaleTimeString()
             };
