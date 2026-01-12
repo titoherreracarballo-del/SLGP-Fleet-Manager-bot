@@ -66,7 +66,7 @@
         }
 
         .gate-text { 
-            font-size: 12px; line-height: 1.5; color: #94a3b8; 
+            font-size: 11px; line-height: 1.5; color: #94a3b8; 
             background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; 
             border-left: 3px solid var(--primary-red); margin-bottom: 5px;
         }
@@ -153,7 +153,7 @@
             <div class="gate-title">Accident Protocol</div>
             
             <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-501-9409)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-713-0953)</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
@@ -164,7 +164,8 @@
             <div class="gate-text" id="affidavitText">
                 <strong>AFFIDAVIT:</strong><br><br>
                 I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
-                I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
+                All accident and/or workplace incidents are required to be completed and submitted within 24 hours of the event.<br><br>
+                DAs are permitted to be seen by an authorized panel of physicians only. Note that DAs will also be required to take a drug test upon arrival.
             </div>
 
             <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
@@ -269,6 +270,11 @@
             <label>Sign Below</label>
             <canvas id="sigCanvas" height="150"></canvas>
             <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
+        </div>
+
+        <div class="form-group" style="margin-top:20px;">
+            <label>Email for Copy of Panel of Physicians</label>
+            <input type="email" id="driverEmail" placeholder="Enter your email address">
         </div>
 
         <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
@@ -494,6 +500,7 @@
             const statement = document.getElementById('statement').value;
             const police = document.getElementById('policeReport').value;
             const lmet = document.getElementById('lmetCase').value;
+            const driverEmail = document.getElementById('driverEmail').value;
 
             // --- VALIDATION RULES ---
             if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
@@ -524,6 +531,7 @@
             const payload = {
                 reportType: "ACCIDENT_REPORT",
                 driverName: name,
+                driverEmail: driverEmail,
                 vinLast4: vin,
                 incidentType: incidentType,
                 locationData: {
