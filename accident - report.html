@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     
     <style>
-        /* --- THEME SETTINGS (Matches Report Issue) --- */
+        /* --- THEME SETTINGS --- */
         :root {
             --bg-body: #0F1115;
             --bg-card: #161B28;
@@ -34,31 +34,37 @@
             min-height: 100vh;
         }
 
+        /* --- SECURITY GATE OVERLAY --- */
+        #accident-gate {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+            padding: 20px; box-sizing: border-box;
+        }
+        .gate-content {
+            background: #161B28; border: 2px solid var(--primary-red);
+            padding: 30px; border-radius: 20px; max-width: 400px; text-align: center;
+            box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
+        }
+        .gate-icon { font-size: 50px; margin-bottom: 15px; display: block; }
+        .gate-title { color: var(--primary-red); font-size: 22px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
+        .gate-text { font-size: 13px; line-height: 1.6; color: #cbd5e1; margin-bottom: 25px; text-align: left; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary-red); }
+        .gate-btn {
+            background: var(--primary-red); color: white; border: none; padding: 15px;
+            width: 100%; font-weight: 800; border-radius: 10px; font-size: 14px; text-transform: uppercase; cursor: pointer;
+        }
+
+        /* --- MAIN CONTAINER --- */
         .container {
-            width: 100%;
-            max-width: 450px;
-            background-color: var(--bg-card);
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            width: 100%; max-width: 450px; background-color: var(--bg-card);
+            border-radius: 24px; padding: 24px; border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; /* Hidden until gate passes */
         }
 
-        /* --- LOGO --- */
-        .logo-header {
-            display: block; margin: 0 auto 15px auto;
-            max-width: 100%; width: 280px; height: auto; border-radius: 4px;
-        }
-
+        .logo-header { display: block; margin: 0 auto 15px auto; max-width: 100%; width: 280px; height: auto; border-radius: 4px; }
         .back-link { color: var(--text-gray); text-decoration: none; display: block; margin-bottom: 20px; font-size: 14px; }
         .timestamp { color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
-        
-        h1 {
-            color: var(--primary-red); text-align: center; font-size: 24px; font-weight: 900; 
-            text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px;
-            text-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
-        }
-
+        h1 { color: var(--primary-red); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; }
         h2 { font-size: 14px; color: var(--text-label); text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 25px; }
 
         /* --- FORMS --- */
@@ -67,10 +73,7 @@
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
 
-        label {
-            color: var(--text-label); display: block; font-size: 11px; font-weight: 800; 
-            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
-        }
+        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
         input, textarea {
             width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
             padding: 14px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
@@ -78,35 +81,25 @@
         input:focus, textarea:focus { border-color: var(--primary-red); }
         input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
 
+        /* Char Counter */
+        .char-count { font-size: 10px; color: #6b7280; text-align: right; margin-top: 4px; }
+
         /* --- INCIDENT BUTTONS --- */
         .btn-option {
             width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
             padding: 12px; border-radius: var(--radius); font-weight: 700; font-size: 12px;
             text-transform: uppercase; cursor: pointer; margin-bottom: 8px; transition: all 0.2s;
         }
-        .btn-option.selected { 
-            background-color: #1e293b; border-color: var(--primary-red); color: white; 
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
-        }
+        .btn-option.selected { background-color: #1e293b; border-color: var(--primary-red); color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
 
-        /* --- MAP & GPS --- */
-        #map { height: 200px; width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: 5px; }
+        /* --- MAP & ADDRESS --- */
+        #map { height: 180px; width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: 5px; }
         .gps-info { font-size: 11px; color: var(--text-gray); margin-top: 5px; display: flex; justify-content: space-between; }
-        .weather-box { 
-            background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; 
-            font-size: 11px; color: #fff; margin-top: 10px; border: 1px solid #333;
-        }
+        .weather-box { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; font-size: 11px; color: #fff; margin-top: 10px; border: 1px solid #333; }
 
         /* --- SIGNATURE PAD --- */
-        canvas { 
-            background: #1a1a1a; border: 1px solid var(--text-label); 
-            border-radius: var(--radius); cursor: crosshair; touch-action: none;
-            width: 100%; height: 150px;
-        }
-        .clear-sig { 
-            background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red);
-            font-size: 10px; padding: 5px 10px; border-radius: 4px; float: right; margin-top: 5px; cursor: pointer;
-        }
+        canvas { background: #1a1a1a; border: 1px solid var(--text-label); border-radius: var(--radius); cursor: crosshair; touch-action: none; width: 100%; height: 150px; }
+        .clear-sig { background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red); font-size: 10px; padding: 5px 10px; border-radius: 4px; float: right; margin-top: 5px; cursor: pointer; }
 
         /* --- CAMERA --- */
         .camera-box {
@@ -131,7 +124,20 @@
 </head>
 <body>
 
-    <div class="container">
+    <div id="accident-gate">
+        <div class="gate-content">
+            <span class="gate-icon">⚠️</span>
+            <div class="gate-title">Accident Protocol</div>
+            <div class="gate-text">
+                <strong>OFFICIAL AFFIDAVIT:</strong><br><br>
+                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
+                I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
+            </div>
+            <button class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
+        </div>
+    </div>
+
+    <div class="container" id="main-form">
         <a href="/" class="back-link">← Back to Menu</a>
         <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
         <div class="timestamp" id="ts">Loading Time...</div>
@@ -168,20 +174,38 @@
         </div>
 
         <div class="form-group">
-            <label>Location (GPS Auto-Fill)</label>
+            <label>Location (Auto-Detected)</label>
             <div id="map"></div>
             <div class="gps-info">
                 <span>Lat: <span id="gpsLat">...</span></span>
                 <span>Lng: <span id="gpsLng">...</span></span>
             </div>
-            <div class="weather-box" id="weatherBox">
-                Fetching Weather...
+            <div class="weather-box" id="weatherBox">Fetching Weather...</div>
+        </div>
+
+        <div class="form-group">
+            <label>Street Address / House #</label>
+            <input type="text" id="addrStreet" placeholder="Detecting Street...">
+        </div>
+        <div class="form-group row-split">
+            <div style="flex: 2;">
+                <label>City</label>
+                <input type="text" id="addrCity" placeholder="City">
+            </div>
+            <div style="flex: 1;">
+                <label>State</label>
+                <input type="text" id="addrState" placeholder="State">
+            </div>
+            <div style="flex: 1.2;">
+                <label>Zip</label>
+                <input type="text" id="addrZip" placeholder="Zip">
             </div>
         </div>
 
         <div class="form-group">
-            <label>Detailed Statement</label>
-            <textarea id="statement" style="min-height: 100px;" placeholder="Describe exactly what happened..."></textarea>
+            <label>Detailed Statement (Max 500)</label>
+            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+            <div class="char-count" id="charCounter">0 / 500</div>
         </div>
 
         <div class="form-group row-split">
@@ -195,23 +219,20 @@
             </div>
         </div>
 
-        <h2>3. Evidence</h2>
+        <h2>3. Evidence (Min 3 Photos)</h2>
         <div class="form-group">
             <label>Photos (Scene & Damage)</label>
             <div class="camera-box">
                 <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
                 <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
                 <div class="camera-title">TAP TO ADD PHOTOS</div>
-                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Selected</div>
+                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Attached (3 Required)</div>
             </div>
         </div>
 
-        <h2>4. Employee Affidavit</h2>
-        <p style="font-size:11px; color:#94a3b8; margin-bottom:10px; line-height:1.4;">
-            I declare that the information provided in this report is true and complete to the best of my knowledge. I understand that falsifying information may result in disciplinary action.
-        </p>
+        <h2>4. Driver Signature</h2>
         <div class="form-group">
-            <label>Sign Here</label>
+            <label>Sign Below</label>
             <canvas id="sigCanvas" height="150"></canvas>
             <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
         </div>
@@ -228,25 +249,27 @@
             "1051": { type: "Extra Large Van (Gas)" }, "7863": { type: "Rivian MEDIUM (Electric)" },
             "9418": { type: "Rivian MEDIUM (Electric)" }, "9488": { type: "Extra Large Van (Diesel)" },
             "5490": { type: "Custom Delivery Van 16ft (Gas)" }, "3754": { type: "Extra Large Van (Gas)" }
-            // Add remaining VINs here if needed
         };
 
         let map, photos = [], isSubmitting = false;
         let sigCanvas, sigCtx, drawing = false;
 
+        function enterReport() {
+            document.getElementById('accident-gate').style.display = 'none';
+            document.getElementById('main-form').style.display = 'block';
+            initMap(); // Start GPS only after gate
+            initSignaturePad();
+        }
+
+        function updateCount() {
+            const len = document.getElementById('statement').value.length;
+            document.getElementById('charCounter').innerText = `${len} / 500`;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            // 1. Time
             document.getElementById('ts').innerText = new Date().toLocaleString();
 
-            // 2. Incident Buttons
-            document.querySelectorAll('.btn-option').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
-                    this.classList.add('selected');
-                });
-            });
-
-            // 3. VIN Logic
+            // VIN Logic
             document.getElementById('vinInput').addEventListener('keyup', function() {
                 let vin = this.value.toUpperCase();
                 let type = "Unknown";
@@ -257,22 +280,23 @@
                 if(vin.length === 4) document.getElementById('vehicleType').value = type;
             });
 
-            // 4. GPS & Map
-            initMap();
+            // Incident Buttons
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
+                });
+            });
 
-            // 5. Signature Pad
-            initSignaturePad();
-
-            // 6. Camera
+            // Camera Logic
             document.getElementById('photoInput').addEventListener('change', function(e) {
                 const files = Array.from(e.target.files);
                 if(files.length > 0) {
-                    document.getElementById('photoCount').innerText = `${files.length} Photos Attached`;
-                    document.getElementById('photoCount').style.color = "#4ade80";
                     files.forEach(file => {
                         const reader = new FileReader();
                         reader.onload = function(evt) {
                             photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
+                            updatePhotoUI();
                         };
                         reader.readAsDataURL(file);
                     });
@@ -280,7 +304,20 @@
             });
         });
 
-        // --- MAP FUNCTIONS ---
+        function updatePhotoUI() {
+            const count = photos.length;
+            const label = document.getElementById('photoCount');
+            label.innerText = `${count} Attached (${Math.max(0, 3 - count)} more needed)`;
+            
+            if (count >= 3) {
+                label.style.color = "#4ade80";
+                label.innerText = `${count} Photos Attached (Ready)`;
+            } else {
+                label.style.color = "#EF4444";
+            }
+        }
+
+        // --- MAP & ADDRESS LOGIC ---
         function initMap() {
             if(!navigator.geolocation) {
                 document.getElementById('weatherBox').innerText = "GPS Not Supported";
@@ -292,17 +329,33 @@
                 document.getElementById('gpsLat').innerText = lat.toFixed(5);
                 document.getElementById('gpsLng').innerText = lng.toFixed(5);
 
-                map = L.map('map').setView([lat, lng], 16);
+                map = L.map('map').setView([lat, lng], 17);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
                 L.marker([lat, lng]).addTo(map);
 
-                // Fetch Weather
+                // 1. Fetch Weather
                 fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
                     .then(r => r.json())
                     .then(data => {
                         const w = data.current_weather;
-                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph | Code: ${w.weathercode}`;
+                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
                     });
+
+                // 2. Fetch Address (Reverse Geocoding)
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.address) {
+                            const addr = data.address;
+                            // Auto-Populate Fields
+                            document.getElementById('addrStreet').value = (addr.house_number ? addr.house_number + " " : "") + (addr.road || "");
+                            document.getElementById('addrCity').value = addr.city || addr.town || addr.village || "";
+                            document.getElementById('addrState').value = addr.state || "";
+                            document.getElementById('addrZip').value = addr.postcode || "";
+                        }
+                    })
+                    .catch(err => console.log("Address lookup failed", err));
+
             }, err => {
                 document.getElementById('weatherBox').innerText = "GPS Error: " + err.message;
             }, { enableHighAccuracy: true });
@@ -311,21 +364,15 @@
         // --- SIGNATURE FUNCTIONS ---
         function initSignaturePad() {
             sigCanvas = document.getElementById('sigCanvas');
-            // Resize canvas to fit container
             sigCanvas.width = sigCanvas.offsetWidth;
             sigCanvas.height = 150;
-            
             sigCtx = sigCanvas.getContext('2d');
-            sigCtx.strokeStyle = "#3B82F6"; // Blue signature
+            sigCtx.strokeStyle = "#3B82F6"; 
             sigCtx.lineWidth = 2;
 
-            // Mouse Events
             sigCanvas.addEventListener('mousedown', startDraw);
             sigCanvas.addEventListener('mousemove', draw);
             sigCanvas.addEventListener('mouseup', stopDraw);
-            sigCanvas.addEventListener('mouseout', stopDraw);
-
-            // Touch Events
             sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, {passive: false});
             sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, {passive: false});
             sigCanvas.addEventListener('touchend', stopDraw);
@@ -337,14 +384,12 @@
             sigCtx.beginPath();
             sigCtx.moveTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
         }
-
         function draw(e) {
             if(!drawing) return;
             const rect = sigCanvas.getBoundingClientRect();
             sigCtx.lineTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
             sigCtx.stroke();
         }
-
         function stopDraw() { drawing = false; }
         function clearSignature() { sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); }
 
@@ -356,12 +401,17 @@
             const vin = document.getElementById('vinInput').value;
             const statement = document.getElementById('statement').value;
 
-            // Validation (>= 2 chars for name)
+            // --- NEW VALIDATION RULES ---
             if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
             if(vin.length < 4) { alert("Please enter VIN"); return; }
             if(!statement) { alert("Statement is required"); return; }
+            
+            // Photo Mandate
+            if(photos.length < 3) { 
+                alert(`You must upload at least 3 photos. You currently have ${photos.length}.`); 
+                return; 
+            }
 
-            // Get selected incident
             let incidentType = "Unknown";
             const btn = document.querySelector('.btn-option.selected');
             if(btn) incidentType = btn.innerText;
@@ -376,15 +426,19 @@
                 driverName: name,
                 vinLast4: vin,
                 incidentType: incidentType,
+                locationData: {
+                    street: document.getElementById('addrStreet').value,
+                    city: document.getElementById('addrCity').value,
+                    state: document.getElementById('addrState').value,
+                    zip: document.getElementById('addrZip').value,
+                    gpsLat: document.getElementById('gpsLat').innerText,
+                    gpsLng: document.getElementById('gpsLng').innerText
+                },
                 statement: statement,
                 policeReport: document.getElementById('policeReport').value,
                 lmetCase: document.getElementById('lmetCase').value,
-                gps: {
-                    lat: document.getElementById('gpsLat').innerText,
-                    lng: document.getElementById('gpsLng').innerText,
-                    weather: document.getElementById('weatherBox').innerText
-                },
-                signature: sigCanvas.toDataURL().split(',')[1], // Base64 Signature
+                weather: document.getElementById('weatherBox').innerText,
+                signature: sigCanvas.toDataURL().split(',')[1],
                 photos: photos,
                 date: new Date().toLocaleDateString(),
                 time: new Date().toLocaleTimeString()
