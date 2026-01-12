@@ -202,7 +202,7 @@ app.post('/log-arrival-check', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// --- ROUTE: ISSUE/ACCIDENT REPORT (UPDATED PDF DESIGN) ---
+// --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
     const data = req.body;
     // Server-Side Deduping
@@ -220,73 +220,140 @@ app.post('/submit-report', async (req, res) => {
     if (client.isReady()) {
         try {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            const title = data.reportType.includes('Accident') ? "🚨 **ACCIDENT REPORT**" : "⚠️ **ISSUE REPORT**";
-            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.otherDescription || 'None'}`);
+            const title = data.reportType.includes('ACCIDENT') ? "🚨 **ACCIDENT REPORT FILED**" : "⚠️ **ISSUE REPORT**";
+            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}`);
         } catch(e) {}
     }
 
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
         const drive = google.drive({ version: 'v3', auth });
-        let targetFolderId = data.reportType.includes('Accident') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
+        let targetFolderId = data.reportType.includes('ACCIDENT') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
         const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
         const folderId = folder.data.id;
 
-        // Upload Photos
-        const photoBuffers = [];
+        // Upload Photos to Drive
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
-                photoBuffers.push(buffer);
                 const bs = new stream.PassThrough(); bs.end(buffer);
                 await drive.files.create({ resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] }, media: { mimeType: 'image/jpeg', body: bs }, supportsAllDrives: true });
             }
         }
 
-        // --- NEW PDF GENERATION (MATCHES DESIGN) ---
+        // --- SPECIFIC LOGIC FOR ACCIDENT REPORTS ---
+        if (data.reportType === 'ACCIDENT_REPORT') {
+            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+            
+            // Build Attachments List (Photos + Signature)
+            const attachments = [
+                {
+                    filename: 'signature.png',
+                    content: data.signature,
+                    encoding: 'base64',
+                    cid: 'signature' // Matches <img src="cid:signature">
+                }
+            ];
+            
+            if (data.photos && data.photos.length) {
+                data.photos.forEach((photo, index) => {
+                    attachments.push({
+                        filename: `Evidence-${index + 1}.jpg`,
+                        content: photo.data,
+                        encoding: 'base64'
+                    });
+                });
+            }
+
+            // Send Rich HTML Email
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: ['slgpfleetmanager@gmail.com', 'slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'],
+                subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - VIN ${data.vinLast4}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd;">
+                        <div style="background: #d32f2f; color: white; padding: 20px; text-align: center;">
+                            <h1 style="margin:0;">ACCIDENT REPORT</h1>
+                            <p>URGENT PRIORITY - IMMEDIATE ACTION REQUIRED</p>
+                        </div>
+                        
+                        <div style="padding: 20px; color: #333;">
+                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">DRIVER & VEHICLE</h3>
+                            <p><strong>Driver:</strong> ${data.driverName}</p>
+                            <p><strong>VIN:</strong> ${data.vinLast4}</p>
+                            <p><strong>Time:</strong> ${data.date} at ${data.time}</p>
+                            <p><strong>Incident Type:</strong> ${data.incidentType}</p>
+
+                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">DETAILS</h3>
+                            <p><strong>Police Report #:</strong> ${data.policeReport}</p>
+                            <p><strong>LMET Case #:</strong> ${data.lmetCase}</p>
+                            <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #d32f2f; margin: 10px 0;">
+                                <strong>Detailed Statement:</strong><br>
+                                ${data.statement}
+                            </div>
+
+                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">LOCATION & WEATHER</h3>
+                            <p><strong>Address:</strong> ${data.locationData.street}, ${data.locationData.city}, ${data.locationData.state} ${data.locationData.zip}</p>
+                            <p><strong>GPS:</strong> <a href="http://maps.google.com/maps?q=${data.locationData.gpsLat},${data.locationData.gpsLng}">Open Map (${data.locationData.gpsLat}, ${data.locationData.gpsLng})</a></p>
+                            <p><strong>Weather Conditions:</strong> ${data.weather}</p>
+
+                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">ACKNOWLEDGMENT</h3>
+                            <p><strong>The driver verified the following checklist:</strong></p>
+                            <ul>
+                                ${data.checklist.map(item => `<li>${item}</li>`).join('')}
+                            </ul>
+                            <div style="background: #eee; padding: 10px; font-size: 12px; margin-top: 10px; font-style: italic;">
+                                <strong>AFFIDAVIT SIGNED:</strong><br>
+                                ${data.affidavit}
+                            </div>
+                            
+                            <h3 style="border-bottom: 2px solid #d32f2f; padding-bottom: 10px;">SIGNATURE</h3>
+                            <img src="cid:signature" style="width: 300px; border: 1px solid #ccc; background: white;">
+                            
+                            <p style="margin-top: 20px; font-size: 12px; color: #777;">
+                                Evidence photos attached to this email.<br>
+                                Backup available on Google Drive.
+                            </p>
+                        </div>
+                    </div>
+                `,
+                attachments: attachments
+            });
+
+            return res.json({ success: true });
+        }
+
+        // --- STANDARD REPORT LOGIC (FOR ISSUES) ---
         const doc = await PDFDocument.create();
-        let page = doc.addPage([600, 800]); // Letter-ish size
+        let page = doc.addPage([600, 800]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
         
-        // 1. HEADER (Blue Background)
-        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) }); // #2563EB
-
-        // 2. HEADER TEXT
+        // Header
+        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
         page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
         page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-        // 3. LOGO (If available)
+        // Logo
         try {
             const logoPath = path.join(__dirname, 'logo.png');
             if (fs.existsSync(logoPath)) {
                 const logoBytes = fs.readFileSync(logoPath);
                 const logoImage = await doc.embedPng(logoBytes);
-                // Draw white box for logo
                 page.drawRectangle({ x: 380, y: 715, width: 200, height: 70, color: rgb(1,1,1) });
-                
-                // Scale logo to fit box
                 const logoDims = logoImage.scaleToFit(180, 60);
-                page.drawImage(logoImage, {
-                    x: 390 + (180 - logoDims.width) / 2, // Center horizontally in box
-                    y: 720 + (60 - logoDims.height) / 2, // Center vertically in box
-                    width: logoDims.width,
-                    height: logoDims.height
-                });
+                page.drawImage(logoImage, { x: 390 + (180 - logoDims.width) / 2, y: 720 + (60 - logoDims.height) / 2, width: logoDims.width, height: logoDims.height });
             }
-        } catch(e) { console.log("Logo drawing failed, skipping."); }
+        } catch(e) {}
 
-        // 4. DATA TABLE
+        // Data Table
         let y = 650;
         const drawRow = (label, value) => {
-            // Label (Gray, Uppercase)
             page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-            // Value (Black)
             const safeValue = value ? String(value) : 'N/A';
             page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-            // Divider Line
             page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
-            y -= 40; // Spacing
+            y -= 40;
         };
 
         drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
@@ -299,7 +366,6 @@ app.post('/submit-report', async (req, res) => {
         if (data.reportType.includes('Road')) issuesText = `Location: ${data.addressStreet || ''}, ${data.addressCity || ''}`;
         drawRow('ISSUES SELECTED', issuesText);
         
-        // 5. NOTES SECTION
         y -= 20;
         page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
         y -= 25;
@@ -308,10 +374,7 @@ app.post('/submit-report', async (req, res) => {
         const words = notes.split(' ');
         let line = '';
         for (const word of words) {
-            if ((line + word).length > 85) { // Text Wrapping
-                page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-                y -= 15; line = ''; 
-            }
+            if ((line + word).length > 85) { page.drawText(line, { x: 30, y, size: 11, font: fontReg }); y -= 15; line = ''; }
             line += word + ' ';
         }
         page.drawText(line, { x: 30, y, size: 11, font: fontReg });
@@ -320,11 +383,10 @@ app.post('/submit-report', async (req, res) => {
         fs.writeFileSync(pdfPath, await doc.save());
 
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        const recipients = data.reportType.includes('Accident') ? ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com'] : ['slgpfleetmanager@gmail.com'];
-
+        
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
-            to: recipients,
+            to: ['slgpfleetmanager@gmail.com'],
             subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
             text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
             attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
