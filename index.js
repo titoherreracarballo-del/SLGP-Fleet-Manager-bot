@@ -90,10 +90,18 @@ function isDuplicate(file, name) {
     } catch (e) { return false; }
 }
 
+// --- HELPER: TEXT SANITIZATION (FIXES PDF CRASH) ---
+function sanitizeText(text) {
+    if (!text) return "";
+    // Replace newlines and special chars with spaces to prevent PDF crash
+    return text.replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7E]/g, '');
+}
+
 // --- HELPER: TEXT WRAPPING ---
 function wrapText(text, font, size, maxWidth) {
     if (!text) return [];
-    const words = text.split(' ');
+    const cleanText = sanitizeText(text); // Sanitize before wrapping
+    const words = cleanText.split(' ');
     let lines = [];
     let currentLine = words[0];
 
@@ -231,6 +239,7 @@ app.post('/submit-report', async (req, res) => {
     // Server-Side Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
+    // Save Local Log
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) { try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} }
     data.timestamp = new Date();
@@ -473,9 +482,8 @@ app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.htm
 app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-    // --- THIS IS THE FIX FOR "NOT FOUND" ---
     if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
-    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident-report.html')); // Look for 'accident-report.html'
+    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident-report.html'));
     else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
     else res.status(404).send('Unknown report type.');
 });
