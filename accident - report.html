@@ -54,7 +54,7 @@
         }
 
         /* CHECKLIST STYLES */
-        .checklist-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
+        .checklist-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 5px; }
         .check-item { 
             display: flex; align-items: flex-start; gap: 12px; 
             font-size: 13px; color: #cbd5e1; cursor: pointer; line-height: 1.4;
@@ -68,7 +68,7 @@
         .gate-text { 
             font-size: 12px; line-height: 1.5; color: #94a3b8; 
             background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; 
-            border-left: 3px solid var(--primary-red); 
+            border-left: 3px solid var(--primary-red); margin-bottom: 5px;
         }
         
         .gate-btn {
@@ -153,16 +153,18 @@
             <div class="gate-title">Accident Protocol</div>
             
             <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-501-9409)</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit detailed written statement</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
                 <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span><strong>AFFIDAVIT:</strong> I understand that falsifying information is a violation of company policy.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
             </div>
 
             <div class="gate-text">
-                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.
+                <strong>AFFIDAVIT:</strong><br><br>
+                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
+                I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
             </div>
 
             <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
@@ -304,9 +306,7 @@
         }
 
         function enterReport() {
-            // Double check validation
             if (document.getElementById('gateBtn').disabled) return;
-            
             document.getElementById('accident-gate').style.display = 'none';
             document.getElementById('main-form').style.display = 'block';
             initMap(); // Start GPS only after gate
