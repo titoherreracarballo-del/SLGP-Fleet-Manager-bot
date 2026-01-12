@@ -198,13 +198,16 @@
         document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
         document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
         
+        // --- FIXED VALIDATION LOGIC ---
         function validateGate(type) {
             const checks = document.querySelectorAll(type === 'gate' ? '.gate-check' : '.arrival-check');
             const input = document.getElementById(type === 'gate' ? 'da-name' : 'arr-name');
             const btn = document.getElementById(type === 'gate' ? 'gate-submit' : 'arrival-submit');
             
             const allChecked = Array.from(checks).every(cb => cb.checked);
-            if (allChecked && input.value.trim().length > 3) btn.classList.add('active');
+            
+            // FIX: Changed from > 3 to > 1. Allows 2 letters or more.
+            if (allChecked && input.value.trim().length > 1) btn.classList.add('active');
             else btn.classList.remove('active');
         }
 
