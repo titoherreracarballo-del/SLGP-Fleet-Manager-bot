@@ -151,7 +151,7 @@
     </div>
 
     <div id="main-ui">
-        <div class="system-header"><span>System: Online</span><span id="header-version">v1.0.2</span></div>
+        <div class="system-header"><span>System: Online</span><span id="header-version">v1.0.3</span></div>
         <div class="logo-container"><img src="Final-01.jpg" alt="SLGP Logo"></div>
         <button id="notifyBtn">Checking Connection...</button>
         <div class="menu-grid">
@@ -166,7 +166,7 @@
             <a href="/report?mode=accident" class="menu-btn" style="border-color: var(--neon-red);"><div class="btn-img-box"><img src="accident.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Accident Report</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
             <a href="/report?mode=insurance" class="menu-btn" style="border-color: #00ff88;"><div class="btn-img-box"><img src="insurance.jpg" class="btn-img"></div><div class="btn-content"><div class="btn-label">Insurance Cards</div><svg class="btn-icon" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div></a>
         </div>
-        <div class="footer">Secure Fleet Portal • <span id="app-version">v1.0.2</span></div>
+        <div class="footer">Secure Fleet Portal • <span id="app-version">v1.0.3</span></div>
     </div>
 
     <script>
@@ -206,8 +206,8 @@
             
             const allChecked = Array.from(checks).every(cb => cb.checked);
             
-            // FIX: Changed from > 3 to > 1. Allows 2 letters or more.
-            if (allChecked && input.value.trim().length > 1) btn.classList.add('active');
+            // NOTE: Changed to ">= 2" so that names with 2 characters work.
+            if (allChecked && input.value.trim().length >= 2) btn.classList.add('active');
             else btn.classList.remove('active');
         }
 
