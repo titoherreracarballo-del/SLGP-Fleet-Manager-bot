@@ -218,7 +218,7 @@
         </div>
 
         <div class="form-group">
-            <label>Street Address / House #</label>
+            <label>Street Address / House # (Auto-Filled)</label>
             <input type="text" id="addrStreet" placeholder="Detecting Street...">
         </div>
         <div class="form-group row-split">
@@ -244,12 +244,12 @@
 
         <div class="form-group row-split">
             <div style="flex:1;">
-                <label>Police Report #</label>
-                <input type="text" id="policeReport" placeholder="If applicable">
+                <label>Police Report # (Required)</label>
+                <input type="text" id="policeReport" placeholder="Required">
             </div>
             <div style="flex:1;">
-                <label>LMET Case #</label>
-                <input type="text" id="lmetCase" placeholder="If applicable">
+                <label>LMET Case # (Required)</label>
+                <input type="text" id="lmetCase" placeholder="Required">
             </div>
         </div>
 
@@ -394,6 +394,7 @@
                     });
 
                 // 2. Fetch Address (Reverse Geocoding)
+                // This triggers AUTOMATICALLY when map loads
                 fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
                     .then(response => response.json())
                     .then(data => {
@@ -452,11 +453,15 @@
             const name = document.getElementById('driverName').value;
             const vin = document.getElementById('vinInput').value;
             const statement = document.getElementById('statement').value;
+            const police = document.getElementById('policeReport').value;
+            const lmet = document.getElementById('lmetCase').value;
 
             // --- VALIDATION RULES ---
             if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
             if(vin.length < 4) { alert("Please enter VIN"); return; }
             if(!statement) { alert("Statement is required"); return; }
+            if(!police) { alert("Police Report # is required"); return; }
+            if(!lmet) { alert("LMET Case # is required"); return; }
             
             // Photo Mandate
             if(photos.length < 3) { 
@@ -487,8 +492,8 @@
                     gpsLng: document.getElementById('gpsLng').innerText
                 },
                 statement: statement,
-                policeReport: document.getElementById('policeReport').value,
-                lmetCase: document.getElementById('lmetCase').value,
+                policeReport: police,
+                lmetCase: lmet,
                 weather: document.getElementById('weatherBox').innerText,
                 signature: sigCanvas.toDataURL().split(',')[1],
                 photos: photos,
