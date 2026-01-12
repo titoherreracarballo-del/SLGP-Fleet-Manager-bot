@@ -20,7 +20,7 @@ const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
-const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf'); // PATH FOR THE PDF
+const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf'); 
 
 // --- GOOGLE DRIVE IDS ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
@@ -94,7 +94,7 @@ function isDuplicate(file, name) {
 // --- HELPER: TEXT SANITIZATION ---
 function sanitizeText(text) {
     if (!text) return "";
-    return text.replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7E]/g, '');
+    return text.toString().replace(/(\r\n|\n|\r)/gm, " ").replace(/[^\x20-\x7E]/g, "");
 }
 
 // --- HELPER: TEXT WRAPPING ---
@@ -149,7 +149,7 @@ app.post('/log-gate-check', async (req, res) => {
             yPos -= 30;
         });
 
-        page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: 220, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
         page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
         page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
 
@@ -232,8 +232,7 @@ app.post('/log-arrival-check', async (req, res) => {
 
 // --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
-    // 5 Minute Timeout
-    req.setTimeout(300000); 
+    req.setTimeout(300000); // 5 Minutes
     
     const data = req.body;
     // Server-Side Deduping
@@ -257,7 +256,7 @@ app.post('/submit-report', async (req, res) => {
         } catch(e) {}
     }
 
-    // --- GOOGLE DRIVE UPLOAD (WITH ERROR HANDLER) ---
+    // --- GOOGLE DRIVE UPLOAD (SAFE MODE) ---
     let folderId = null;
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
@@ -274,8 +273,7 @@ app.post('/submit-report', async (req, res) => {
             }
         }
     } catch (driveError) {
-        console.error("⚠️ Drive Upload Failed (Quota/Perms), but sending Email:", driveError.message);
-        // We continue execution to ensure the Email sends!
+        console.error("⚠️ Drive Upload Skipped:", driveError.message);
     }
 
     // --- PDF GENERATION & EMAIL ---
@@ -309,7 +307,7 @@ app.post('/submit-report', async (req, res) => {
             let y = 650;
             const drawLabel = (txt, val) => {
                 page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
-                page.drawText(val || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+                page.drawText(sanitizeText(val || 'N/A'), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
                 y -= 25;
             };
 
@@ -349,7 +347,7 @@ app.post('/submit-report', async (req, res) => {
             
             if (data.checklist && Array.isArray(data.checklist)) {
                 data.checklist.forEach(item => {
-                    page.drawText('[X] ' + item, { x: 30, y, size: 9, font: fontReg });
+                    page.drawText('[X] ' + sanitizeText(item), { x: 30, y, size: 9, font: fontReg });
                     y -= 12;
                 });
             }
@@ -397,10 +395,17 @@ app.post('/submit-report', async (req, res) => {
             const attachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
 
             // Send Email to Management
+            // ----------------------------------------------------
+            // UPDATED SUBJECT LINE LOGIC HERE:
+            // ----------------------------------------------------
+            const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
+            const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
+            const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
+
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
-                subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - ${data.vinLast4}`,
+                subject: `URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
                 text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report including statement, signature, and photos.\n\nGoogle Drive Folder: https://drive.google.com/drive/folders/${folderId}`,
                 attachments: attachments
             });
