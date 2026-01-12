@@ -1,526 +1,577 @@
-const express = require('express');
-const multer = require('multer');
-const { google } = require('googleapis');
-const path = require('path');
-const fs = require('fs');
-const nodemailer = require('nodemailer');
-const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const stream = require('stream');
-const cron = require('node-cron');
-const webpush = require('web-push');
-const { Client, GatewayIntentBits, Events } = require('discord.js');
-
-const app = express();
-
-// --- 1. CONFIGURATION ---
-const APP_VERSION = Date.now();
-const VOLUME_PATH = '/app/meshcentral-data';
-const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
-const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
-const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
-const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
-const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
-
-// --- GOOGLE DRIVE IDS ---
-const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
-const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
-const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
-
-// --- DISCORD BOT SETUP ---
-const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
-const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
-});
-
-// --- VAPID KEYS ---
-let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
-let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
-
-if (!publicVapidKey || !privateVapidKey) {
-    const vapidKeys = webpush.generateVAPIDKeys();
-    publicVapidKey = vapidKeys.publicKey;
-    privateVapidKey = vapidKeys.privateKey;
-}
-
-webpush.setVapidDetails('mailto:slgpfleetmanager@gmail.com', publicVapidKey, privateVapidKey);
-
-if (DISCORD_BOT_TOKEN) {
-    client.login(DISCORD_BOT_TOKEN).catch(err => console.log("Discord Login Fail:", err));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Accident Report</title>
     
-    client.once(Events.ClientReady, c => {
-        console.log(`🤖 Fleet Bot is Ready! Logged in as ${c.user.tag}`);
-    });
-
-    client.on(Events.MessageCreate, async message => {
-        if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
-        if (fs.existsSync(SUBSCRIPTION_FILE)) {
-            let subs = [];
-            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
-            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
-            const pushPromises = subs.map(async (sub) => {
-                try { await webpush.sendNotification(sub, payload); } catch (e) {}
-            });
-            await Promise.all(pushPromises);
-        }
-    });
-}
-
-if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch (e) {} }
-const upload = multer({ dest: UPLOAD_DIR });
-
-app.use(express.static(__dirname));
-app.use(express.json({ limit: '150mb' })); // Increased limit for photos
-app.use(express.urlencoded({ extended: true, limit: '150mb' }));
-
-// --- HELPER: DEDUPING ---
-function isDuplicate(file, name) {
-    if (!fs.existsSync(file)) return false;
-    try {
-        const logs = JSON.parse(fs.readFileSync(file));
-        if (logs.length === 0) return false;
-        const lastLog = logs[logs.length - 1];
-        const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
-        return (lastLog.name === name && (Date.now() - lastTime < 60000));
-    } catch (e) { return false; }
-}
-
-// --- HELPER: TEXT WRAPPING ---
-function wrapText(text, font, size, maxWidth) {
-    if (!text) return [];
-    const words = text.split(' ');
-    let lines = [];
-    let currentLine = words[0];
-
-    for (let i = 1; i < words.length; i++) {
-        const width = font.widthOfTextAtSize(currentLine + " " + words[i], size);
-        if (width < maxWidth) {
-            currentLine += " " + words[i];
-        } else {
-            lines.push(currentLine);
-            currentLine = words[i];
-        }
-    }
-    lines.push(currentLine);
-    return lines;
-}
-
-// --- ROUTE: GATE CHECK ---
-app.post('/log-gate-check', async (req, res) => {
-    const { name } = req.body;
-    if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     
-    const now = new Date();
-    const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-    let logs = [];
-    if (fs.existsSync(GATE_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {} }
-    logs.push({ name, timestamp, rawTimestamp: now.getTime() });
-    fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+    <style>
+        /* --- THEME SETTINGS --- */
+        :root {
+            --bg-body: #0F1115;
+            --bg-card: #161B28;
+            --bg-input: #0b0d12;
+            --bg-btn: #242c3d;
+            --primary-red: #EF4444; 
+            --text-label: #3B82F6;
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
+            --text-green: #4ade80;
+            --radius: 12px;
+            --border-color: #2d3748;
+        }
 
-    try {
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 750]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
 
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
-        page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
+        /* --- SECURITY GATE OVERLAY --- */
+        #accident-gate {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.98); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+            padding: 10px; box-sizing: border-box; overflow-y: auto;
+        }
+        .gate-content {
+            background: #161B28; border: 2px solid var(--primary-red);
+            padding: 25px; border-radius: 20px; max-width: 420px; width: 100%;
+            box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        .gate-icon { font-size: 40px; display: block; text-align: center; margin-bottom: 5px; }
+        .gate-title { 
+            color: var(--primary-red); font-size: 20px; font-weight: 900; 
+            text-transform: uppercase; text-align: center; margin-bottom: 10px; 
+        }
 
-        const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
-        let yPos = 600;
-        items.forEach(text => {
-            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
-            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
-            yPos -= 30;
-        });
+        /* CHECKLIST STYLES */
+        .checklist-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 5px; }
+        .check-item { 
+            display: flex; align-items: flex-start; gap: 12px; 
+            font-size: 13px; color: #cbd5e1; cursor: pointer; line-height: 1.4;
+            background: rgba(255, 255, 255, 0.03); padding: 10px; border-radius: 8px;
+        }
+        .gate-check { 
+            width: 18px; height: 18px; accent-color: var(--primary-red); 
+            flex-shrink: 0; margin-top: 2px; cursor: pointer;
+        }
 
-        page.drawRectangle({ x: 35, y: yPos - 110, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
-        page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+        .gate-text { 
+            font-size: 12px; line-height: 1.5; color: #94a3b8; 
+            background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; 
+            border-left: 3px solid var(--primary-red); margin-bottom: 5px;
+        }
+        
+        .gate-btn {
+            background: var(--primary-red); color: white; border: none; padding: 16px;
+            width: 100%; font-weight: 900; border-radius: 10px; font-size: 14px; 
+            text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
+        }
+        .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        /* --- MAIN CONTAINER --- */
+        .container {
+            width: 100%; max-width: 450px; background-color: var(--bg-card);
+            border-radius: 24px; padding: 24px; border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; /* Hidden until gate passes */
+        }
 
-        const pdfBytes = await doc.save();
-        const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
-        fs.writeFileSync(snapshotPath, pdfBytes);
+        .logo-header { display: block; margin: 0 auto 15px auto; max-width: 100%; width: 280px; height: auto; border-radius: 4px; }
+        .back-link { color: var(--text-gray); text-decoration: none; display: block; margin-bottom: 20px; font-size: 14px; }
+        .timestamp { color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
+        h1 { color: var(--primary-red); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; }
+        h2 { font-size: 14px; color: var(--text-label); text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 25px; }
 
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `CHECKLIST ALERT: ${name}`,
-            text: `Receipt attached for DA ${name}.`,
-            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        fs.unlinkSync(snapshotPath);
-        res.status(200).json({ success: true });
-    } catch (e) { res.status(500).json({ success: false }); }
-});
+        /* --- FORMS --- */
+        .form-group { margin-bottom: 15px; }
+        .row-split { display: flex; gap: 10px; }
+        .vin-col { flex: 0.3; min-width: 70px; } 
+        .type-col { flex: 0.7; }
 
-// --- ROUTE: ARRIVAL CHECK ---
-app.post('/log-arrival-check', async (req, res) => {
-    const { name } = req.body;
-    if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
+        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+        input, textarea {
+            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
+            padding: 14px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
+        }
+        input:focus, textarea:focus { border-color: var(--primary-red); }
+        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
 
-    const now = new Date();
-    const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-    let logs = [];
-    if (fs.existsSync(ARRIVAL_LOG_FILE)) { try { logs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE)); } catch(e) {} }
-    logs.push({ name, timestamp, rawTimestamp: now.getTime() });
-    fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
+        .char-count { font-size: 10px; color: #6b7280; text-align: right; margin-top: 4px; }
 
-    try {
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 850]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+        /* --- INCIDENT BUTTONS --- */
+        .btn-option {
+            width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
+            padding: 12px; border-radius: var(--radius); font-weight: 700; font-size: 12px;
+            text-transform: uppercase; cursor: pointer; margin-bottom: 8px; transition: all 0.2s;
+        }
+        .btn-option.selected { background-color: #1e293b; border-color: var(--primary-red); color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
 
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
-        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) }); 
-        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        /* --- MAP & ADDRESS --- */
+        #map { height: 180px; width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: 5px; }
+        .gps-info { font-size: 11px; color: var(--text-gray); margin-top: 5px; display: flex; justify-content: space-between; }
+        .weather-box { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; font-size: 11px; color: #fff; margin-top: 10px; border: 1px solid #333; }
 
-        const items = ["Remove trash & belongings.", "Keys/Power Bank returned.", "Post-trip DVIC complete.", "Video uploaded.", "Lights off.", "No packages left."];
-        let yPos = 700;
-        items.forEach(text => {
-            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
-            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
-            yPos -= 30;
-        });
+        /* --- SIGNATURE PAD --- */
+        canvas { background: #1a1a1a; border: 1px solid var(--text-label); border-radius: var(--radius); cursor: crosshair; touch-action: none; width: 100%; height: 150px; }
+        .clear-sig { background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red); font-size: 10px; padding: 5px 10px; border-radius: 4px; float: right; margin-top: 5px; cursor: pointer; }
 
-        page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
-        page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 340, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+        /* --- CAMERA --- */
+        .camera-box {
+            border: 2px dashed #4b5563; border-radius: 16px; height: 120px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; margin-bottom: 20px;
+        }
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; z-index: 10; }
+        .camera-icon { width: 30px; height: 30px; fill: #cbd5e1; margin-bottom: 5px; }
+        .camera-title { font-size: 12px; font-weight: 800; }
 
-        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+        /* --- SUBMIT --- */
+        .btn-submit {
+            width: 100%; background-color: var(--primary-red); color: white; border: none;
+            padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
+            text-transform: uppercase; margin-top: 25px; cursor: pointer;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+        }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
 
-        const pdfBytes = await doc.save();
-        const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
-        fs.writeFileSync(snapshotPath, pdfBytes);
+    <div id="accident-gate">
+        <div class="gate-content">
+            <span class="gate-icon">⚠️</span>
+            <div class="gate-title">Accident Protocol</div>
+            
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-501-9409)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
+            </div>
 
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `ARRIVAL COMPLETED: ${name}`,
-            text: `Arrival receipt attached for DA ${name}.`,
-            attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        fs.unlinkSync(snapshotPath);
-        res.status(200).json({ success: true });
-    } catch (e) { res.status(500).json({ success: false }); }
-});
+            <div class="gate-text" id="affidavitText">
+                <strong>AFFIDAVIT:</strong><br><br>
+                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
+                I understand that falsifying information, omitting details, or failing to report damage immediately is a violation of company policy and may result in disciplinary action.
+            </div>
 
-// --- ROUTE: ISSUE/ACCIDENT REPORT ---
-app.post('/submit-report', async (req, res) => {
-    // Extend timeout for large uploads (5 mins)
-    req.setTimeout(300000);
+            <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
+        </div>
+    </div>
+
+    <div class="container" id="main-form">
+        <a href="/" class="back-link">← Back to Menu</a>
+        <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
+        <div class="timestamp" id="ts">Loading Time...</div>
+        <h1>Accident Report</h1>
+
+        <h2>1. Driver & Vehicle</h2>
+        <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" id="driverName" placeholder="Enter Full Name">
+        </div>
+
+        <div class="form-group row-split">
+            <div class="vin-col">
+                <label>Last 4 VIN</label>
+                <input type="text" id="vinInput" placeholder="VIN" maxlength="4" style="text-transform:uppercase;">
+            </div>
+            <div class="type-col">
+                <label>Vehicle Type</label>
+                <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
+            </div>
+        </div>
+
+        <h2>2. Incident Details</h2>
+        <div class="form-group">
+            <label>Incident Type</label>
+            <div id="incidentTypes">
+                <button class="btn-option">Slip / Trip / Fall</button>
+                <button class="btn-option">Dog Bite</button>
+                <button class="btn-option">Customer Altercation</button>
+                <button class="btn-option selected">Vehicle Accident</button>
+                <button class="btn-option">Property Damage</button>
+                <button class="btn-option">Other</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Location (Auto-Detected)</label>
+            <div id="map"></div>
+            <div class="gps-info">
+                <span>Lat: <span id="gpsLat">...</span></span>
+                <span>Lng: <span id="gpsLng">...</span></span>
+            </div>
+            <div class="weather-box" id="weatherBox">Fetching Weather...</div>
+        </div>
+
+        <div class="form-group">
+            <label>Street Address / House # (Auto-Filled)</label>
+            <input type="text" id="addrStreet" placeholder="Detecting Street...">
+        </div>
+        <div class="form-group row-split">
+            <div style="flex: 2;">
+                <label>City</label>
+                <input type="text" id="addrCity" placeholder="City">
+            </div>
+            <div style="flex: 1;">
+                <label>State</label>
+                <input type="text" id="addrState" placeholder="State">
+            </div>
+            <div style="flex: 1.2;">
+                <label>Zip</label>
+                <input type="text" id="addrZip" placeholder="Zip">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Detailed Statement (Max 500)</label>
+            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+            <div class="char-count" id="charCounter">0 / 500</div>
+        </div>
+
+        <div class="form-group row-split">
+            <div style="flex:1;">
+                <label>Police Report # (Required)</label>
+                <input type="text" id="policeReport" placeholder="Required">
+            </div>
+            <div style="flex:1;">
+                <label>LMET Case # (Required)</label>
+                <input type="text" id="lmetCase" placeholder="Required">
+            </div>
+        </div>
+
+        <h2>3. Evidence (Min 3 Photos)</h2>
+        <div class="form-group">
+            <label>Photos (Scene & Damage)</label>
+            <div class="camera-box">
+                <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
+                <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                <div class="camera-title">TAP TO ADD PHOTOS</div>
+                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Attached (3 Required)</div>
+            </div>
+        </div>
+
+        <h2>4. Driver Signature</h2>
+        <div class="form-group">
+            <label>Sign Below</label>
+            <canvas id="sigCanvas" height="150"></canvas>
+            <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
+        </div>
+
+        <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    const data = req.body;
-    // Deduping
-    if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
-
-    let currentLogs = [];
-    if (fs.existsSync(DAILY_LOG_FILE)) { try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} }
-    data.timestamp = new Date();
-    data.rawTimestamp = Date.now(); 
-    data.name = (data.vinLast4 || '') + (data.reportType || ''); 
-    currentLogs.push(data);
-    fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
-
-    // Discord Alert
-    if (client.isReady()) {
-        try {
-            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
-            const title = data.reportType.includes('ACCIDENT') ? "🚨 **ACCIDENT REPORT FILED**" : "⚠️ **ISSUE REPORT**";
-            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}`);
-        } catch(e) {}
-    }
-
-    try {
-        const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
-        const drive = google.drive({ version: 'v3', auth });
-        let targetFolderId = data.reportType.includes('ACCIDENT') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
-        const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
-        const folderId = folder.data.id;
-
-        // Upload Photos to Drive (Backup)
-        if (data.photos && data.photos.length) {
-            for (let i = 0; i < data.photos.length; i++) {
-                const buffer = Buffer.from(data.photos[i].data, 'base64');
-                const bs = new stream.PassThrough(); bs.end(buffer);
-                await drive.files.create({ resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] }, media: { mimeType: 'image/jpeg', body: bs }, supportsAllDrives: true });
-            }
-        }
-
-        const doc = await PDFDocument.create();
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
-        // --- SPECIFIC PDF GENERATION FOR ACCIDENTS ---
-        if (data.reportType === 'ACCIDENT_REPORT') {
-            let page = doc.addPage([600, 800]);
-            
-            // Header (Red for Accident)
-            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
-            page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-            page.drawText('OFFICIAL INCIDENT DOCUMENTATION', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(1, 1, 1) });
-
-            let y = 650;
-            const drawLabel = (txt, val) => {
-                page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
-                page.drawText(val || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-                y -= 25;
-            };
-
-            drawLabel('DRIVER NAME', data.driverName);
-            drawLabel('VIN', data.vinLast4);
-            drawLabel('DATE/TIME', `${data.date} ${data.time}`);
-            drawLabel('INCIDENT TYPE', data.incidentType);
-            drawLabel('POLICE REPORT #', data.policeReport);
-            drawLabel('LMET CASE #', data.lmetCase);
-            
-            y -= 10;
-            page.drawLine({ start: { x: 30, y }, end: { x: 570, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-            y -= 25;
-
-            // Address & Weather
-            page.drawText('LOCATION DETAILS', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            const loc = data.locationData || {};
-            drawLabel('ADDRESS', `${loc.street || ''}, ${loc.city || ''}, ${loc.state || ''} ${loc.zip || ''}`);
-            drawLabel('GPS COORDS', `${loc.gpsLat || ''}, ${loc.gpsLng || ''}`);
-            drawLabel('WEATHER', data.weather || 'Unknown');
-
-            y -= 20;
-            // Statement
-            page.drawText('DRIVER STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            const stateLines = wrapText(data.statement || '', fontReg, 10, 540);
-            stateLines.forEach(line => {
-                page.drawText(line, { x: 30, y, size: 10, font: fontReg });
-                y -= 14;
-            });
-
-            y -= 30;
-            // Checklist & Affidavit
-            page.drawText('AFFIDAVIT & ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            
-            if (data.checklist && Array.isArray(data.checklist)) {
-                data.checklist.forEach(item => {
-                    page.drawText('[X] ' + item, { x: 30, y, size: 9, font: fontReg });
-                    y -= 12;
-                });
-            }
-            y -= 10;
-            const affLines = wrapText(data.affidavit || '', fontReg, 9, 540);
-            affLines.forEach(line => {
-                page.drawText(line, { x: 30, y, size: 9, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
-                y -= 11;
-            });
-
-            // Signature
-            y -= 20;
-            page.drawText('SIGNED:', { x: 30, y, size: 10, font: fontBold });
-            if (data.signature) {
-                try {
-                    const sigImage = await doc.embedPng(data.signature); // Base64 is PNG
-                    const dims = sigImage.scale(0.5);
-                    page.drawImage(sigImage, { x: 80, y: y - 40, width: dims.width, height: dims.height });
-                } catch(e) { page.drawText('(Signature Error)', { x: 80, y }); }
-            }
-
-            // Photo Pages
-            if (data.photos && data.photos.length > 0) {
-                for (let i = 0; i < data.photos.length; i++) {
-                    const photoPage = doc.addPage([600, 800]);
-                    photoPage.drawText(`EVIDENCE PHOTO ${i + 1}`, { x: 30, y: 750, size: 16, font: fontBold });
-                    try {
-                        const imgBytes = Buffer.from(data.photos[i].data, 'base64');
-                        const jpgImage = await doc.embedJpg(imgBytes);
-                        const jpgDims = jpgImage.scaleToFit(540, 700);
-                        photoPage.drawImage(jpgImage, {
-                            x: 30,
-                            y: 700 - jpgDims.height,
-                            width: jpgDims.width,
-                            height: jpgDims.height
-                        });
-                    } catch(e) { photoPage.drawText('(Image Error)', { x: 30, y: 700 }); }
-                }
-            }
-
-            const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
-            fs.writeFileSync(pdfPath, await doc.save());
-
-            // Email to Specific Recipients
-            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
-                subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - ${data.vinLast4}`,
-                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report including statement, signature, and photos.\n\nGoogle Drive Folder: https://drive.google.com/drive/folders/${folderId}`,
-                attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
-            });
-
-            fs.unlinkSync(pdfPath);
-            return res.json({ success: true });
-        }
-
-        // --- STANDARD REPORT LOGIC (FOR ISSUES) ---
-        let page = doc.addPage([600, 800]);
-        // Header
-        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
-        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
-
-        // Logo
-        try {
-            const logoPath = path.join(__dirname, 'logo.png');
-            if (fs.existsSync(logoPath)) {
-                const logoBytes = fs.readFileSync(logoPath);
-                const logoImage = await doc.embedPng(logoBytes);
-                page.drawRectangle({ x: 380, y: 715, width: 200, height: 70, color: rgb(1,1,1) });
-                const logoDims = logoImage.scaleToFit(180, 60);
-                page.drawImage(logoImage, { x: 390 + (180 - logoDims.width) / 2, y: 720 + (60 - logoDims.height) / 2, width: logoDims.width, height: logoDims.height });
-            }
-        } catch(e) {}
-
-        // Data Table
-        let y = 650;
-        const drawRow = (label, value) => {
-            page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-            const safeValue = value ? String(value) : 'N/A';
-            page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-            page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
-            y -= 40;
+    <script>
+        // --- VIN DB ---
+        const vinDatabase = {
+            "7097": { type: "Custom Delivery Van 12ft (Gas)" }, "1288": { type: "Custom Delivery Van 12ft (Gas)" },
+            "1051": { type: "Extra Large Van (Gas)" }, "7863": { type: "Rivian MEDIUM (Electric)" },
+            "9418": { type: "Rivian MEDIUM (Electric)" }, "9488": { type: "Extra Large Van (Diesel)" },
+            "5490": { type: "Custom Delivery Van 16ft (Gas)" }, "3754": { type: "Extra Large Van (Gas)" }
         };
 
-        drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
-        drawRow('DRIVER NAME', data.driverName || 'N/A');
-        drawRow('VIN (LAST 4)', data.vinLast4 || 'N/A');
-        drawRow('VEHICLE TYPE', data.vehicleType || 'N/A');
-        drawRow('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
-        
-        let issuesText = (data.tags && data.tags.length) ? data.tags.join(', ') : 'None';
-        if (data.reportType.includes('Road')) issuesText = `Location: ${data.addressStreet || ''}, ${data.addressCity || ''}`;
-        drawRow('ISSUES SELECTED', issuesText);
-        
-        y -= 20;
-        page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-        y -= 25;
-        
-        const notes = data.otherDescription || "No additional notes provided.";
-        const noteLines = wrapText(notes, fontReg, 11, 540);
-        noteLines.forEach(line => {
-            page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-            y -= 15;
+        let map, photos = [], isSubmitting = false;
+        let sigCanvas, sigCtx, drawing = false;
+
+        // --- GATE CHECKLIST LOGIC ---
+        document.querySelectorAll('.gate-check').forEach(cb => {
+            cb.addEventListener('change', validateAccidentGate);
         });
 
-        const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, await doc.save());
-
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
-            attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
-        });
-
-        fs.unlinkSync(pdfPath);
-        res.json({ success: true });
-
-    } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
-});
-
-// --- BASIC ROUTES ---
-app.get('/', (req, res) => { if (fs.existsSync(path.join(__dirname, 'menu.html'))) res.sendFile(path.join(__dirname, 'menu.html')); else res.sendFile(path.join(__dirname, 'index.html')); });
-app.get('/version', (req, res) => res.json({ version: APP_VERSION }));
-app.get('/video', (req, res) => res.sendFile(path.join(__dirname, 'video.html')));
-app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'success.html')));
-app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html')));
-app.get('/report', (req, res) => {
-    const mode = req.query.mode;
-    if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
-    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident - report.html'));
-    else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
-    else res.status(404).send('Unknown report type.');
-});
-app.get('/vapid-key', (req, res) => res.json({ publicKey: publicVapidKey }));
-app.post('/subscribe', (req, res) => {
-    const subscription = req.body;
-    let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
-    subs.push(subscription);
-    fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
-    res.status(201).json({});
-});
-
-// --- ROUTE: VIDEO UPLOAD ---
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
-    console.log("🎥 Video Upload Started...");
-    try {
-        const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
-        const drive = google.drive({ version: 'v3', auth });
-        
-        const { driverName, vin, inspectionType } = req.body;
-        console.log(`Video Details: ${driverName} - ${vin} - ${inspectionType}`);
-
-        // Upload Video to the Video Folder
-        await drive.files.create({
-            resource: { name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`, parents: [VIDEO_DRIVE_ID] },
-            media: { mimeType: 'video/mp4', body: fs.createReadStream(req.file.path) },
-            fields: 'id', supportsAllDrives: true
-        });
-
-        // Cleanup local file
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        console.log("✅ Video Upload Successful");
-        res.status(200).send('Upload Complete');
-    } catch (error) { 
-        console.error("❌ Video Upload Failed:", error);
-        res.status(500).send(`Error: ${error.message}`); 
-    }
-});
-
-// --- CRON JOB: DAILY SUMMARY ---
-cron.schedule('30 23 * * *', async () => {
-    try {
-        let summaryText = "\n--- DEPARTURE LOGS ---\n";
-        if (fs.existsSync(GATE_LOG_FILE)) {
-            const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
-            gateLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
-            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([])); 
+        function validateAccidentGate() {
+            const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
+            const btn = document.getElementById('gateBtn');
+            if (allChecked) {
+                btn.classList.add('active');
+                btn.disabled = false;
+            } else {
+                btn.classList.remove('active');
+                btn.disabled = true;
+            }
         }
-        summaryText += "\n--- ARRIVAL LOGS ---\n";
-        if (fs.existsSync(ARRIVAL_LOG_FILE)) {
-            const arrLogs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE));
-            arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
-            fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify([]));
-        }
-        if (!fs.existsSync(DAILY_LOG_FILE)) return;
-        const rawData = fs.readFileSync(DAILY_LOG_FILE);
-        const allLogs = JSON.parse(rawData);
-        if (allLogs.length === 0 && summaryText.length < 40) return;
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`, text: `Daily Summary Attached.\nTotal Reports: ${allLogs.length}\n${summaryText}` });
-        fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
-    } catch (e) { console.error("Cron Error:", e); }
-}, { timezone: "America/New_York" });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Server Running on Port ${PORT}`));
+        function enterReport() {
+            if (document.getElementById('gateBtn').disabled) return;
+            document.getElementById('accident-gate').style.display = 'none';
+            document.getElementById('main-form').style.display = 'block';
+            initMap(); // Start GPS only after gate
+            initSignaturePad();
+        }
+
+        function updateCount() {
+            const len = document.getElementById('statement').value.length;
+            document.getElementById('charCounter').innerText = `${len} / 500`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('ts').innerText = new Date().toLocaleString();
+
+            // VIN Logic
+            document.getElementById('vinInput').addEventListener('keyup', function() {
+                let vin = this.value.toUpperCase();
+                let type = "Unknown";
+                if(vin.length === 4) {
+                    if(vinDatabase[vin]) type = vinDatabase[vin].type;
+                    else if(vin.startsWith("W")) type = "Mercedes (Diesel)";
+                }
+                if(vin.length === 4) document.getElementById('vehicleType').value = type;
+            });
+
+            // Incident Buttons
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
+                });
+            });
+
+            // Camera Logic WITH COMPRESSION
+            document.getElementById('photoInput').addEventListener('change', async function(e) {
+                const files = Array.from(e.target.files);
+                if(files.length > 0) {
+                    const statusLabel = document.getElementById('photoCount');
+                    statusLabel.innerText = "Compressing photos...";
+                    statusLabel.style.color = "#FF9900";
+
+                    for (let file of files) {
+                        const compressedData = await compressImage(file);
+                        photos.push(compressedData);
+                    }
+                    updatePhotoUI();
+                }
+            });
+        });
+
+        // --- IMAGE COMPRESSION ---
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1024; // Max width for compression
+                        const MAX_HEIGHT = 1024;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        // Convert to JPEG at 70% quality
+                        resolve({ 
+                            name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", 
+                            data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] 
+                        });
+                    };
+                };
+            });
+        }
+
+        function updatePhotoUI() {
+            const count = photos.length;
+            const label = document.getElementById('photoCount');
+            label.innerText = `${count} Attached (${Math.max(0, 3 - count)} more needed)`;
+            
+            if (count >= 3) {
+                label.style.color = "#4ade80";
+                label.innerText = `${count} Photos Attached (Ready)`;
+            } else {
+                label.style.color = "#EF4444";
+            }
+        }
+
+        // --- MAP & ADDRESS LOGIC ---
+        function initMap() {
+            if(!navigator.geolocation) {
+                document.getElementById('weatherBox').innerText = "GPS Not Supported";
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                document.getElementById('gpsLat').innerText = lat.toFixed(5);
+                document.getElementById('gpsLng').innerText = lng.toFixed(5);
+
+                map = L.map('map').setView([lat, lng], 17);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                L.marker([lat, lng]).addTo(map);
+
+                // 1. Fetch Weather
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const w = data.current_weather;
+                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
+                    });
+
+                // 2. Fetch Address (Reverse Geocoding)
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.address) {
+                            const addr = data.address;
+                            document.getElementById('addrStreet').value = (addr.house_number ? addr.house_number + " " : "") + (addr.road || "");
+                            document.getElementById('addrCity').value = addr.city || addr.town || addr.village || "";
+                            document.getElementById('addrState').value = addr.state || "";
+                            document.getElementById('addrZip').value = addr.postcode || "";
+                        }
+                    })
+                    .catch(err => console.log("Address lookup failed", err));
+
+            }, err => {
+                document.getElementById('weatherBox').innerText = "GPS Error: " + err.message;
+            }, { enableHighAccuracy: true });
+        }
+
+        // --- SIGNATURE FUNCTIONS ---
+        function initSignaturePad() {
+            sigCanvas = document.getElementById('sigCanvas');
+            sigCanvas.width = sigCanvas.offsetWidth;
+            sigCanvas.height = 150;
+            sigCtx = sigCanvas.getContext('2d');
+            sigCtx.strokeStyle = "#3B82F6"; 
+            sigCtx.lineWidth = 2;
+
+            sigCanvas.addEventListener('mousedown', startDraw);
+            sigCanvas.addEventListener('mousemove', draw);
+            sigCanvas.addEventListener('mouseup', stopDraw);
+            sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchend', stopDraw);
+        }
+
+        function startDraw(e) {
+            drawing = true;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.beginPath();
+            sigCtx.moveTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+        }
+        function draw(e) {
+            if(!drawing) return;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.lineTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+            sigCtx.stroke();
+        }
+        function stopDraw() { drawing = false; }
+        function clearSignature() { sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); }
+
+        // --- SUBMIT ---
+        async function submitReport() {
+            if(isSubmitting) return;
+
+            const name = document.getElementById('driverName').value;
+            const vin = document.getElementById('vinInput').value;
+            const statement = document.getElementById('statement').value;
+            const police = document.getElementById('policeReport').value;
+            const lmet = document.getElementById('lmetCase').value;
+
+            // --- VALIDATION RULES ---
+            if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
+            if(vin.length < 4) { alert("Please enter VIN"); return; }
+            if(!statement) { alert("Statement is required"); return; }
+            if(!police) { alert("Police Report # is required"); return; }
+            if(!lmet) { alert("LMET Case # is required"); return; }
+            
+            // Photo Mandate
+            if(photos.length < 3) { 
+                alert(`You must upload at least 3 photos. You currently have ${photos.length}.`); 
+                return; 
+            }
+
+            let incidentType = "Unknown";
+            const btn = document.querySelector('.btn-option.selected');
+            if(btn) incidentType = btn.innerText;
+
+            // SCRAPE CHECKLIST & AFFIDAVIT
+            const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
+            const affidavitText = document.getElementById('affidavitText').innerText;
+
+            isSubmitting = true;
+            const sBtn = document.querySelector('.btn-submit');
+            sBtn.innerText = "UPLOADING...";
+            sBtn.disabled = true;
+
+            const payload = {
+                reportType: "ACCIDENT_REPORT",
+                driverName: name,
+                vinLast4: vin,
+                incidentType: incidentType,
+                locationData: {
+                    street: document.getElementById('addrStreet').value,
+                    city: document.getElementById('addrCity').value,
+                    state: document.getElementById('addrState').value,
+                    zip: document.getElementById('addrZip').value,
+                    gpsLat: document.getElementById('gpsLat').innerText,
+                    gpsLng: document.getElementById('gpsLng').innerText
+                },
+                statement: statement,
+                policeReport: police,
+                lmetCase: lmet,
+                weather: document.getElementById('weatherBox').innerText,
+                signature: sigCanvas.toDataURL().split(',')[1],
+                photos: photos,
+                checklist: checklistItems,
+                affidavit: affidavitText,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString()
+            };
+
+            // AUTO-DETECT URL (Fixes "Localhost" testing issues)
+            const apiBase = (window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+                ? 'https://slgp-fleet-manager-bot.up.railway.app' 
+                : '';
+
+            try {
+                const res = await fetch(`${apiBase}/submit-report`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if(res.ok) {
+                    alert("Accident Report Filed Successfully.");
+                    window.location.href = "/";
+                } else {
+                    throw new Error("Server rejected report");
+                }
+            } catch(e) {
+                console.error(e);
+                alert("Upload Failed. Check connection.");
+                isSubmitting = false;
+                sBtn.innerText = "SUBMIT ACCIDENT REPORT";
+                sBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
