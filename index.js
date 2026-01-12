@@ -20,9 +20,7 @@ const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
-
-// IMPORTANT: This filename must match your uploaded file EXACTLY
-const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf'); 
+const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf'); // PATH FOR THE PDF
 
 // --- GOOGLE DRIVE IDS ---
 const VIDEO_DRIVE_ID = '0AC1GE3XEm4K9Uk9PVA';
@@ -93,20 +91,16 @@ function isDuplicate(file, name) {
     } catch (e) { return false; }
 }
 
-// --- HELPER: TEXT SANITIZATION (CRITICAL FIX FOR PDF CRASH) ---
+// --- HELPER: TEXT SANITIZATION ---
 function sanitizeText(text) {
     if (!text) return "";
-    // 1. Replace Newlines/Tabs with Spaces
-    // 2. Remove any character that isn't a standard letter, number, or symbol
-    return text.toString()
-        .replace(/(\r\n|\n|\r)/gm, " ") 
-        .replace(/[^\x20-\x7E]/g, "");
+    return text.replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7E]/g, '');
 }
 
 // --- HELPER: TEXT WRAPPING ---
 function wrapText(text, font, size, maxWidth) {
     if (!text) return [];
-    const cleanText = sanitizeText(text); // Sanitize BEFORE processing
+    const cleanText = sanitizeText(text);
     const words = cleanText.split(' ');
     let lines = [];
     let currentLine = words[0];
@@ -238,9 +232,11 @@ app.post('/log-arrival-check', async (req, res) => {
 
 // --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
-    req.setTimeout(300000); // 5 Minutes
+    // 5 Minute Timeout
+    req.setTimeout(300000); 
     
     const data = req.body;
+    // Server-Side Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
     // Save Local Log
@@ -252,7 +248,16 @@ app.post('/submit-report', async (req, res) => {
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 
-    // --- GOOGLE DRIVE UPLOAD (SAFE MODE) ---
+    // Discord Alert
+    if (client.isReady()) {
+        try {
+            const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+            const title = data.reportType.includes('ACCIDENT') ? "🚨 **ACCIDENT REPORT FILED**" : "⚠️ **ISSUE REPORT**";
+            if (channel) channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}`);
+        } catch(e) {}
+    }
+
+    // --- GOOGLE DRIVE UPLOAD (WITH ERROR HANDLER) ---
     let folderId = null;
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
@@ -269,7 +274,8 @@ app.post('/submit-report', async (req, res) => {
             }
         }
     } catch (driveError) {
-        console.error("⚠️ Drive Upload Skipped:", driveError.message);
+        console.error("⚠️ Drive Upload Failed (Quota/Perms), but sending Email:", driveError.message);
+        // We continue execution to ensure the Email sends!
     }
 
     // --- PDF GENERATION & EMAIL ---
@@ -303,7 +309,7 @@ app.post('/submit-report', async (req, res) => {
             let y = 650;
             const drawLabel = (txt, val) => {
                 page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
-                page.drawText(sanitizeText(val || 'N/A'), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+                page.drawText(val || 'N/A', { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
                 y -= 25;
             };
 
@@ -343,7 +349,7 @@ app.post('/submit-report', async (req, res) => {
             
             if (data.checklist && Array.isArray(data.checklist)) {
                 data.checklist.forEach(item => {
-                    page.drawText('[X] ' + sanitizeText(item), { x: 30, y, size: 9, font: fontReg });
+                    page.drawText('[X] ' + item, { x: 30, y, size: 9, font: fontReg });
                     y -= 12;
                 });
             }
