@@ -75,7 +75,7 @@ if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: tr
 const upload = multer({ dest: UPLOAD_DIR });
 
 app.use(express.static(__dirname));
-app.use(express.json({ limit: '150mb' })); // Increased limit for photos
+app.use(express.json({ limit: '150mb' })); 
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
 // --- HELPER: DEDUPING ---
@@ -224,13 +224,14 @@ app.post('/log-arrival-check', async (req, res) => {
 
 // --- ROUTE: ISSUE/ACCIDENT REPORT ---
 app.post('/submit-report', async (req, res) => {
-    // Extend timeout for large uploads (5 mins)
-    req.setTimeout(300000);
+    // 5 Minute Timeout
+    req.setTimeout(300000); 
     
     const data = req.body;
-    // Deduping
+    // Server-Side Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { return res.json({ success: true }); }
 
+    // Save Local Log
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) { try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} }
     data.timestamp = new Date();
@@ -248,14 +249,15 @@ app.post('/submit-report', async (req, res) => {
         } catch(e) {}
     }
 
+    // --- GOOGLE DRIVE UPLOAD (WITH ERROR HANDLER) ---
+    let folderId = null;
     try {
         const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(process.env.GCP_SA_KEY), scopes: ['https://www.googleapis.com/auth/drive.file'] });
         const drive = google.drive({ version: 'v3', auth });
         let targetFolderId = data.reportType.includes('ACCIDENT') ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
         const folder = await drive.files.create({ resource: { name: `${data.driverName} - ${data.reportType}`, mimeType: 'application/vnd.google-apps.folder', parents: [targetFolderId] }, fields: 'id', supportsAllDrives: true });
-        const folderId = folder.data.id;
+        folderId = folder.data.id;
 
-        // Upload Photos to Drive (Backup)
         if (data.photos && data.photos.length) {
             for (let i = 0; i < data.photos.length; i++) {
                 const buffer = Buffer.from(data.photos[i].data, 'base64');
@@ -263,12 +265,31 @@ app.post('/submit-report', async (req, res) => {
                 await drive.files.create({ resource: { name: `Photo_${i+1}.jpg`, parents: [folderId] }, media: { mimeType: 'image/jpeg', body: bs }, supportsAllDrives: true });
             }
         }
+    } catch (driveError) {
+        console.error("⚠️ Drive Upload Failed (Quota/Perms), but sending Email:", driveError.message);
+        // We continue execution to ensure the Email sends!
+    }
 
+    // --- PDF GENERATION & EMAIL ---
+    try {
         const doc = await PDFDocument.create();
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // --- SPECIFIC PDF GENERATION FOR ACCIDENTS ---
+        // CONFIG: Use separate email for accidents if variables exist
+        let emailUser = process.env.EMAIL_USER;
+        let emailPass = process.env.EMAIL_PASS;
+        
+        if (data.reportType === 'ACCIDENT_REPORT' && process.env.INCIDENTS_EMAIL_USER) {
+            emailUser = process.env.INCIDENTS_EMAIL_USER;
+            emailPass = process.env.INCIDENTS_PASS;
+        }
+
+        const transporter = nodemailer.createTransport({ 
+            service: 'gmail', 
+            auth: { user: emailUser, pass: emailPass } 
+        });
+
         if (data.reportType === 'ACCIDENT_REPORT') {
             let page = doc.addPage([600, 800]);
             
@@ -365,9 +386,9 @@ app.post('/submit-report', async (req, res) => {
             fs.writeFileSync(pdfPath, await doc.save());
 
             // Email to Specific Recipients
-            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+            
             await transporter.sendMail({
-                from: process.env.EMAIL_USER,
+                from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
                 subject: `URGENT: ACCIDENT REPORT - ${data.driverName} - ${data.vinLast4}`,
                 text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report including statement, signature, and photos.\n\nGoogle Drive Folder: https://drive.google.com/drive/folders/${folderId}`,
@@ -376,75 +397,35 @@ app.post('/submit-report', async (req, res) => {
 
             fs.unlinkSync(pdfPath);
             return res.json({ success: true });
+        } else {
+            // STANDARD ISSUE LOGIC
+            let page = doc.addPage([600, 800]);
+            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
+            page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            
+            let y = 650;
+            page.drawText(`Driver: ${data.driverName}`, { x: 30, y, size: 12, font: fontReg }); y -= 20;
+            page.drawText(`VIN: ${data.vinLast4}`, { x: 30, y, size: 12, font: fontReg }); y -= 20;
+            page.drawText(`Issue: ${data.otherDescription || 'None'}`, { x: 30, y, size: 12, font: fontReg });
+
+            const pdfPath = path.join(UPLOAD_DIR, `Issue_${Date.now()}.pdf`);
+            fs.writeFileSync(pdfPath, await doc.save());
+
+            await transporter.sendMail({
+                from: emailUser,
+                to: ['slgpfleetmanager@gmail.com'],
+                subject: `ISSUE: ${data.vinLast4} - ${data.reportType}`,
+                text: `Issue Report Attached.`,
+                attachments: [{ filename: 'Report.pdf', path: pdfPath }]
+            });
+            fs.unlinkSync(pdfPath);
+            return res.json({ success: true });
         }
 
-        // --- STANDARD REPORT LOGIC (FOR ISSUES) ---
-        let page = doc.addPage([600, 800]);
-        // Header
-        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
-        page.drawText('VEHICLE REPORT ISSUE', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-        page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
-
-        // Logo
-        try {
-            const logoPath = path.join(__dirname, 'logo.png');
-            if (fs.existsSync(logoPath)) {
-                const logoBytes = fs.readFileSync(logoPath);
-                const logoImage = await doc.embedPng(logoBytes);
-                page.drawRectangle({ x: 380, y: 715, width: 200, height: 70, color: rgb(1,1,1) });
-                const logoDims = logoImage.scaleToFit(180, 60);
-                page.drawImage(logoImage, { x: 390 + (180 - logoDims.width) / 2, y: 720 + (60 - logoDims.height) / 2, width: logoDims.width, height: logoDims.height });
-            }
-        } catch(e) {}
-
-        // Data Table
-        let y = 650;
-        const drawRow = (label, value) => {
-            page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-            const safeValue = value ? String(value) : 'N/A';
-            page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-            page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
-            y -= 40;
-        };
-
-        drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
-        drawRow('DRIVER NAME', data.driverName || 'N/A');
-        drawRow('VIN (LAST 4)', data.vinLast4 || 'N/A');
-        drawRow('VEHICLE TYPE', data.vehicleType || 'N/A');
-        drawRow('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
-        
-        let issuesText = (data.tags && data.tags.length) ? data.tags.join(', ') : 'None';
-        if (data.reportType.includes('Road')) issuesText = `Location: ${data.addressStreet || ''}, ${data.addressCity || ''}`;
-        drawRow('ISSUES SELECTED', issuesText);
-        
-        y -= 20;
-        page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-        y -= 25;
-        
-        const notes = data.otherDescription || "No additional notes provided.";
-        const noteLines = wrapText(notes, fontReg, 11, 540);
-        noteLines.forEach(line => {
-            page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-            y -= 15;
-        });
-
-        const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
-        fs.writeFileSync(pdfPath, await doc.save());
-
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-            text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
-            attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
-        });
-
-        fs.unlinkSync(pdfPath);
-        res.json({ success: true });
-
-    } catch (error) { console.error(error); res.status(500).json({ success: false, error: error.message }); }
+    } catch (error) { 
+        console.error("Report Error:", error); 
+        res.status(500).json({ success: false, error: error.message }); 
+    }
 });
 
 // --- BASIC ROUTES ---
@@ -456,7 +437,7 @@ app.get('/alerts', (req, res) => res.sendFile(path.join(__dirname, 'alerts.html'
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
     if (mode === 'issue') res.sendFile(path.join(__dirname, 'report-issue.html'));
-    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident - report.html'));
+    else if (mode === 'accident') res.sendFile(path.join(__dirname, 'accident-report.html'));
     else if (mode === 'insurance') res.sendFile(path.join(__dirname, 'insurance.html'));
     else res.status(404).send('Unknown report type.');
 });
