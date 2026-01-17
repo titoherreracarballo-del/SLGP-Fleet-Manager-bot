@@ -130,9 +130,43 @@
         #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
         .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
+
+        /* --- WARNING MODAL --- */
+        .modal {
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
+            align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+        }
+        .modal-content {
+            background-color: #1f2937; border: 2px solid #ef4444;
+            padding: 25px; border-radius: 16px; max-width: 400px; text-align: center;
+            box-shadow: 0 0 50px rgba(239, 68, 68, 0.4);
+        }
+        .warning-icon { font-size: 40px; margin-bottom: 10px; display: block; }
+        .modal-title { color: #ef4444; font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
+        .modal-text { color: #d1d5db; font-size: 13px; line-height: 1.6; margin-bottom: 15px; text-align: left; }
+        .modal-btn {
+            background-color: #ef4444; color: white; padding: 14px; width: 100%; border: none;
+            border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer;
+        }
     </style>
 </head>
 <body>
+
+<div id="towWarningModal" class="modal">
+    <div class="modal-content">
+        <span class="warning-icon">⚠️</span>
+        <div class="modal-title">No Tow Assistance</div>
+        <div class="modal-text">
+            <strong>Warning:</strong> This vehicle is not equipped with tow assistance.<br><br>
+            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
+            📞📲📞 For deliveries where the customer’s location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
+            💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
+        </div>
+        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
+    </div>
+</div>
 
 <div class="container">
     <div class="header-row">
@@ -197,7 +231,6 @@
     let localVersion = null;
     let wakeLock = null;
 
-    // Checks server version every 30s. Reloads if changed.
     async function checkForUpdates() {
         try {
             const res = await fetch('/version');
@@ -211,7 +244,6 @@
     setInterval(checkForUpdates, 30000);
     checkForUpdates();
 
-    // Forces screen to stay ON during recording/uploading
     async function requestWakeLock() {
         try {
             if ('wakeLock' in navigator) {
@@ -227,7 +259,7 @@
         if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
     }
 
-    // UPDATED DB: 'tow: true' = GREEN, 'tow: false' = RED
+    // UPDATED DB: 'tow: true' = GREEN, 'tow: false' = RED & POPUP
     const vinDatabase = {
         // --- DIESEL (Usually Covered) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
@@ -252,7 +284,7 @@
         "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         
-        // --- GAS (NO TOW COVERAGE) ---
+        // --- GAS (NO TOW COVERAGE - SPECIFIC LIST) ---
         "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
@@ -263,7 +295,7 @@
         "3754": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
         "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
 
-        // --- GAS (COVERED) ---
+        // --- GAS (COVERED - OTHERS) ---
         "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "3010": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
@@ -285,6 +317,7 @@
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
         const towBox = document.getElementById('towStatusBox');
+        const modal = document.getElementById('towWarningModal');
 
         typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
         towBox.classList.remove('active', 'inactive');
@@ -309,13 +342,15 @@
                 else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
                 else typeBox.classList.add('gas-mode');
 
-                // --- NEW TOW LOGIC ---
+                // --- NEW TOW LOGIC & POPUP ---
                 if (found.tow) {
                     towBox.innerText = "COVERAGE ACTIVE";
                     towBox.classList.add('active');
                 } else {
                     towBox.innerText = "NO COVERAGE - CONTACT DISPATCH";
                     towBox.classList.add('inactive');
+                    // TRIGGER POPUP
+                    modal.style.display = 'flex';
                 }
 
             } else {
@@ -325,6 +360,10 @@
         } else {
             typeBox.value = "";
         }
+    }
+
+    function closeModal() {
+        document.getElementById('towWarningModal').style.display = 'none';
     }
 
     let inspectionType = '';
@@ -343,11 +382,8 @@
     let timerInterval;
     let seconds = 0;
     
-    // UPDATED CAMERA FUNCTION (WITH RESET & TORCH)
     async function startCamera() {
         const preview = document.getElementById('preview');
-        
-        // 1. Clear any existing stream (Hard Reset)
         if (preview.srcObject) {
             const tracks = preview.srcObject.getTracks();
             tracks.forEach(track => track.stop());
@@ -355,11 +391,8 @@
         }
 
         const constraintSets = [
-            // Set 1: Ideal + Try to Force Flashlight (Torch)
             { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 }, advanced: [{ torch: true }] }, audio: true },
-            // Set 2: Fallback (Standard)
             { video: { facingMode: "environment" }, audio: true },
-            // Set 3: Last Resort
             { video: true, audio: true }
         ];
 
@@ -367,8 +400,6 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 preview.srcObject = stream;
-                
-                // --- ATTEMPT TO TURN ON FLASH (If browser didn't do it automatically) ---
                 const track = stream.getVideoTracks()[0];
                 try {
                    const capabilities = track.getCapabilities();
@@ -378,36 +409,27 @@
                    }
                 } catch(e) { console.log("Torch not supported on this device."); }
                 
-                // Play
                 preview.onloadedmetadata = () => {
                     preview.play().catch(e => console.error("Play error:", e));
                 };
-                
-                console.log("Camera active with:", constraints);
                 return; 
             } catch (err) {
                 console.warn("Constraint check failed:", constraints, err);
             }
         }
-
         alert("Camera Critical Failure: Please allow camera permissions or click 'Reset Camera'.");
     }
 
-    // --- NEW: MANUAL RESET BUTTON FUNCTION ---
     function resetCamera() {
         console.log("Resetting Camera...");
         const preview = document.getElementById('preview');
-        // Stop playback if in playback mode
         preview.style.display = 'block';
         document.getElementById('playback').style.display = 'none';
         document.getElementById('playback').src = "";
-        
-        // Restart Camera
         startCamera();
         document.getElementById('status').innerText = "Camera Restarted.";
     }
     
-    // Initialize Camera on Load
     startCamera();
     autoSelectInspection(); 
 
@@ -432,9 +454,7 @@
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
             requestWakeLock();
             const stream = document.getElementById('preview').srcObject;
-            
-            // --- H.265 + BANDWIDTH LIMIT ---
-            const bitrate = 3500000; // 3.5 Mbps
+            const bitrate = 3500000; 
             
             let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
@@ -444,8 +464,6 @@
                  }
             }
 
-            console.log("Recording with:", options.mimeType); 
-            
             mediaRecorder = new MediaRecorder(stream, options);
             chunks = [];
 
@@ -478,7 +496,6 @@
         document.getElementById('btn-record').classList.remove('recording');
     }
 
-    // --- 4. UPLOAD ENGINE ---
     function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
