@@ -109,6 +109,7 @@
             background-color: var(--bg-input);
             color: #6b7280;
             transition: all 0.3s ease;
+            box-sizing: border-box;
         }
         .status-box.active { background-color: rgba(74, 222, 128, 0.1); border-color: #4ade80; color: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2); }
         .status-box.inactive { background-color: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
@@ -140,12 +141,24 @@
         }
         .modal-content {
             background-color: #1f2937; border: 2px solid #ef4444;
-            padding: 25px; border-radius: 16px; max-width: 400px; text-align: center;
+            padding: 25px; border-radius: 16px; 
+            width: 90%; max-width: 400px; /* Responsive Width */
+            text-align: center;
             box-shadow: 0 0 50px rgba(239, 68, 68, 0.4);
+            box-sizing: border-box;
         }
         .warning-icon { font-size: 40px; margin-bottom: 10px; display: block; }
         .modal-title { color: #ef4444; font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
-        .modal-text { color: #d1d5db; font-size: 13px; line-height: 1.6; margin-bottom: 15px; text-align: left; }
+        
+        .modal-text { 
+            color: #e5e7eb; 
+            font-size: 13px; 
+            font-weight: 700; /* BOLD TEXT */
+            line-height: 1.6; 
+            margin-bottom: 20px; 
+            text-align: left; 
+        }
+        
         .modal-btn {
             background-color: #ef4444; color: white; padding: 14px; width: 100%; border: none;
             border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer;
@@ -159,7 +172,7 @@
         <span class="warning-icon">⚠️</span>
         <div class="modal-title">No Tow Assistance</div>
         <div class="modal-text">
-            <strong>Warning:</strong> This vehicle is not equipped with tow assistance.<br><br>
+            Warning: This vehicle is not equipped with tow assistance.<br><br>
             🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
             📞📲📞 For deliveries where the customer’s location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
             💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
