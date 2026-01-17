@@ -132,7 +132,7 @@
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
         .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
 
-        /* --- WARNING MODAL --- */
+        /* --- MODAL SYSTEM --- */
         .modal {
             display: none; 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -140,35 +140,39 @@
             align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
         }
         .modal-content {
-            background-color: #1f2937; border: 2px solid #ef4444;
+            background-color: #1f2937; border: 2px solid;
             padding: 25px; border-radius: 16px; 
-            width: 90%; max-width: 400px; /* Responsive Width */
+            width: 90%; max-width: 400px;
             text-align: center;
-            box-shadow: 0 0 50px rgba(239, 68, 68, 0.4);
+            box-shadow: 0 0 50px rgba(0,0,0,0.6);
             box-sizing: border-box;
         }
         .warning-icon { font-size: 40px; margin-bottom: 10px; display: block; }
-        .modal-title { color: #ef4444; font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
-        
+        .modal-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
         .modal-text { 
-            color: #e5e7eb; 
-            font-size: 13px; 
-            font-weight: 700; /* BOLD TEXT */
-            line-height: 1.6; 
-            margin-bottom: 20px; 
-            text-align: left; 
+            color: #e5e7eb; font-size: 13px; font-weight: 700; 
+            line-height: 1.6; margin-bottom: 20px; text-align: left; 
         }
-        
         .modal-btn {
-            background-color: #ef4444; color: white; padding: 14px; width: 100%; border: none;
+            color: white; padding: 14px; width: 100%; border: none;
             border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer;
         }
+
+        /* Red Theme (No Tow) */
+        .modal-red { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); }
+        .modal-red .modal-title { color: #ef4444; }
+        .modal-red .modal-btn { background-color: #ef4444; }
+
+        /* Blue Theme (Active Tow) */
+        .modal-blue { border-color: #2563EB; box-shadow: 0 0 50px rgba(37, 99, 235, 0.3); }
+        .modal-blue .modal-title { color: #2563EB; }
+        .modal-blue .modal-btn { background-color: #2563EB; }
     </style>
 </head>
 <body>
 
 <div id="towWarningModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-red">
         <span class="warning-icon">⚠️</span>
         <div class="modal-title">No Tow Assistance</div>
         <div class="modal-text">
@@ -176,6 +180,22 @@
             🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
             📞📲📞 For deliveries where the customer’s location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
             💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
+        </div>
+        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
+    </div>
+</div>
+
+<div id="towActiveModal" class="modal">
+    <div class="modal-content modal-blue">
+        <span class="warning-icon">🚨</span>
+        <div class="modal-title">Tow Assistance Active</div>
+        <div class="modal-text">
+            Alert: This vehicle is equipped with tow assistance.<br><br>
+            🛠️ Please note that tow assistance is strictly limited to mechanical failures only.<br><br>
+            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
+            ⚖️ As an equal opportunity employer, all expectations and company policies apply equally to all employees and must be followed without exception.<br><br>
+            📞📲📞 For deliveries where the customer’s location involves any of the conditions noted above, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
+            💰 Failure to comply with this directive, including disregarding this notice, will result in the driver being financially responsible for any towing or recovery costs incurred.
         </div>
         <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
     </div>
@@ -272,7 +292,7 @@
         if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
     }
 
-    // UPDATED DB: 'tow: true' = GREEN, 'tow: false' = RED & POPUP
+    // UPDATED DB
     const vinDatabase = {
         // --- DIESEL (Usually Covered) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
@@ -330,7 +350,10 @@
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
         const towBox = document.getElementById('towStatusBox');
-        const modal = document.getElementById('towWarningModal');
+        
+        // Modal Elements
+        const warnModal = document.getElementById('towWarningModal');
+        const activeModal = document.getElementById('towActiveModal');
 
         typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
         towBox.classList.remove('active', 'inactive');
@@ -340,12 +363,14 @@
             let found = vinDatabase[vin];
             if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
             
+            // MERCEDES CASE
             if (vin.startsWith("W")) { 
                 typeBox.value = "Mercedes (Diesel)"; 
                 typeBox.classList.add('diesel-mode');
-                // Assume Mercedes has tow coverage
+                // Assume Active Tow
                 towBox.innerText = "COVERAGE ACTIVE";
                 towBox.classList.add('active');
+                activeModal.style.display = 'flex'; // Trigger Blue Modal
                 return; 
             }
 
@@ -355,15 +380,15 @@
                 else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
                 else typeBox.classList.add('gas-mode');
 
-                // --- NEW TOW LOGIC & POPUP ---
+                // --- TOW LOGIC & POPUPS ---
                 if (found.tow) {
                     towBox.innerText = "COVERAGE ACTIVE";
                     towBox.classList.add('active');
+                    activeModal.style.display = 'flex'; // Trigger Blue Modal
                 } else {
                     towBox.innerText = "NO COVERAGE - CONTACT DISPATCH";
                     towBox.classList.add('inactive');
-                    // TRIGGER POPUP
-                    modal.style.display = 'flex';
+                    warnModal.style.display = 'flex'; // Trigger Red Modal
                 }
 
             } else {
@@ -376,7 +401,7 @@
     }
 
     function closeModal() {
-        document.getElementById('towWarningModal').style.display = 'none';
+        document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
     }
 
     let inspectionType = '';
@@ -388,7 +413,7 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 3. VIDEO ENGINE WITH CRASH FIX & FLASH SUPPORT ---
+    // --- 3. VIDEO ENGINE ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
@@ -509,6 +534,7 @@
         document.getElementById('btn-record').classList.remove('recording');
     }
 
+    // --- 4. UPLOAD ENGINE ---
     function uploadVideo() {
         const driver = document.getElementById('driverName').value;
         const vin = document.getElementById('vinInput').value;
