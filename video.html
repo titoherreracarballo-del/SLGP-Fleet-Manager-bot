@@ -160,10 +160,12 @@
             border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer;
         }
 
+        /* Red Theme (No Tow) */
         .modal-red { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); }
         .modal-red .modal-title { color: #ef4444; }
         .modal-red .modal-btn { background-color: #ef4444; }
 
+        /* Blue Theme (Active Tow) */
         .modal-blue { border-color: #2563EB; box-shadow: 0 0 50px rgba(37, 99, 235, 0.3); }
         .modal-blue .modal-title { color: #2563EB; }
         .modal-blue .modal-btn { background-color: #2563EB; }
@@ -294,12 +296,13 @@
 
     // UPDATED DB
     const vinDatabase = {
-        // --- DIESEL ---
+        // --- DIESEL (Usually Covered) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel", tow: true },
         "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
         "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        // --- ELECTRIC ---
+        
+        // --- ELECTRIC (NO TOW COVERAGE) ---
         "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
@@ -315,7 +318,8 @@
         "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        // --- GAS (NO TOW) ---
+        
+        // --- GAS (NO TOW COVERAGE - SPECIFIC LIST) ---
         "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
@@ -325,7 +329,8 @@
         "7373": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
         "3754": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
         "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        // --- GAS (YES TOW) ---
+
+        // --- GAS (COVERED - OTHERS) ---
         "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "3010": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
@@ -348,6 +353,7 @@
         const typeBox = document.getElementById('vehicleType');
         const towBox = document.getElementById('towStatusBox');
         
+        // Modal Elements
         const warnModal = document.getElementById('towWarningModal');
         const activeModal = document.getElementById('towActiveModal');
 
@@ -359,9 +365,11 @@
             let found = vinDatabase[vin];
             if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
             
+            // MERCEDES CASE
             if (vin.startsWith("W")) { 
                 typeBox.value = "Mercedes (Diesel)"; 
                 typeBox.classList.add('diesel-mode');
+                // Assume Active Tow
                 towBox.innerText = "COVERAGE ACTIVE";
                 towBox.classList.add('active');
                 activeModal.style.display = 'flex'; // Trigger Blue Modal
@@ -374,6 +382,7 @@
                 else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
                 else typeBox.classList.add('gas-mode');
 
+                // --- TOW LOGIC & POPUPS ---
                 if (found.tow) {
                     towBox.innerText = "COVERAGE ACTIVE";
                     towBox.classList.add('active');
@@ -406,7 +415,7 @@
         if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
     }
 
-    // --- 3. VIDEO ENGINE (MERGED & ENHANCED) ---
+    // --- 3. ROBUST VIDEO ENGINE (MERGED & ENHANCED) ---
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
@@ -537,7 +546,9 @@
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
             requestWakeLock();
             const stream = document.getElementById('preview').srcObject;
-            const bitrate = 3500000; 
+            
+            // --- H.265 + BANDWIDTH LIMIT ---
+            const bitrate = 3500000; // 3.5 Mbps
             
             let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
