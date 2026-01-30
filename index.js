@@ -17,6 +17,13 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
+const BUILD_INFO = {
+    version: APP_VERSION,
+    buildDate: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'production',
+    nodeVersion: process.version
+};
+
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -628,7 +635,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log(`   Type: ${inspectionType}`);
         console.log(`   Size: ${fileSizeMB}MB`);
 
-        // Upload to Google Drive with progress tracking
         const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
         
         console.log('☁️  Starting Google Drive upload...');
@@ -651,7 +657,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log(`   File ID: ${driveResponse.data.id}`);
         console.log(`   Link: ${driveResponse.data.webViewLink}`);
 
-        // Send email notification
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -679,16 +684,13 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             console.log('✅ Email notification sent');
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
-            // Don't fail the whole upload if email fails
         }
 
-        // Cleanup temp file
         if (fs.existsSync(videoPath)) {
             fs.unlinkSync(videoPath);
             console.log('✅ Temporary file cleaned up');
         }
 
-        // Send success response
         res.json({
             success: true,
             fileId: driveResponse.data.id,
@@ -701,7 +703,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     } catch (error) {
         console.error('❌ Video upload error:', error);
         
-        // Cleanup on error
         if (videoPath && fs.existsSync(videoPath)) {
             try {
                 fs.unlinkSync(videoPath);
@@ -711,7 +712,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             }
         }
         
-        // Send detailed error response
         res.status(500).json({
             success: false,
             error: error.message,
@@ -739,7 +739,6 @@ app.post('/subscribe', (req, res) => {
         const subscription = req.body;
         let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
         
-        // Avoid duplicates
         const exists = subs.some(s => JSON.stringify(s) === JSON.stringify(subscription));
         if (!exists) {
             subs.push(subscription);
@@ -755,11 +754,11 @@ app.post('/subscribe', (req, res) => {
 });
 
 // ============================================
-// API ROUTES - UTILITY
+// API ROUTES - VERSION (AUTO-REFRESH SYSTEM)
 // ============================================
 
 app.get('/version', (req, res) => {
-    res.json({ version: APP_VERSION });
+    res.json(BUILD_INFO);
 });
 
 // ============================================
@@ -914,11 +913,12 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════╗
 ║  SLGP Fleet Manager                  ║
-║  Enhanced Video Upload System        ║
+║  Enhanced with Auto-Refresh          ║
 ╠══════════════════════════════════════╣
 ║  Port: ${PORT}                            ║
-║  Root: ${__dirname}                      
-║  Upload Dir: ${UPLOAD_DIR}
+║  Version: ${BUILD_INFO.version}
+║  Built: ${BUILD_INFO.buildDate}
+║  Node: ${BUILD_INFO.nodeVersion}
 ╚══════════════════════════════════════╝
 
 ✅ Server started
@@ -926,6 +926,7 @@ app.listen(PORT, '0.0.0.0', () => {
 ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
+✅ Auto-refresh system active
 ⚠️  NO AUTHENTICATION - Direct access enabled
 
 📹 Video upload features:
@@ -935,6 +936,11 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
    • Email notifications with metrics
    • Comprehensive error logging
 
+🔄 Auto-refresh features:
+   • Version checking every 30s
+   • Automatic client refresh on new deploy
+   • Build info tracking
+
 🌐 Ready at: http://localhost:${PORT}
 
 📍 Routes configured:
@@ -943,6 +949,7 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
    GET  /success        → success.html
    GET  /alerts         → alerts.html
    GET  /report?mode=   → accident/issue/insurance
+   GET  /version        → Build info (auto-refresh)
    POST /log-gate-check
    POST /log-arrival-check
    POST /submit-report
