@@ -1,15 +1,49 @@
 {
-  "name": "SLGP Fleet Health",
-  "short_name": "FleetCheck",
+  "name": "SLGP Fleet Manager",
+  "short_name": "SLGP Fleet",
+  "description": "Fleet Management Portal for Strategic Logistics Group Partners",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0e17",
-  "theme_color": "#0066ff",
+  "background_color": "#0F1115",
+  "theme_color": "#00A8E1",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "icon.jpg",
-      "sizes": "1024x1024",
-      "type": "image/jpeg"
+      "src": "/icon.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Report Issue",
+      "short_name": "Issue",
+      "description": "Report a vehicle issue",
+      "url": "/report?mode=issue",
+      "icons": [{ "src": "/issue.jpg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Accident Report",
+      "short_name": "Accident",
+      "description": "File an accident report",
+      "url": "/report?mode=accident",
+      "icons": [{ "src": "/accident.jpg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Video Inspection",
+      "short_name": "Video",
+      "description": "Record inspection video",
+      "url": "/video",
+      "icons": [{ "src": "/fleet.jpg", "sizes": "192x192" }]
     }
   ]
 }
