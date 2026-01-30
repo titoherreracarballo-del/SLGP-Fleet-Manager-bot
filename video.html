@@ -38,25 +38,23 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
-        /* --- PROGRESS BAR STYLE --- */
         #progress-container {
             width: 100%;
             background-color: #374151;
             border-radius: 10px;
             margin-top: 15px;
             height: 10px;
-            display: none; /* Hidden until upload starts */
+            display: none;
             overflow: hidden;
         }
 
         #progress-fill {
             height: 100%;
             width: 0%;
-            background-color: #4ade80; /* Green */
+            background-color: #4ade80;
             transition: width 0.2s;
         }
 
-        /* --- HEADERS & CONTROLS --- */
         .header-row {
             display: flex;
             justify-content: space-between;
@@ -68,7 +66,7 @@
         .reset-btn {
             background-color: #374151;
             border: 1px solid #4b5563;
-            color: #ef4444; /* Red Text */
+            color: #ef4444;
             font-size: 11px;
             font-weight: 700;
             padding: 5px 10px;
@@ -81,7 +79,6 @@
         .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
         h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
 
-        /* --- INPUTS --- */
         .form-group { margin-bottom: 20px; }
         .row-split { display: flex; gap: 10px; }
         .vin-col { flex: 0.3; min-width: 70px; } 
@@ -96,7 +93,6 @@
         input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
         input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
 
-        /* --- TOW STATUS BOX STYLE --- */
         .status-box {
             width: 100%;
             padding: 16px;
@@ -114,15 +110,30 @@
         .status-box.active { background-color: rgba(74, 222, 128, 0.1); border-color: #4ade80; color: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2); }
         .status-box.inactive { background-color: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
 
-        /* --- BUTTONS --- */
         .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
         .type-btn.selected { background-color: var(--primary-blue); border-color: var(--primary-blue); color: white; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
 
-        /* --- VIDEO --- */
         .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
         video { width: 100%; height: 100%; object-fit: cover; }
         #timer-display { position: absolute; top: 20px; right: 20px; background-color: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20; }
+        
+        /* Camera status indicator */
+        #camera-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0,0,0,0.6);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            z-index: 20;
+            display: none;
+        }
+        #camera-status.ready { color: #4ade80; border: 1px solid #4ade80; }
+        #camera-status.error { color: #ef4444; border: 1px solid #ef4444; }
+        
         .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
         .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 10px; text-transform: uppercase; }
         #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
@@ -132,7 +143,6 @@
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
         .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
 
-        /* --- MODAL SYSTEM --- */
         .modal {
             display: none; 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -149,23 +159,13 @@
         }
         .warning-icon { font-size: 40px; margin-bottom: 10px; display: block; }
         .modal-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
-        
-        .modal-text { 
-            color: #e5e7eb; font-size: 13px; font-weight: 700; 
-            line-height: 1.6; margin-bottom: 20px; text-align: left; 
-        }
-        
-        .modal-btn {
-            color: white; padding: 14px; width: 100%; border: none;
-            border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer;
-        }
+        .modal-text { color: #e5e7eb; font-size: 13px; font-weight: 700; line-height: 1.6; margin-bottom: 20px; text-align: left; }
+        .modal-btn { color: white; padding: 14px; width: 100%; border: none; border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer; }
 
-        /* Red Theme (No Tow) */
         .modal-red { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); }
         .modal-red .modal-title { color: #ef4444; }
         .modal-red .modal-btn { background-color: #ef4444; }
 
-        /* Blue Theme (Active Tow) */
         .modal-blue { border-color: #2563EB; box-shadow: 0 0 50px rgba(37, 99, 235, 0.3); }
         .modal-blue .modal-title { color: #2563EB; }
         .modal-blue .modal-btn { background-color: #2563EB; }
@@ -180,7 +180,7 @@
         <div class="modal-text">
             Warning: This vehicle is not equipped with tow assistance.<br><br>
             🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
-            📞📲📞 For deliveries where the customer’s location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
+            📞📲📞 For deliveries where the customer's location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
             💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
         </div>
         <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
@@ -196,7 +196,7 @@
             🛠️ Please note that tow assistance is strictly limited to mechanical failures only.<br><br>
             🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
             ⚖️ As an equal opportunity employer, all expectations and company policies apply equally to all employees and must be followed without exception.<br><br>
-            📞📲📞 For deliveries where the customer’s location involves any of the conditions noted above, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
+            📞📲📞 For deliveries where the customer's location involves any of the conditions noted above, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
             💰 Failure to comply with this directive, including disregarding this notice, will result in the driver being financially responsible for any towing or recovery costs incurred.
         </div>
         <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
@@ -240,6 +240,7 @@
     </div>
 
     <div class="video-box">
+        <div id="camera-status">Initializing...</div>
         <div id="timer-display">00:00</div>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
@@ -262,47 +263,74 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
-    // --- 1. FEATURE: AUTO-UPDATE & WAKE LOCK ---
+    // ============================================
+    // CONFIGURATION
+    // ============================================
+    const CONFIG = {
+        VIDEO_BITRATE: 2500000, // 2.5 Mbps (reduced from 3.5 for better compatibility)
+        VIDEO_WIDTH: 1920,
+        VIDEO_HEIGHT: 1080,
+        CHUNK_SIZE: 1024 * 1024, // 1MB chunks for upload
+        MAX_RETRY_ATTEMPTS: 3
+    };
+
     let localVersion = null;
     let wakeLock = null;
+    let mediaRecorder;
+    let chunks = [];
+    let videoBlob;
+    let timerInterval;
+    let seconds = 0;
+    let inspectionType = '';
+    let currentStream = null;
 
+    // ============================================
+    // AUTO-UPDATE
+    // ============================================
     async function checkForUpdates() {
         try {
             const res = await fetch('/version');
             if (res.ok) {
                 const data = await res.json();
                 if (!localVersion) localVersion = data.version; 
-                else if (localVersion !== data.version) window.location.reload(true);
+                else if (localVersion !== data.version) {
+                    console.log('New version detected, reloading...');
+                    window.location.reload(true);
+                }
             }
         } catch (err) { console.log("Update check failed"); }
     }
     setInterval(checkForUpdates, 30000);
     checkForUpdates();
 
+    // ============================================
+    // WAKE LOCK
+    // ============================================
     async function requestWakeLock() {
         try {
-            if ('wakeLock' in navigator) {
+            if ('wakeLock' in navigator && !wakeLock) {
                 wakeLock = await navigator.wakeLock.request('screen');
-                console.log('Wake Lock Active');
+                console.log('✅ Wake Lock Active');
+                
+                wakeLock.addEventListener('release', () => {
+                    console.log('Wake Lock Released');
+                    wakeLock = null;
+                });
             }
-        } catch (err) { console.log('Wake Lock Error', err); }
+        } catch (err) { 
+            console.log('Wake Lock Error:', err); 
+        }
     }
 
-    // --- 2. EXISTING VIN & TYPE LOGIC ---
-    function autoSelectInspection() {
-        const hour = new Date().getHours();
-        if (hour < 13) selectType('Pre-Trip'); else selectType('Post-Trip');
-    }
-
-    // UPDATED DB
+    // ============================================
+    // VIN DATABASE
+    // ============================================
     const vinDatabase = {
-        // --- DIESEL (Usually Covered) ---
         "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
         "0213": { type: "Large Van (Diesel)", fuel: "diesel", tow: true },
         "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
         "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
         
-        // --- ELECTRIC (NO TOW COVERAGE) ---
         "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
@@ -319,7 +347,6 @@
         "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
         
-        // --- GAS (NO TOW COVERAGE - SPECIFIC LIST) ---
         "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
         "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
@@ -330,7 +357,6 @@
         "3754": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
         "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
 
-        // --- GAS (COVERED - OTHERS) ---
         "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "3010": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
@@ -352,8 +378,6 @@
         let vin = document.getElementById('vinInput').value.toUpperCase();
         const typeBox = document.getElementById('vehicleType');
         const towBox = document.getElementById('towStatusBox');
-        
-        // Modal Elements
         const warnModal = document.getElementById('towWarningModal');
         const activeModal = document.getElementById('towActiveModal');
 
@@ -362,37 +386,30 @@
         towBox.innerText = "Pending VIN...";
         
         if (vin.length >= 4) {
-            let found = vinDatabase[vin];
-            if(!found && vin.length > 4) { found = vinDatabase[vin.slice(-4)]; }
+            let found = vinDatabase[vin] || vinDatabase[vin.slice(-4)];
             
-            // MERCEDES CASE
             if (vin.startsWith("W")) { 
                 typeBox.value = "Mercedes (Diesel)"; 
                 typeBox.classList.add('diesel-mode');
-                // Assume Active Tow
                 towBox.innerText = "COVERAGE ACTIVE";
                 towBox.classList.add('active');
-                activeModal.style.display = 'flex'; // Trigger Blue Modal
+                activeModal.style.display = 'flex';
                 return; 
             }
 
             if (found) {
                 typeBox.value = found.type; 
-                if (found.fuel === 'diesel') typeBox.classList.add('diesel-mode');
-                else if (found.fuel === 'electric') typeBox.classList.add('electric-mode');
-                else typeBox.classList.add('gas-mode');
+                typeBox.classList.add(found.fuel + '-mode');
 
-                // --- TOW LOGIC & POPUPS ---
                 if (found.tow) {
                     towBox.innerText = "COVERAGE ACTIVE";
                     towBox.classList.add('active');
-                    activeModal.style.display = 'flex'; // Trigger Blue Modal
+                    activeModal.style.display = 'flex';
                 } else {
                     towBox.innerText = "NO COVERAGE - CONTACT DISPATCH";
                     towBox.classList.add('inactive');
-                    warnModal.style.display = 'flex'; // Trigger Red Modal
+                    warnModal.style.display = 'flex';
                 }
-
             } else {
                 typeBox.value = "Unknown Vehicle";
                 towBox.innerText = "Unknown Status";
@@ -406,134 +423,214 @@
         document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
     }
 
-    let inspectionType = '';
     function selectType(type) {
         inspectionType = type;
         document.getElementById('btn-pre').classList.remove('selected');
         document.getElementById('btn-post').classList.remove('selected');
-        if(type === 'Pre-Trip') document.getElementById('btn-pre').classList.add('selected');
-        if(type === 'Post-Trip') document.getElementById('btn-post').classList.add('selected');
+        document.getElementById(type === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
     }
 
-    // --- 3. ROBUST VIDEO ENGINE (MERGED & ENHANCED) ---
-    let mediaRecorder;
-    let chunks = [];
-    let videoBlob;
-    let timerInterval;
-    let seconds = 0;
-    
+    function autoSelectInspection() {
+        const hour = new Date().getHours();
+        selectType(hour < 13 ? 'Pre-Trip' : 'Post-Trip');
+    }
+
+    // ============================================
+    // ENHANCED CAMERA INITIALIZATION
+    // ============================================
     async function startCamera() {
         const preview = document.getElementById('preview');
-        // Clean up existing stream
+        const statusEl = document.getElementById('camera-status');
+        
+        statusEl.style.display = 'block';
+        statusEl.className = '';
+        statusEl.innerText = 'Initializing Camera...';
+
+        // Stop existing stream
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+        }
         if (preview.srcObject) {
-            const tracks = preview.srcObject.getTracks();
-            tracks.forEach(track => track.stop());
+            preview.srcObject.getTracks().forEach(track => track.stop());
             preview.srcObject = null;
         }
 
-        // Get list of all available cameras to find "Back"
-        let rearCameraId = null;
         try {
+            // Request permissions first
+            const permissionResult = await navigator.permissions.query({ name: 'camera' });
+            if (permissionResult.state === 'denied') {
+                throw new Error('Camera permission denied');
+            }
+
+            // Get available devices
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
-            const backCam = videoDevices.find(d => 
+            
+            console.log(`📹 Found ${videoDevices.length} camera(s)`);
+            videoDevices.forEach((d, i) => console.log(`  ${i + 1}. ${d.label || 'Camera ' + (i + 1)}`));
+
+            // Find rear camera
+            let rearCamera = videoDevices.find(d => 
                 d.label.toLowerCase().includes('back') || 
                 d.label.toLowerCase().includes('rear') || 
                 d.label.toLowerCase().includes('environment')
             );
-            if (backCam) {
-                rearCameraId = backCam.deviceId;
-                console.log("Found Rear Camera ID:", rearCameraId);
-            }
-        } catch (e) { console.log("Device enumeration failed", e); }
 
-        const constraintSets = [];
-        // 1. Specific Rear ID (1080p)
-        if (rearCameraId) {
-            constraintSets.push({ 
-                video: { 
-                    deviceId: { exact: rearCameraId }, 
-                    width: { ideal: 1920 }, height: { ideal: 1080 } 
-                }, 
-                audio: true 
+            // Fallback: use last camera (usually rear on mobile)
+            if (!rearCamera && videoDevices.length > 1) {
+                rearCamera = videoDevices[videoDevices.length - 1];
+            }
+
+            // Try multiple constraint strategies
+            const constraintStrategies = [];
+
+            // Strategy 1: Specific rear camera with 1080p
+            if (rearCamera) {
+                constraintStrategies.push({
+                    video: {
+                        deviceId: { exact: rearCamera.deviceId },
+                        width: { ideal: CONFIG.VIDEO_WIDTH },
+                        height: { ideal: CONFIG.VIDEO_HEIGHT },
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: true
+                });
+            }
+
+            // Strategy 2: Environment facing with 1080p
+            constraintStrategies.push({
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: CONFIG.VIDEO_WIDTH },
+                    height: { ideal: CONFIG.VIDEO_HEIGHT },
+                    frameRate: { ideal: 30 }
+                },
+                audio: true
             });
-        }
-        // 2. Generic Environment (1080p)
-        constraintSets.push({ 
-            video: { 
-                facingMode: "environment", 
-                width: { ideal: 1920 }, height: { ideal: 1080 } 
-            }, 
-            audio: true 
-        });
-        // 3. Fallback
-        constraintSets.push({ video: true, audio: true });
 
-        for (let i = 0; i < constraintSets.length; i++) {
-            const constraints = constraintSets[i];
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                // Check if we accidentally got front camera
-                const videoTrack = stream.getVideoTracks()[0];
-                const settings = videoTrack.getSettings();
-                
-                if (i < constraintSets.length - 1 && settings.facingMode === 'user') {
-                    console.warn("Got front camera, trying next option...");
-                    videoTrack.stop();
-                    continue; 
-                }
+            // Strategy 3: Environment facing with 720p
+            constraintStrategies.push({
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                },
+                audio: true
+            });
 
-                preview.srcObject = stream;
+            // Strategy 4: Basic fallback
+            constraintStrategies.push({ video: true, audio: true });
 
-                // --- CLAUDE'S ENHANCEMENTS (ISO, FOCUS, TORCH) ---
+            // Try each strategy
+            for (let i = 0; i < constraintStrategies.length; i++) {
                 try {
-                    const capabilities = videoTrack.getCapabilities();
-                    const advConstraints = { advanced: [] };
-
-                    if (capabilities.torch) advConstraints.advanced.push({ torch: true });
-                    if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) advConstraints.advanced.push({ focusMode: 'continuous' });
-                    if (capabilities.exposureMode && capabilities.exposureMode.includes('continuous')) advConstraints.advanced.push({ exposureMode: 'continuous' });
-                    if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('continuous')) advConstraints.advanced.push({ whiteBalanceMode: 'continuous' });
+                    console.log(`📹 Trying camera strategy ${i + 1}/${constraintStrategies.length}`);
+                    const stream = await navigator.mediaDevices.getUserMedia(constraintStrategies[i]);
                     
-                    if (advConstraints.advanced.length > 0) {
-                        await videoTrack.applyConstraints(advConstraints);
-                    }
-                } catch(e) { console.log("Enhancements skipped:", e); }
+                    const videoTrack = stream.getVideoTracks()[0];
+                    const settings = videoTrack.getSettings();
+                    
+                    console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
+                    console.log(`   Facing: ${settings.facingMode || 'unknown'}`);
 
-                preview.onloadedmetadata = () => {
-                    preview.play().catch(e => console.error("Play error:", e));
-                };
-                return; // Success
-            } catch (err) {
-                console.warn("Constraint set failed:", err);
+                    // If we got front camera on early attempts, try next strategy
+                    if (i < constraintStrategies.length - 2 && settings.facingMode === 'user') {
+                        console.log('⚠️  Got front camera, trying next strategy...');
+                        videoTrack.stop();
+                        continue;
+                    }
+
+                    // Apply advanced constraints
+                    try {
+                        const capabilities = videoTrack.getCapabilities();
+                        const advConstraints = { advanced: [] };
+
+                        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                            advConstraints.advanced.push({ focusMode: 'continuous' });
+                        }
+                        if (capabilities.exposureMode && capabilities.exposureMode.includes('continuous')) {
+                            advConstraints.advanced.push({ exposureMode: 'continuous' });
+                        }
+                        if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('continuous')) {
+                            advConstraints.advanced.push({ whiteBalanceMode: 'continuous' });
+                        }
+                        if (capabilities.torch) {
+                            advConstraints.advanced.push({ torch: true });
+                        }
+
+                        if (advConstraints.advanced.length > 0) {
+                            await videoTrack.applyConstraints(advConstraints);
+                            console.log('✅ Applied advanced camera settings');
+                        }
+                    } catch (e) {
+                        console.log('⚠️  Could not apply advanced settings:', e.message);
+                    }
+
+                    currentStream = stream;
+                    preview.srcObject = stream;
+                    
+                    preview.onloadedmetadata = () => {
+                        preview.play().then(() => {
+                            statusEl.innerText = `Camera Ready (${settings.width}x${settings.height})`;
+                            statusEl.className = 'ready';
+                            setTimeout(() => statusEl.style.display = 'none', 3000);
+                        }).catch(e => {
+                            console.error('Play error:', e);
+                            throw e;
+                        });
+                    };
+
+                    return; // Success!
+                    
+                } catch (err) {
+                    console.warn(`❌ Strategy ${i + 1} failed:`, err.message);
+                    if (i === constraintStrategies.length - 1) {
+                        throw err; // Last strategy failed
+                    }
+                }
             }
+            
+        } catch (error) {
+            console.error('❌ Camera initialization failed:', error);
+            statusEl.innerText = 'Camera Error - Check Permissions';
+            statusEl.className = 'error';
+            alert(`Camera Error: ${error.message}\n\nPlease:\n1. Allow camera permissions\n2. Close other apps using camera\n3. Try the Reset button`);
         }
-        alert("Camera Critical Failure: Please reset permissions.");
     }
 
     function resetCamera() {
-        console.log("Resetting Camera...");
+        console.log('🔄 Resetting camera...');
         const preview = document.getElementById('preview');
+        const playback = document.getElementById('playback');
+        
         preview.style.display = 'block';
-        document.getElementById('playback').style.display = 'none';
-        document.getElementById('playback').src = "";
+        playback.style.display = 'none';
+        playback.src = '';
+        
+        document.getElementById('btn-record').style.display = 'flex';
+        document.getElementById('btn-stop').style.display = 'none';
+        document.getElementById('btn-upload').style.display = 'none';
+        document.getElementById('status').innerText = "Camera Restarting...";
+        
         startCamera();
-        document.getElementById('status').innerText = "Camera Restarted.";
     }
-    
-    startCamera();
-    autoSelectInspection(); 
 
+    // ============================================
+    // TIMER
+    // ============================================
     function startTimer() {
         seconds = 0;
-        document.getElementById('timer-display').style.display = 'block';
-        document.getElementById('timer-display').innerText = "00:00";
+        const timerEl = document.getElementById('timer-display');
+        timerEl.style.display = 'block';
+        timerEl.innerText = "00:00";
+        
         timerInterval = setInterval(() => {
             seconds++;
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
-            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
+            timerEl.innerText = `${mins}:${secs}`;
         }, 1000);
     }
 
@@ -542,60 +639,125 @@
         document.getElementById('timer-display').style.display = 'none';
     }
 
+    // ============================================
+    // RECORDING WITH CODEC FALLBACK
+    // ============================================
     function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-            requestWakeLock();
-            const stream = document.getElementById('preview').srcObject;
-            
-            // --- H.265 + BANDWIDTH LIMIT ---
-            const bitrate = 3500000; // 3.5 Mbps
-            
-            let options = { mimeType: 'video/mp4; codecs="hvc1"', videoBitsPerSecond: bitrate };
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                 options = { mimeType: 'video/mp4; codecs="avc1"', videoBitsPerSecond: bitrate };
-                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                     options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: bitrate };
-                 }
+            if (!currentStream) {
+                alert('Camera not ready. Please wait or reset camera.');
+                return;
             }
 
-            mediaRecorder = new MediaRecorder(stream, options);
-            chunks = [];
+            requestWakeLock();
 
-            mediaRecorder.ondataavailable = e => chunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                stopTimer();
-                videoBlob = new Blob(chunks, { type: options.mimeType });
-                const videoURL = URL.createObjectURL(videoBlob);
-                
-                document.getElementById('preview').style.display = 'none';
-                document.getElementById('playback').style.display = 'block';
-                document.getElementById('playback').src = videoURL;
-                
-                document.getElementById('btn-record').style.display = 'none';
-                document.getElementById('btn-stop').style.display = 'none';
-                document.getElementById('btn-upload').style.display = 'block';
-                document.getElementById('status').innerText = "Video Recorded. Ready to Submit.";
+            // Codec priority: H.265 (HEVC) > H.264 (AVC) > VP9 > VP8
+            const codecOptions = [
+                { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
+                { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
+                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High' },
+                { mimeType: 'video/mp4; codecs="avc1"', name: 'H.264' },
+                { mimeType: 'video/webm; codecs="vp8,opus"', name: 'VP8' },
+                { mimeType: 'video/webm', name: 'WebM' }
+            ];
+
+            let selectedOption = null;
+            for (const option of codecOptions) {
+                if (MediaRecorder.isTypeSupported(option.mimeType)) {
+                    selectedOption = option;
+                    console.log(`✅ Using codec: ${option.name}`);
+                    break;
+                }
+            }
+
+            if (!selectedOption) {
+                alert('No supported video codec found!');
+                return;
+            }
+
+            const options = {
+                mimeType: selectedOption.mimeType,
+                videoBitsPerSecond: CONFIG.VIDEO_BITRATE
             };
 
-            mediaRecorder.start();
-            startTimer();
-            document.getElementById('btn-record').classList.add('recording');
-            document.getElementById('btn-stop').style.display = 'flex';
-            document.getElementById('status').innerText = "Recording... Walk around vehicle.";
+            try {
+                mediaRecorder = new MediaRecorder(currentStream, options);
+                chunks = [];
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data && e.data.size > 0) {
+                        chunks.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    stopTimer();
+                    
+                    if (chunks.length === 0) {
+                        alert('Recording failed: No data captured');
+                        return;
+                    }
+
+                    videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
+                    const videoURL = URL.createObjectURL(videoBlob);
+                    
+                    console.log(`📹 Recording complete: ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB`);
+                    
+                    const preview = document.getElementById('preview');
+                    const playback = document.getElementById('playback');
+                    
+                    preview.style.display = 'none';
+                    playback.style.display = 'block';
+                    playback.src = videoURL;
+                    
+                    document.getElementById('btn-record').style.display = 'none';
+                    document.getElementById('btn-stop').style.display = 'none';
+                    document.getElementById('btn-upload').style.display = 'block';
+                    document.getElementById('status').innerText = `Video Ready (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB)`;
+                };
+
+                mediaRecorder.onerror = (event) => {
+                    console.error('❌ MediaRecorder error:', event.error);
+                    alert('Recording error: ' + event.error);
+                    stopTimer();
+                };
+
+                // Request data every 1 second for more reliable recording
+                mediaRecorder.start(1000);
+                
+                startTimer();
+                document.getElementById('btn-record').classList.add('recording');
+                document.getElementById('btn-stop').style.display = 'flex';
+                document.getElementById('status').innerText = "Recording... Walk around vehicle";
+                
+            } catch (error) {
+                console.error('❌ Failed to start recording:', error);
+                alert('Failed to start recording: ' + error.message);
+            }
         }
     }
 
     function stopRecording() {
-        mediaRecorder.stop();
-        document.getElementById('btn-record').classList.remove('recording');
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            document.getElementById('btn-record').classList.remove('recording');
+        }
     }
 
-    function uploadVideo() {
-        const driver = document.getElementById('driverName').value;
-        const vin = document.getElementById('vinInput').value;
+    // ============================================
+    // OPTIMIZED UPLOAD WITH RETRY
+    // ============================================
+    async function uploadVideo() {
+        const driver = document.getElementById('driverName').value.trim();
+        const vin = document.getElementById('vinInput').value.trim();
         
         if (!driver || !vin || !inspectionType || !videoBlob) {
             alert("Please complete all fields and record a video.");
+            return;
+        }
+
+        if (videoBlob.size > 150 * 1024 * 1024) { // 150MB limit
+            alert(`Video too large (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 150MB. Please record a shorter video.`);
             return;
         }
 
@@ -606,9 +768,9 @@
         const progressBar = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
 
-        btn.style.display = 'none'; 
+        btn.style.display = 'none';
         progressBar.style.display = 'block';
-        status.innerText = "Initializing Upload...";
+        status.innerText = "Preparing upload...";
 
         const formData = new FormData();
         formData.append('video', videoBlob, 'inspection.mp4');
@@ -616,45 +778,119 @@
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/upload-to-google-drive', true);
+        let attempts = 0;
+        const maxAttempts = CONFIG.MAX_RETRY_ATTEMPTS;
 
-        xhr.upload.onprogress = function(e) {
-            if (e.lengthComputable) {
-                const percentComplete = (e.loaded / e.total) * 100;
-                progressFill.style.width = percentComplete + '%';
-                status.innerText = `Uploading: ${Math.round(percentComplete)}%`;
+        async function attemptUpload() {
+            attempts++;
+            console.log(`📤 Upload attempt ${attempts}/${maxAttempts}`);
+            
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/upload-to-google-drive', true);
+                
+                // Timeout after 5 minutes
+                xhr.timeout = 300000;
+
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        progressFill.style.width = percentComplete + '%';
+                        const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
+                        const mbTotal = (e.total / 1024 / 1024).toFixed(1);
+                        status.innerText = `Uploading: ${Math.round(percentComplete)}% (${mbLoaded}/${mbTotal}MB)`;
+                    }
+                };
+
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                resolve(response);
+                            } else {
+                                reject(new Error(response.error || 'Upload failed'));
+                            }
+                        } catch (e) {
+                            reject(new Error('Invalid server response'));
+                        }
+                    } else {
+                        reject(new Error(`Server error: ${xhr.status}`));
+                    }
+                };
+
+                xhr.onerror = function() {
+                    reject(new Error('Network error'));
+                };
+
+                xhr.ontimeout = function() {
+                    reject(new Error('Upload timeout'));
+                };
+
+                xhr.send(formData);
+            });
+        }
+
+        // Retry loop
+        while (attempts < maxAttempts) {
+            try {
+                await attemptUpload();
+                
+                // Success!
+                if (wakeLock) {
+                    wakeLock.release();
+                    wakeLock = null;
+                }
+                
+                status.innerText = "Upload Complete! ✅";
+                progressFill.style.backgroundColor = "#4ade80";
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+                
+                return;
+                
+            } catch (error) {
+                console.error(`❌ Upload attempt ${attempts} failed:`, error.message);
+                
+                if (attempts < maxAttempts) {
+                    status.innerText = `Upload failed. Retrying (${attempts}/${maxAttempts})...`;
+                    progressFill.style.width = '0%';
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+                } else {
+                    // All attempts failed
+                    if (wakeLock) {
+                        wakeLock.release();
+                        wakeLock = null;
+                    }
+                    
+                    alert(`Upload failed after ${maxAttempts} attempts:\n${error.message}\n\nPlease check your connection and try again.`);
+                    
+                    btn.style.display = 'block';
+                    progressBar.style.display = 'none';
+                    progressFill.style.width = '0%';
+                    status.innerText = "Upload failed. Ready to retry.";
+                }
             }
-        };
-
-        xhr.onload = function() {
-            if (wakeLock) wakeLock.release();
-            if (xhr.status === 200) {
-                status.innerText = "Upload Complete!";
-                progressFill.style.backgroundColor = "#2563EB"; 
-                alert("Inspection Uploaded Successfully!");
-                window.location.href = '/';
-            } else {
-                alert("Upload Error: " + xhr.responseText);
-                resetUploadUI();
-            }
-        };
-
-        xhr.onerror = function() {
-            if (wakeLock) wakeLock.release();
-            alert("Network Error during upload.");
-            resetUploadUI();
-        };
-
-        xhr.send(formData);
+        }
     }
 
-    function resetUploadUI() {
-        document.getElementById('btn-upload').style.display = 'block';
-        document.getElementById('progress-container').style.display = 'none';
-        document.getElementById('status').innerText = "Ready to retry.";
-        document.getElementById('progress-fill').style.width = '0%';
-    }
+    // ============================================
+    // INITIALIZE
+    // ============================================
+    startCamera();
+    autoSelectInspection();
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+        if (wakeLock) {
+            wakeLock.release();
+        }
+    });
 </script>
 
 </body>
