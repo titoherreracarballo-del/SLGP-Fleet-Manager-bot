@@ -1,4 +1,4 @@
-const CACHE_NAME = 'slgp-fleet-v2.0.0';
+const CACHE_NAME = 'slgp-fleet-v2.0.2'; // CHANGED VERSION NUMBER
 const urlsToCache = [
     '/',
     '/menu.html',
@@ -18,6 +18,7 @@ const urlsToCache = [
 
 // Install Event
 self.addEventListener('install', event => {
+    console.log('Service Worker: Installing v2.0.2');
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
@@ -25,32 +26,12 @@ self.addEventListener('install', event => {
                 return cache.addAll(urlsToCache);
             })
     );
-    self.skipWaiting();
-});
-
-// Fetch Event (Network First, Cache Fallback)
-self.addEventListener('fetch', event => {
-    event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                // Clone the response
-                const responseToCache = response.clone();
-                
-                caches.open(CACHE_NAME)
-                    .then(cache => {
-                        cache.put(event.request, responseToCache);
-                    });
-                
-                return response;
-            })
-            .catch(() => {
-                return caches.match(event.request);
-            })
-    );
+    self.skipWaiting(); // Force immediate activation
 });
 
 // Activate Event (Clean Old Caches)
 self.addEventListener('activate', event => {
+    console.log('Service Worker: Activating v2.0.2');
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
@@ -63,7 +44,35 @@ self.addEventListener('activate', event => {
             );
         })
     );
-    return self.clients.claim();
+    return self.clients.claim(); // Take control immediately
+});
+
+// Fetch Event (Network First, Cache Fallback)
+self.addEventListener('fetch', event => {
+    // Skip chrome-extension and other non-http requests
+    if (!event.request.url.startsWith('http')) {
+        return;
+    }
+    
+    event.respondWith(
+        fetch(event.request)
+            .then(response => {
+                // Don't cache if not successful
+                if (!response || response.status !== 200 || response.type === 'error') {
+                    return response;
+                }
+                
+                const responseToCache = response.clone();
+                caches.open(CACHE_NAME)
+                    .then(cache => {
+                        cache.put(event.request, responseToCache);
+                    });
+                return response;
+            })
+            .catch(() => {
+                return caches.match(event.request);
+            })
+    );
 });
 
 // Push Notification Handler
