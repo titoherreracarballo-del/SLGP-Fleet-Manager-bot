@@ -660,6 +660,50 @@ app.get('/version', (req, res) => {
 });
 
 // ============================================
+// HTML PAGE ROUTES (CRITICAL - Must be before static middleware)
+// ============================================
+app.get('/video', (req, res) => {
+    console.log('📍 GET /video');
+    res.sendFile(path.join(__dirname, 'video.html'));
+});
+
+app.get('/success', (req, res) => {
+    console.log('📍 GET /success');
+    res.sendFile(path.join(__dirname, 'success.html'));
+});
+
+app.get('/alerts', (req, res) => {
+    console.log('📍 GET /alerts');
+    res.sendFile(path.join(__dirname, 'alerts.html'));
+});
+
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+    console.log(`📍 GET /report?mode=${mode}`);
+    
+    let filePath;
+    
+    if (mode === 'issue') {
+        filePath = path.join(__dirname, 'report-issue.html');
+    } else if (mode === 'accident') {
+        filePath = path.join(__dirname, 'accident-report.html');
+    } else if (mode === 'insurance') {
+        filePath = path.join(__dirname, 'insurance.html');
+    } else {
+        console.error('❌ Unknown report mode:', mode);
+        return res.status(404).send('Unknown report type');
+    }
+    
+    if (fs.existsSync(filePath)) {
+        console.log('✅ Serving:', filePath);
+        res.sendFile(filePath);
+    } else {
+        console.error('❌ File not found:', filePath);
+        res.status(404).send(`File not found: ${mode}`);
+    }
+});
+
+// ============================================
 // STATIC FILES (serve all HTML, CSS, JS, images)
 // ============================================
 app.use(express.static(__dirname, {
@@ -772,6 +816,17 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ⚠️  NO AUTHENTICATION - Direct access enabled
 
 🌐 Ready at: http://localhost:${PORT}
+
+📍 Routes configured:
+   GET  /                → menu.html
+   GET  /video          → video.html
+   GET  /success        → success.html
+   GET  /alerts         → alerts.html
+   GET  /report?mode=   → accident/issue/insurance
+   POST /log-gate-check
+   POST /log-arrival-check
+   POST /submit-report
+   POST /upload-to-google-drive
     `);
 });
 
