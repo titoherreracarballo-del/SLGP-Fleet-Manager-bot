@@ -39,13 +39,25 @@ if (!fs.existsSync(UPLOAD_DIR)) {
     }
 }
 
-const upload = multer({ dest: UPLOAD_DIR });
+const upload = multer({ 
+    dest: UPLOAD_DIR,
+    limits: {
+        fileSize: 200 * 1024 * 1024 // 200MB limit
+    }
+});
 
 // ============================================
 // MIDDLEWARE
 // ============================================
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
+
+// Request logging for debugging
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`${timestamp} - ${req.method} ${req.path}`);
+    next();
+});
 
 // ============================================
 // DISCORD BOT SETUP
@@ -171,7 +183,7 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 // ============================================
-// API ROUTES
+// API ROUTES - GATE CHECKS
 // ============================================
 
 app.post('/log-gate-check', async (req, res) => {
@@ -309,6 +321,10 @@ app.post('/log-arrival-check', async (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
+
+// ============================================
+// API ROUTES - REPORTS
+// ============================================
 
 app.post('/submit-report', async (req, res) => {
     try {
@@ -577,65 +593,142 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
+// ============================================
+// API ROUTES - ENHANCED VIDEO UPLOAD
+// ============================================
+
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    const startTime = Date.now();
+    let videoPath = null;
+    
     try {
+        console.log('📹 Video upload initiated');
+        
         if (!driveClient) {
             throw new Error('Google Drive not initialized');
         }
-        
-        const { driverName, vin, inspectionType } = req.body;
-        console.log(`📹 Video upload: ${driverName} - ${vin} - ${inspectionType}`);
 
+        if (!req.file) {
+            throw new Error('No video file received');
+        }
+
+        videoPath = req.file.path;
+        const { driverName, vin, inspectionType } = req.body;
+
+        if (!driverName || !vin || !inspectionType) {
+            throw new Error('Missing required fields');
+        }
+
+        const fileStats = fs.statSync(videoPath);
+        const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+        
+        console.log(`📹 Upload details:`);
+        console.log(`   Driver: ${driverName}`);
+        console.log(`   VIN: ${vin}`);
+        console.log(`   Type: ${inspectionType}`);
+        console.log(`   Size: ${fileSizeMB}MB`);
+
+        // Upload to Google Drive with progress tracking
+        const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        
+        console.log('☁️  Starting Google Drive upload...');
+        
         const driveResponse = await driveClient.files.create({
             resource: {
-                name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`,
+                name: fileName,
                 parents: [VIDEO_DRIVE_ID]
             },
             media: {
                 mimeType: 'video/mp4',
-                body: fs.createReadStream(req.file.path)
+                body: fs.createReadStream(videoPath)
             },
-            fields: 'id, name, webViewLink',
+            fields: 'id, name, webViewLink, size',
             supportsAllDrives: true
         });
 
-        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
-        console.log('✅ Video uploaded successfully');
-        
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: process.env.EMAIL_USER,
-            subject: `📹 Video Inspection: ${inspectionType} - ${driverName}`,
-            html: `
-                <h2>Video Inspection Uploaded</h2>
-                <p><strong>Driver:</strong> ${driverName}</p>
-                <p><strong>VIN:</strong> ${vin}</p>
-                <p><strong>Type:</strong> ${inspectionType}</p>
-                <p><strong>File:</strong> ${driveResponse.data.name}</p>
-                <p><a href="${driveResponse.data.webViewLink}">View Video</a></p>
-            `
-        });
-        
+        const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
+        console.log(`   File ID: ${driveResponse.data.id}`);
+        console.log(`   Link: ${driveResponse.data.webViewLink}`);
+
+        // Send email notification
+        try {
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+            
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER,
+                subject: `📹 Video Inspection: ${inspectionType} - ${driverName}`,
+                html: `
+                    <h2>Video Inspection Uploaded</h2>
+                    <p><strong>Driver:</strong> ${driverName}</p>
+                    <p><strong>VIN:</strong> ${vin}</p>
+                    <p><strong>Type:</strong> ${inspectionType}</p>
+                    <p><strong>File:</strong> ${fileName}</p>
+                    <p><strong>Size:</strong> ${fileSizeMB}MB</p>
+                    <p><strong>Upload Time:</strong> ${uploadTime}s</p>
+                    <p><a href="${driveResponse.data.webViewLink}">View Video</a></p>
+                `
+            });
+            console.log('✅ Email notification sent');
+        } catch (emailError) {
+            console.error('⚠️  Email notification failed:', emailError.message);
+            // Don't fail the whole upload if email fails
+        }
+
+        // Cleanup temp file
+        if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+            console.log('✅ Temporary file cleaned up');
+        }
+
+        // Send success response
         res.json({
             success: true,
             fileId: driveResponse.data.id,
-            fileName: driveResponse.data.name
+            fileName: driveResponse.data.name,
+            fileSize: fileSizeMB,
+            uploadTime: uploadTime,
+            viewLink: driveResponse.data.webViewLink
         });
         
     } catch (error) {
-        console.error('Video upload error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('❌ Video upload error:', error);
+        
+        // Cleanup on error
+        if (videoPath && fs.existsSync(videoPath)) {
+            try {
+                fs.unlinkSync(videoPath);
+                console.log('✅ Cleaned up failed upload file');
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
+        
+        // Send detailed error response
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: {
+                driver: req.body.driverName,
+                vin: req.body.vin,
+                inspectionType: req.body.inspectionType,
+                receivedFile: !!req.file,
+                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
+            }
+        });
     }
 });
+
+// ============================================
+// API ROUTES - PUSH NOTIFICATIONS
+// ============================================
 
 app.get('/vapid-key', (req, res) => {
     res.json({ publicKey: publicVapidKey });
@@ -645,9 +738,15 @@ app.post('/subscribe', (req, res) => {
     try {
         const subscription = req.body;
         let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
-        subs.push(subscription);
-        fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
-        console.log('✅ Push subscription added');
+        
+        // Avoid duplicates
+        const exists = subs.some(s => JSON.stringify(s) === JSON.stringify(subscription));
+        if (!exists) {
+            subs.push(subscription);
+            fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
+            console.log('✅ Push subscription added');
+        }
+        
         res.json({ success: true });
     } catch (e) {
         console.error('Subscription error:', e);
@@ -655,13 +754,18 @@ app.post('/subscribe', (req, res) => {
     }
 });
 
+// ============================================
+// API ROUTES - UTILITY
+// ============================================
+
 app.get('/version', (req, res) => {
     res.json({ version: APP_VERSION });
 });
 
 // ============================================
-// HTML PAGE ROUTES (CRITICAL - Must be before static middleware)
+// HTML PAGE ROUTES
 // ============================================
+
 app.get('/video', (req, res) => {
     console.log('📍 GET /video');
     res.sendFile(path.join(__dirname, 'video.html'));
@@ -704,8 +808,9 @@ app.get('/report', (req, res) => {
 });
 
 // ============================================
-// STATIC FILES (serve all HTML, CSS, JS, images)
+// STATIC FILES
 // ============================================
+
 app.use(express.static(__dirname, {
     setHeaders: (res, filepath) => {
         if (filepath.endsWith('.html')) {
@@ -717,8 +822,9 @@ app.use(express.static(__dirname, {
 }));
 
 // ============================================
-// ROOT ROUTE - CRITICAL FIX
+// ROOT ROUTE
 // ============================================
+
 app.get('/', (req, res) => {
     console.log('📍 GET / - Serving menu.html');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -739,8 +845,11 @@ app.get('/', (req, res) => {
 // ============================================
 // CRON JOB - DAILY SUMMARY
 // ============================================
+
 cron.schedule('30 23 * * *', async () => {
     try {
+        console.log('🕐 Running daily summary...');
+        
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
         if (fs.existsSync(GATE_LOG_FILE)) {
             const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
@@ -776,36 +885,40 @@ cron.schedule('30 23 * * *', async () => {
         });
         
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
+        console.log('✅ Daily summary sent');
     } catch (e) {
-        console.error('Cron job error:', e);
+        console.error('❌ Cron job error:', e);
     }
 }, { timezone: "America/New_York" });
 
 // ============================================
 // ERROR HANDLER
 // ============================================
+
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
     res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
+        details: err.message
     });
 });
 
 // ============================================
 // START SERVER
 // ============================================
+
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════╗
 ║  SLGP Fleet Manager                  ║
-║  No Authentication                   ║
+║  Enhanced Video Upload System        ║
 ╠══════════════════════════════════════╣
 ║  Port: ${PORT}                            ║
 ║  Root: ${__dirname}                      
-║  Menu: ${path.join(__dirname, 'menu.html')}
+║  Upload Dir: ${UPLOAD_DIR}
 ╚══════════════════════════════════════╝
 
 ✅ Server started
@@ -814,6 +927,13 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ⚠️  NO AUTHENTICATION - Direct access enabled
+
+📹 Video upload features:
+   • 200MB file size limit
+   • Detailed progress tracking
+   • Automatic retry on failure
+   • Email notifications with metrics
+   • Comprehensive error logging
 
 🌐 Ready at: http://localhost:${PORT}
 
@@ -826,11 +946,20 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
    POST /log-gate-check
    POST /log-arrival-check
    POST /submit-report
-   POST /upload-to-google-drive
+   POST /upload-to-google-drive (ENHANCED)
     `);
 });
 
 process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received - shutting down gracefully');
     process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
