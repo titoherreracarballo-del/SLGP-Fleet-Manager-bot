@@ -20,30 +20,5 @@
       "type": "image/jpeg",
       "purpose": "any maskable"
     }
-  ],
-  "categories": ["business", "productivity"],
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Report Issue",
-      "short_name": "Issue",
-      "description": "Report a vehicle issue",
-      "url": "/report?mode=issue",
-      "icons": [{ "src": "/issue.jpg", "sizes": "192x192" }]
-    },
-    {
-      "name": "Accident Report",
-      "short_name": "Accident",
-      "description": "File an accident report",
-      "url": "/report?mode=accident",
-      "icons": [{ "src": "/accident.jpg", "sizes": "192x192" }]
-    },
-    {
-      "name": "Video Inspection",
-      "short_name": "Video",
-      "description": "Record inspection video",
-      "url": "/video",
-      "icons": [{ "src": "/fleet.jpg", "sizes": "192x192" }]
-    }
   ]
 }
