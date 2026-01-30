@@ -1,60 +1,71 @@
-/* SERVICE WORKER (sw.js)
-   Handles background Push Notifications even when the app is closed.
-*/
+const CACHE_NAME = 'slgp-v' + Date.now(); // New cache every deploy
 
-self.addEventListener('push', function(event) {
-    console.log('[Service Worker] Push Received.');
-
-    // Default data in case the server sends nothing
-    let data = { 
-        title: 'Fleet Alert', 
-        body: 'New notification received.' 
-    };
-
-    // Try to parse the data sent from the server
-    if (event.data) {
-        try {
-            data = event.data.json();
-        } catch (e) {
-            // If it's just text, use it as the body
-            data.body = event.data.text();
-        }
-    }
-
-    const options = {
-        body: data.body,
-        icon: '/icon.jpg',   // Added '/' to ensure it finds the image
-        badge: '/icon.jpg',  // Added '/' for Android status bar
-        vibrate: [200, 100, 200], // Vibration pattern: Vibrate-Pause-Vibrate
-        tag: 'fleet-alert',  // Groups notifications so they don't stack up
-        renotify: true       // Vibrate again even if an old alert is still visible
-    };
-
+self.addEventListener('install', event => {
+    console.log('SW: Installing and clearing ALL caches');
     event.waitUntil(
-        self.registration.showNotification(data.title, options)
+        caches.keys().then(keys => {
+            return Promise.all(keys.map(key => caches.delete(key)));
+        }).then(() => self.skipWaiting())
     );
 });
 
-self.addEventListener('notificationclick', function(event) {
-    console.log('[Service Worker] Notification click received.');
+self.addEventListener('activate', event => {
+    console.log('SW: Activated');
+    event.waitUntil(self.clients.claim());
+});
 
-    event.notification.close(); // Close the notification
+self.addEventListener('fetch', event => {
+    // NEVER cache HTML files
+    if (event.request.url.includes('.html') || event.request.url.endsWith('/')) {
+        event.respondWith(
+            fetch(event.request, { cache: 'no-store' })
+        );
+        return;
+    }
+    
+    // For other files, network first
+    event.respondWith(
+        fetch(event.request).catch(() => caches.match(event.request))
+    );
+});
 
-    // Open the app or focus the window if it's already open
+self.addEventListener('push', event => {
+    const data = event.data ? event.data.json() : { title: 'Alert', body: 'New notification' };
     event.waitUntil(
-        clients.matchAll({type: 'window'}).then(function(clientList) {
-            // 1. Look for an open window to focus
-            for (var i = 0; i < clientList.length; i++) {
-                var client = clientList[i];
-                // Check if your app is open (root URL '/')
-                if (client.url.includes('/') && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            // 2. If no window is open, open a new one
-            if (clients.openWindow) {
-                return clients.openWindow('/');
-            }
+        self.registration.showNotification(data.title, {
+            body: data.body,
+            icon: '/icon.jpg',
+            badge: '/icon.jpg',
+            vibrate: [200, 100, 200]
         })
     );
 });
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    event.waitUntil(clients.openWindow('/'));
+});
+```
+
+---
+
+## 🚀 **Deploy Steps:**
+
+1. Add the explicit `app.get('/')` route to index.js
+2. Replace `sw.js` with the cache-nuking version above
+3. Push to Railway
+4. **On your phone:**
+   - Go to `chrome://serviceworker-internals/` (Android Chrome)
+   - Find `slgpmeshserver.com`
+   - Click **"Unregister"**
+   - Clear browser cache completely
+   - **Restart your phone**
+   - Visit the site fresh
+
+---
+
+## 🧪 **Test First on Desktop:**
+
+Before touching your phone, open **Incognito Mode** on desktop and visit:
+```
+https://slgpmeshserver.com
