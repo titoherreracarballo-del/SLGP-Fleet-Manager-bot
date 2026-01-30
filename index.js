@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const session = require('express-session');
 const multer = require('multer');
 const { google } = require('googleapis');
 const path = require('path');
@@ -116,18 +115,6 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
-// Session Configuration (OPTIONAL - only used if PORTAL_PASSWORD is set)
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'slgp-fleet-secret-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000
-    }
-}));
-
 // Serve Static Files from root directory
 app.use(express.static(__dirname, {
     setHeaders: (res, filepath) => {
@@ -153,72 +140,7 @@ const uploadLimiter = rateLimit({
     message: 'Too many uploads from this IP, please try again later.'
 });
 
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    message: 'Too many login attempts, please try again later.'
-});
-
 app.use('/api/', generalLimiter);
-
-// ============================================
-// OPTIONAL AUTHENTICATION (only if password is set)
-// ============================================
-
-function isAuthenticated(req, res, next) {
-    // If no password is set, skip authentication entirely
-    if (!process.env.PORTAL_PASSWORD) {
-        return next();
-    }
-    
-    // Skip auth for static files and certain routes
-    if (req.path.startsWith('/login') || 
-        req.path.startsWith('/api/login') ||
-        req.path === '/manifest.json' ||
-        req.path === '/sw.js' ||
-        req.path.match(/\.(jpg|jpeg|png|gif|pdf|css|js)$/)) {
-        return next();
-    }
-    
-    if (req.session && req.session.authenticated) {
-        return next();
-    }
-    
-    res.redirect('/login.html');
-}
-
-// Only apply authentication if password is configured
-if (process.env.PORTAL_PASSWORD) {
-    app.use(isAuthenticated);
-    console.log('🔒 Authentication enabled');
-} else {
-    console.log('⚠️  Authentication disabled (no PORTAL_PASSWORD set)');
-}
-
-// ============================================
-// AUTHENTICATION ROUTES (optional)
-// ============================================
-
-app.post('/api/login', authLimiter, (req, res) => {
-    const { password } = req.body;
-    const correctPassword = process.env.PORTAL_PASSWORD;
-    
-    if (!correctPassword) {
-        return res.status(400).json({ success: false, error: 'Authentication not configured' });
-    }
-    
-    if (password === correctPassword) {
-        req.session.authenticated = true;
-        res.json({ success: true });
-    } else {
-        res.status(401).json({ success: false, error: 'Invalid password' });
-    }
-});
-
-app.post('/api/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ success: true });
-});
 
 // ============================================
 // HELPER FUNCTIONS
@@ -274,6 +196,10 @@ function initializeDrive() {
             throw new Error('GCP_SA_KEY environment variable is not set');
         }
         
+        console.log('GCP_SA_KEY exists:', !!process.env.GCP_SA_KEY);
+        console.log('GCP_SA_KEY length:', process.env.GCP_SA_KEY ? process.env.GCP_SA_KEY.length : 0);
+        console.log('GCP_SA_KEY first 50 chars:', process.env.GCP_SA_KEY ? process.env.GCP_SA_KEY.substring(0, 50) : 'UNDEFINED');
+        
         const credentials = JSON.parse(process.env.GCP_SA_KEY);
         const auth = new google.auth.GoogleAuth({
             credentials: credentials,
@@ -284,6 +210,7 @@ function initializeDrive() {
         console.log('✅ Google Drive initialized successfully');
     } catch (error) {
         console.error('❌ Failed to initialize Google Drive:', error.message);
+        console.error('Full error:', error);
     }
 }
 
@@ -943,7 +870,6 @@ app.listen(PORT, '0.0.0.0', () => {
     ${DISCORD_BOT_TOKEN ? '✅ Discord bot active' : '⚠️  Discord bot disabled'}
     ✅ Rate limiting active
     ✅ Security headers enabled
-    ${process.env.PORTAL_PASSWORD ? '🔒 Authentication enabled' : '⚠️  Authentication disabled'}
     
     🌐 Access at: http://localhost:${PORT}
     `);
