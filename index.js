@@ -19,7 +19,7 @@ const morgan = require('morgan');
 const app = express();
 
 // --- 1. CONFIGURATION ---
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -115,15 +115,6 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
-// Serve Static Files from root directory
-app.use(express.static(__dirname, {
-    setHeaders: (res, filepath) => {
-        if (filepath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-cache');
-        }
-    }
-}));
-
 // ============================================
 // RATE LIMITING
 // ============================================
@@ -190,15 +181,12 @@ let driveClient = null;
 
 function initializeDrive() {
     try {
-        console.log('🔍 Checking GCP_SA_KEY...');
+        console.log('🔍 Initializing Google Drive...');
         
         if (!process.env.GCP_SA_KEY) {
-            throw new Error('GCP_SA_KEY environment variable is not set');
+            console.error('❌ GCP_SA_KEY environment variable is not set');
+            return;
         }
-        
-        console.log('GCP_SA_KEY exists:', !!process.env.GCP_SA_KEY);
-        console.log('GCP_SA_KEY length:', process.env.GCP_SA_KEY ? process.env.GCP_SA_KEY.length : 0);
-        console.log('GCP_SA_KEY first 50 chars:', process.env.GCP_SA_KEY ? process.env.GCP_SA_KEY.substring(0, 50) : 'UNDEFINED');
         
         const credentials = JSON.parse(process.env.GCP_SA_KEY);
         const auth = new google.auth.GoogleAuth({
@@ -210,14 +198,13 @@ function initializeDrive() {
         console.log('✅ Google Drive initialized successfully');
     } catch (error) {
         console.error('❌ Failed to initialize Google Drive:', error.message);
-        console.error('Full error:', error);
     }
 }
 
 initializeDrive();
 
 // ============================================
-// ROUTE: GATE CHECK
+// ROUTES - API ENDPOINTS (Before static files)
 // ============================================
 
 app.post('/log-gate-check', async (req, res) => {
@@ -282,13 +269,9 @@ app.post('/log-gate-check', async (req, res) => {
         res.status(200).json({ success: true });
     } catch (e) { 
         console.error('Gate check error:', e);
-        res.status(500).json({ success: false }); 
+        res.status(500).json({ success: false, error: e.message }); 
     }
 });
-
-// ============================================
-// ROUTE: ARRIVAL CHECK
-// ============================================
 
 app.post('/log-arrival-check', async (req, res) => {
     const { name } = req.body;
@@ -352,25 +335,19 @@ app.post('/log-arrival-check', async (req, res) => {
         res.status(200).json({ success: true });
     } catch (e) { 
         console.error('Arrival check error:', e);
-        res.status(500).json({ success: false }); 
+        res.status(500).json({ success: false, error: e.message }); 
     }
 });
 
-// ============================================
-// ROUTE: ISSUE/ACCIDENT REPORT
-// ============================================
-
 app.post('/submit-report', async (req, res) => {
-    req.setTimeout(300000); // 5 Minutes
+    req.setTimeout(300000);
     
     const data = req.body;
     
-    // Server-Side Deduping
     if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) { 
         return res.json({ success: true }); 
     }
 
-    // Save Local Log
     let currentLogs = [];
     if (fs.existsSync(DAILY_LOG_FILE)) { 
         try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {} 
@@ -381,7 +358,6 @@ app.post('/submit-report', async (req, res) => {
     currentLogs.push(data);
     fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
 
-    // Discord Alert
     if (client.isReady()) {
         try {
             const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -394,7 +370,6 @@ app.post('/submit-report', async (req, res) => {
         }
     }
 
-    // --- GOOGLE DRIVE UPLOAD ---
     let folderId = null;
     try {
         if (driveClient) {
@@ -436,13 +411,11 @@ app.post('/submit-report', async (req, res) => {
         console.error("⚠️ Drive Upload Skipped:", driveError.message);
     }
 
-    // --- PDF GENERATION & EMAIL ---
     try {
         const doc = await PDFDocument.create();
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
-        // Use separate email for accidents if configured
         let emailUser = process.env.EMAIL_USER;
         let emailPass = process.env.EMAIL_PASS;
         
@@ -459,7 +432,6 @@ app.post('/submit-report', async (req, res) => {
         if (data.reportType === 'ACCIDENT_REPORT') {
             let page = doc.addPage([600, 800]);
             
-            // Header (Red for Accident)
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
             page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
             page.drawText('OFFICIAL INCIDENT DOCUMENTATION', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(1, 1, 1) });
@@ -482,7 +454,6 @@ app.post('/submit-report', async (req, res) => {
             page.drawLine({ start: { x: 30, y }, end: { x: 570, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
             y -= 25;
 
-            // Address & Weather
             page.drawText('LOCATION DETAILS', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
             y -= 20;
             const loc = data.locationData || {};
@@ -491,7 +462,6 @@ app.post('/submit-report', async (req, res) => {
             drawLabel('WEATHER', data.weather || 'Unknown');
 
             y -= 20;
-            // Statement
             page.drawText('DRIVER STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
             y -= 20;
             const stateLines = wrapText(data.statement || '', fontReg, 10, 540);
@@ -501,7 +471,6 @@ app.post('/submit-report', async (req, res) => {
             });
 
             y -= 30;
-            // Checklist & Affidavit
             page.drawText('AFFIDAVIT & ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
             y -= 20;
             
@@ -518,7 +487,6 @@ app.post('/submit-report', async (req, res) => {
                 y -= 11;
             });
 
-            // Signature
             y -= 20;
             page.drawText('SIGNED:', { x: 30, y, size: 10, font: fontBold });
             if (data.signature) {
@@ -531,7 +499,6 @@ app.post('/submit-report', async (req, res) => {
                 }
             }
 
-            // Photo Pages
             if (data.photos && data.photos.length > 0) {
                 for (let i = 0; i < data.photos.length; i++) {
                     const photoPage = doc.addPage([600, 800]);
@@ -555,10 +522,8 @@ app.post('/submit-report', async (req, res) => {
             const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
 
-            // Build Attachments List
             const attachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
 
-            // Email to Management
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
             const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
@@ -571,7 +536,6 @@ app.post('/submit-report', async (req, res) => {
                 attachments: attachments
             });
 
-            // Send Email to Driver with Panel of Physicians
             if (data.driverEmail && data.driverEmail.includes('@')) {
                 const driverAttachments = [];
                 
@@ -598,13 +562,11 @@ app.post('/submit-report', async (req, res) => {
             return res.json({ success: true });
             
         } else {
-            // ISSUE REPORT LOGIC
             let page = doc.addPage([600, 800]);
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
             page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
             page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
 
-            // Data Table
             let y = 650;
             const drawRow = (label, value) => {
                 page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
@@ -658,10 +620,6 @@ app.post('/submit-report', async (req, res) => {
     }
 });
 
-// ============================================
-// ROUTE: VIDEO UPLOAD TO GOOGLE DRIVE
-// ============================================
-
 app.post('/upload-to-google-drive', upload.single('video'), uploadLimiter, async (req, res) => {
     console.log("🎥 Video Upload Started...");
     try {
@@ -672,7 +630,6 @@ app.post('/upload-to-google-drive', upload.single('video'), uploadLimiter, async
         const { driverName, vin, inspectionType } = req.body;
         console.log(`Video Details: ${driverName} - ${vin} - ${inspectionType}`);
 
-        // Upload Video
         const driveResponse = await driveClient.files.create({
             resource: {
                 name: `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`,
@@ -686,12 +643,10 @@ app.post('/upload-to-google-drive', upload.single('video'), uploadLimiter, async
             supportsAllDrives: true
         });
 
-        // Cleanup local file
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         
         console.log("✅ Video Upload Successful");
         
-        // Send email notification
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
@@ -727,10 +682,6 @@ app.post('/upload-to-google-drive', upload.single('video'), uploadLimiter, async
     }
 });
 
-// ============================================
-// ROUTES - PUSH NOTIFICATIONS
-// ============================================
-
 app.get('/vapid-key', (req, res) => {
     res.json({ publicKey: publicVapidKey });
 });
@@ -744,44 +695,84 @@ app.post('/subscribe', (req, res) => {
     res.status(201).json({ success: true });
 });
 
-// ============================================
-// ROUTES - VERSION & NAVIGATION
-// ============================================
-
 app.get('/version', (req, res) => {
     res.json({ version: APP_VERSION });
 });
 
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video.html'));
+    const filePath = path.join(__dirname, 'video.html');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('video.html not found');
+    }
 });
 
 app.get('/success', (req, res) => {
-    res.sendFile(path.join(__dirname, 'success.html'));
+    const filePath = path.join(__dirname, 'success.html');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('success.html not found');
+    }
 });
 
 app.get('/alerts', (req, res) => {
-    res.sendFile(path.join(__dirname, 'alerts.html'));
+    const filePath = path.join(__dirname, 'alerts.html');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('alerts.html not found');
+    }
 });
 
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
+    let filePath;
+    
     if (mode === 'issue') {
-        res.sendFile(path.join(__dirname, 'report-issue.html'));
+        filePath = path.join(__dirname, 'report-issue.html');
     } else if (mode === 'accident') {
-        res.sendFile(path.join(__dirname, 'accident.html'));
+        filePath = path.join(__dirname, 'accident.html');
     } else if (mode === 'insurance') {
-        res.sendFile(path.join(__dirname, 'insurance.html'));
+        filePath = path.join(__dirname, 'insurance.html');
     } else {
-        res.status(404).send('Unknown report type.');
+        return res.status(404).send('Unknown report type.');
+    }
+    
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send(`${mode} report page not found`);
     }
 });
 
+// ============================================
+// SERVE STATIC FILES (After API routes)
+// ============================================
+
+app.use(express.static(__dirname, {
+    setHeaders: (res, filepath) => {
+        if (filepath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+        }
+    }
+}));
+
+// ============================================
+// ROOT ROUTE (Last)
+// ============================================
+
 app.get('/', (req, res) => {
-    if (fs.existsSync(path.join(__dirname, 'menu.html'))) {
-        res.sendFile(path.join(__dirname, 'menu.html'));
+    const menuPath = path.join(__dirname, 'menu.html');
+    const indexPath = path.join(__dirname, 'index.html');
+    
+    if (fs.existsSync(menuPath)) {
+        res.sendFile(menuPath);
+    } else if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
     } else {
-        res.sendFile(path.join(__dirname, 'index.html'));
+        res.status(404).send('No homepage found');
     }
 });
 
@@ -870,12 +861,12 @@ app.listen(PORT, '0.0.0.0', () => {
     ${DISCORD_BOT_TOKEN ? '✅ Discord bot active' : '⚠️  Discord bot disabled'}
     ✅ Rate limiting active
     ✅ Security headers enabled
+    ⚠️  Authentication disabled
     
     🌐 Access at: http://localhost:${PORT}
     `);
 });
 
-// Graceful Shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, shutting down gracefully...');
     process.exit(0);
