@@ -1,4 +1,4 @@
-const CACHE_NAME = 'slgp-fleet-v2.0.2'; // CHANGED VERSION NUMBER
+const CACHE_NAME = 'slgp-fleet-v3.0.0'; // NEW VERSION
 const urlsToCache = [
     '/',
     '/menu.html',
@@ -16,40 +16,48 @@ const urlsToCache = [
     '/insurance.jpg'
 ];
 
-// Install Event
+// Install Event - Force immediate activation
 self.addEventListener('install', event => {
-    console.log('Service Worker: Installing v2.0.2');
+    console.log('🔄 Service Worker v3.0.0: Installing & Clearing Old Cache');
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('Opened cache');
+        caches.keys().then(cacheNames => {
+            // Delete ALL old caches immediately
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    console.log('Deleting cache:', cacheName);
+                    return caches.delete(cacheName);
+                })
+            );
+        }).then(() => {
+            // Create fresh cache
+            return caches.open(CACHE_NAME).then(cache => {
+                console.log('Creating fresh cache');
                 return cache.addAll(urlsToCache);
-            })
+            });
+        })
     );
-    self.skipWaiting(); // Force immediate activation
+    self.skipWaiting(); // Activate immediately
 });
 
-// Activate Event (Clean Old Caches)
+// Activate Event
 self.addEventListener('activate', event => {
-    console.log('Service Worker: Activating v2.0.2');
+    console.log('✅ Service Worker v3.0.0: Activated');
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
                     if (cacheName !== CACHE_NAME) {
-                        console.log('Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
         })
     );
-    return self.clients.claim(); // Take control immediately
+    return self.clients.claim(); // Take control of all pages immediately
 });
 
-// Fetch Event (Network First, Cache Fallback)
+// Fetch Event - Network first
 self.addEventListener('fetch', event => {
-    // Skip chrome-extension and other non-http requests
     if (!event.request.url.startsWith('http')) {
         return;
     }
@@ -57,16 +65,15 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         fetch(event.request)
             .then(response => {
-                // Don't cache if not successful
-                if (!response || response.status !== 200 || response.type === 'error') {
+                if (!response || response.status !== 200) {
                     return response;
                 }
                 
                 const responseToCache = response.clone();
-                caches.open(CACHE_NAME)
-                    .then(cache => {
-                        cache.put(event.request, responseToCache);
-                    });
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, responseToCache);
+                });
+                
                 return response;
             })
             .catch(() => {
@@ -78,28 +85,17 @@ self.addEventListener('fetch', event => {
 // Push Notification Handler
 self.addEventListener('push', event => {
     const data = event.data.json();
-    
     const options = {
         body: data.body,
         icon: data.icon || '/icon.jpg',
         badge: data.badge || '/icon.jpg',
         vibrate: [200, 100, 200],
-        data: {
-            dateOfArrival: Date.now(),
-            primaryKey: 1
-        },
+        data: { dateOfArrival: Date.now(), primaryKey: 1 },
         actions: [
-            {
-                action: 'open',
-                title: 'Open Portal'
-            },
-            {
-                action: 'close',
-                title: 'Dismiss'
-            }
+            { action: 'open', title: 'Open Portal' },
+            { action: 'close', title: 'Dismiss' }
         ]
     };
-    
     event.waitUntil(
         self.registration.showNotification(data.title, options)
     );
@@ -108,10 +104,7 @@ self.addEventListener('push', event => {
 // Notification Click Handler
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-    
     if (event.action === 'open') {
-        event.waitUntil(
-            clients.openWindow('/')
-        );
+        event.waitUntil(clients.openWindow('/'));
     }
 });
