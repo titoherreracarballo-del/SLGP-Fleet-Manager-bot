@@ -639,10 +639,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         
         console.log('☁️  Starting Google Drive resumable upload...');
         
-        // ============================================
-        // RESUMABLE UPLOAD WITH METADATA
-        // ============================================
-        
         const fileMetadata = {
             name: fileName,
             parents: [VIDEO_DRIVE_ID],
@@ -681,10 +677,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log(`   File ID: ${fileId}`);
         console.log(`   Size uploaded: ${fileSizeMB}MB`);
         
-        // ============================================
-        // SET PERMISSIONS FOR IMMEDIATE VIEWING
-        // ============================================
-        
+        // Set permissions
         try {
             await driveClient.permissions.create({
                 fileId: fileId,
@@ -698,6 +691,159 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         } catch (permError) {
             console.warn('⚠️  Could not set permissions:', permError.message);
         }
+
+        // Generate all access links
+        const streamUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
+        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+
+        console.log('📥 Generated access links:');
+        console.log(`   Stream URL: ${streamUrl}`);
+
+        // Send email notification
+        try {
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+            
+            // FIXED: Changed videoInfo to videoMetadata
+            const videoMetadata = driveResponse.data.videoMediaMetadata || {};
+            const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
+            
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER,
+                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
+                            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
+                        </div>
+                        
+                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                                <tr style="background: #f3f4f6;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${driverName}</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${vin}</td>
+                                </tr>
+                                <tr style="background: #f3f4f6;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${inspectionType}</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td>
+                                </tr>
+                                <tr style="background: #f3f4f6;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${videoDuration}</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td>
+                                    <td style="padding: 12px; color: #1f2937;">${uploadTime}s</td>
+                                </tr>
+                                <tr style="background: #f3f4f6;">
+                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td>
+                                    <td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td>
+                                </tr>
+                            </table>
+                            
+                            <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
+                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS OPTIONS</h3>
+                                <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
+                                    <strong>✅ No waiting for Google processing!</strong><br>
+                                    Your video is ready to view right now using any of these methods:
+                                </p>
+                            </div>
+                            
+                            <div style="text-align: center; margin: 25px 0;">
+                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+                                    ⚡ STREAM NOW (Instant!)
+                                </a>
+                                
+                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+                                    ⬇️ DOWNLOAD FULL QUALITY
+                                </a>
+                                
+                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);">
+                                    📁 View in Google Drive
+                                </a>
+                            </div>
+                            
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
+                                    <strong>💡 PRO TIP:</strong> Click <strong>"STREAM NOW"</strong> to watch immediately without downloading. 
+                                    The Google Drive link may show "processing" for a while - that's normal!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `
+            });
+            console.log('✅ Email notification sent with instant access links');
+        } catch (emailError) {
+            console.error('⚠️  Email notification failed:', emailError.message);
+        }
+
+        // Cleanup
+        if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+            console.log('✅ Temporary file cleaned up');
+        }
+
+        res.json({
+            success: true,
+            fileId: fileId,
+            fileName: fileName,
+            fileSize: fileSizeMB,
+            uploadTime: uploadTime,
+            viewLink: viewLink,
+            downloadLink: directDownloadLink,
+            streamLink: streamUrl,
+            embedLink: embedLink,
+            thumbnailLink: thumbnailLink,
+            metadata: videoMetadata,  // FIXED: Changed from videoInfo
+            createdTime: driveResponse.data.createdTime
+        });
+        
+    } catch (error) {
+        console.error('❌ Video upload error:', error);
+        
+        if (videoPath && fs.existsSync(videoPath)) {
+            try {
+                fs.unlinkSync(videoPath);
+                console.log('✅ Cleaned up failed upload file');
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: {
+                driver: req.body.driverName,
+                vin: req.body.vin,
+                inspectionType: req.body.inspectionType,
+                receivedFile: !!req.file,
+                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
+            }
+        });
+    }
+});
 
         // ============================================
         // GENERATE ALL ACCESS LINKS
