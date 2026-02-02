@@ -376,7 +376,7 @@ app.post('/submit-report', async (req, res) => {
 });
 
 // ============================================
-// VIDEO UPLOAD WITH DIRECT STREAMING (FIXED)
+// VIDEO UPLOAD WITH DIRECT STREAMING (FIXED - videoMetadata scope)
 // ============================================
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
@@ -419,9 +419,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
+        
+        // FIXED: Define videoMetadata at function scope, not inside try block
+        const videoMetadata = driveResponse.data.videoMediaMetadata || {};
+        const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
+        
         console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
         console.log(`   Size uploaded: ${fileSizeMB}MB`);
+        
         try {
             await driveClient.permissions.create({
                 fileId: fileId,
@@ -432,20 +438,22 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         } catch (permError) {
             console.warn('⚠️  Could not set permissions:', permError.message);
         }
+        
         const streamUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
         const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
         const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
         const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
         const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+        
         console.log('📥 Generated access links:');
         console.log(`   Stream URL: ${streamUrl}`);
+        
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
                 auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
             });
-            const videoMetadata = driveResponse.data.videoMediaMetadata || {};
-            const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
+            
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: process.env.EMAIL_USER,
@@ -499,10 +507,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
         }
+        
         if (fs.existsSync(videoPath)) {
             fs.unlinkSync(videoPath);
             console.log('✅ Temporary file cleaned up');
         }
+        
         res.json({
             success: true,
             fileId: fileId,
@@ -703,12 +713,10 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  Enhanced Video Upload - COMPLETE        ║
+║  Video Upload FULLY FIXED                ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
-║  Built: ${BUILD_INFO.buildDate}
-║  Node: ${BUILD_INFO.nodeVersion}
 ╚══════════════════════════════════════════╝
 
 ✅ Server started
@@ -717,42 +725,14 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
-⚠️  NO AUTHENTICATION - Direct access enabled
 
-📹 ENHANCED Video Upload Features:
-   • ⚡ Direct streaming URL (NO processing wait!)
-   • H.265 (HEVC) codec optimization
-   • Resumable uploads for reliability
-   • Immediate full-quality download links
-   • Multiple access methods in email
-   • Detailed metadata tracking
+📹 Video Upload FIXED - videoMetadata scope corrected
+   • ⚡ Direct streaming URL
+   • H.265 codec optimization
+   • Immediate access links in email
    • 200MB file size limit
-   • Automatic retry on failure
-   • Rich HTML email notifications
-
-🔗 Access Methods:
-   • Stream URL: Instant playback (no download)
-   • Download: Full 1080p file
-   • Drive View: Traditional Drive interface
-   • Embed: For future integration
-
-🔄 Auto-refresh features:
-   • Version checking every 30s
-   • Automatic client refresh on deploy
 
 🌐 Ready at: http://localhost:${PORT}
-
-📍 Routes configured:
-   GET  /                → menu.html
-   GET  /video          → video.html (H.265 optimized)
-   GET  /success        → success.html
-   GET  /alerts         → alerts.html
-   GET  /report?mode=   → accident/issue/insurance
-   GET  /version        → Build info
-   POST /upload-to-google-drive (ENHANCED - Direct Stream)
-   POST /log-gate-check
-   POST /log-arrival-check
-   POST /submit-report
     `);
 });
 
