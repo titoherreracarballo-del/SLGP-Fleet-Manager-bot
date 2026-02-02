@@ -1,1107 +1,1099 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection</title>
-    <style>
-        /* [Keep all your existing CSS - same as before] */
-        :root {
-            --bg-body: #0F1115;        
-            --bg-card: #161B28;        
-            --bg-input: #0b0d12;       
-            --primary-blue: #2563EB;    
-            --text-label: #3B82F6;      
-            --text-white: #ffffff;
-            --border-color: #2d3748;
-            --radius: 12px;
-        }
+require('dotenv').config();
+const express = require('express');
+const multer = require('multer');
+const { google } = require('googleapis');
+const path = require('path');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const stream = require('stream');
+const cron = require('node-cron');
+const webpush = require('web-push');
+const { Client, GatewayIntentBits, Events } = require('discord.js');
 
-        body {
-            background-color: var(--bg-body);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: white;
-            display: flex;
-            justify-content: center;
-            padding: 20px;
-            margin: 0;
-            min-height: 100vh;
-        }
+const app = express();
 
-        .container {
-            width: 100%;
-            max-width: 420px;
-            background-color: var(--bg-card);
-            border-radius: 24px;
-            padding: 24px;
-            border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        }
+// ============================================
+// CONFIGURATION
+// ============================================
+const APP_VERSION = Date.now();
+const BUILD_INFO = {
+    version: APP_VERSION,
+    buildDate: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'production',
+    nodeVersion: process.version
+};
 
-        #progress-container {
-            width: 100%;
-            background-color: #374151;
-            border-radius: 10px;
-            margin-top: 15px;
-            height: 10px;
-            display: none;
-            overflow: hidden;
-        }
+const VOLUME_PATH = '/app/meshcentral-data';
+const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
+const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
+const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
+const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
+const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
+const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf');
 
-        #progress-fill {
-            height: 100%;
-            width: 0%;
-            background-color: #4ade80;
-            transition: width 0.2s;
-        }
+const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
+const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
+const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .back-link { color: #94a3b8; text-decoration: none; font-size: 14px; }
-        
-        .reset-btn {
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            color: #ef4444;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 5px 10px;
-            border-radius: 8px;
-            cursor: pointer;
-            text-transform: uppercase;
-        }
-        .reset-btn:active { background-color: #1f2937; }
+// Create upload directory
+if (!fs.existsSync(UPLOAD_DIR)) {
+    try {
+        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+        console.log('✅ Upload directory created');
+    } catch (e) {
+        console.error('❌ Failed to create upload directory:', e.message);
+    }
+}
 
-        .timestamp { color: #4ade80; text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
-        h1 { color: var(--text-label); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+const upload = multer({ 
+    dest: UPLOAD_DIR,
+    limits: {
+        fileSize: 200 * 1024 * 1024 // 200MB limit
+    }
+});
 
-        .form-group { margin-bottom: 20px; }
-        .row-split { display: flex; gap: 10px; }
-        .vin-col { flex: 0.3; min-width: 70px; } 
-        .type-col { flex: 0.7; }
+// ============================================
+// MIDDLEWARE
+// ============================================
+app.use(express.json({ limit: '150mb' }));
+app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
-        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; white-space: nowrap; }
-        input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white; padding: 16px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
-        #vehicleType { font-size: 11px; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
-        input:focus { border-color: var(--text-label); }
-        input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
-        input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
-        input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
-        input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
+// Request logging for debugging
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`${timestamp} - ${req.method} ${req.path}`);
+    next();
+});
 
-        .status-box {
-            width: 100%;
-            padding: 16px;
-            border-radius: var(--radius);
-            font-size: 14px;
-            font-weight: 800;
-            text-align: center;
-            text-transform: uppercase;
-            border: 1px solid var(--border-color);
-            background-color: var(--bg-input);
-            color: #6b7280;
-            transition: all 0.3s ease;
-            box-sizing: border-box;
-        }
-        .status-box.active { background-color: rgba(74, 222, 128, 0.1); border-color: #4ade80; color: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2); }
-        .status-box.inactive { background-color: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
+// ============================================
+// DISCORD BOT SETUP
+// ============================================
+const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
-        .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        .type-btn { background-color: transparent; border: 1px solid #374151; color: #64748b; padding: 14px; border-radius: var(--radius); font-size: 12px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
-        .type-btn.selected { background-color: var(--primary-blue); border-color: var(--primary-blue); color: white; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
 
-        .video-box { position: relative; width: 100%; height: 400px; background: black; border-radius: var(--radius); overflow: hidden; border: 1px solid #374151; margin-bottom: 20px; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* Black screen fix loading indicator */
-        #loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: black;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 15;
-        }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #374151;
-            border-top: 4px solid #3B82F6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        #timer-display { position: absolute; top: 20px; right: 20px; background-color: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 8px; color: #ef4444; font-weight: 900; font-size: 18px; border: 1px solid rgba(239, 68, 68, 0.5); display: none; z-index: 20; }
-        
-        #camera-status {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background-color: rgba(0,0,0,0.7);
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-size: 10px;
-            font-weight: 700;
-            z-index: 20;
-            display: none;
-        }
-        #camera-status.ready { color: #4ade80; border: 1px solid #4ade80; }
-        #camera-status.error { color: #ef4444; border: 1px solid #ef4444; }
-        #camera-status.flash-on { color: #FCD34D; border: 1px solid #FCD34D; }
-        
-        /* Flash toggle button */
-        #flash-toggle {
-            position: absolute;
-            bottom: 100px;
-            right: 20px;
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            background-color: rgba(0,0,0,0.6);
-            border: 2px solid #6b7280;
-            color: #6b7280;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 20;
-            display: none;
-        }
-        #flash-toggle.active {
-            background-color: rgba(252, 211, 77, 0.2);
-            border-color: #FCD34D;
-            color: #FCD34D;
-        }
-        
-        .controls { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 20px; z-index: 10; }
-        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 10px; text-transform: uppercase; }
-        #btn-record { background-color: #ef4444; color: white; border: 3px solid rgba(255,255,255,0.3); }
-        #btn-record.recording { animation: pulse 1s infinite; background-color: darkred; }
-        #btn-stop { background-color: #374151; color: white; display: none; }
-        #btn-upload { background-color: #4ade80; color: #064e3b; display: none; width: 100%; border-radius: 12px; padding: 18px; font-size: 16px; font-weight: 900; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .status-msg { text-align: center; color: #94a3b8; margin-top: 10px; font-size: 12px; height: 20px; }
-
-        .modal {
-            display: none; 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
-            align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
-        }
-        .modal-content {
-            background-color: #1f2937; border: 2px solid;
-            padding: 25px; border-radius: 16px; 
-            width: 90%; max-width: 400px;
-            text-align: center;
-            box-shadow: 0 0 50px rgba(0,0,0,0.6);
-            box-sizing: border-box;
-        }
-        .warning-icon { font-size: 40px; margin-bottom: 10px; display: block; }
-        .modal-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; }
-        .modal-text { color: #e5e7eb; font-size: 13px; font-weight: 700; line-height: 1.6; margin-bottom: 20px; text-align: left; }
-        .modal-btn { color: white; padding: 14px; width: 100%; border: none; border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; cursor: pointer; }
-
-        .modal-red { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); }
-        .modal-red .modal-title { color: #ef4444; }
-        .modal-red .modal-btn { background-color: #ef4444; }
-
-        .modal-blue { border-color: #2563EB; box-shadow: 0 0 50px rgba(37, 99, 235, 0.3); }
-        .modal-blue .modal-title { color: #2563EB; }
-        .modal-blue .modal-btn { background-color: #2563EB; }
-    </style>
-</head>
-<body>
-
-<!-- Modals (same as before) -->
-<div id="towWarningModal" class="modal">
-    <div class="modal-content modal-red">
-        <span class="warning-icon">⚠️</span>
-        <div class="modal-title">No Tow Assistance</div>
-        <div class="modal-text">
-            Warning: This vehicle is not equipped with tow assistance.<br><br>
-            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
-            📞📲📞 For deliveries where the customer's location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
-            💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
-        </div>
-        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
-    </div>
-</div>
-
-<div id="towActiveModal" class="modal">
-    <div class="modal-content modal-blue">
-        <span class="warning-icon">🚨</span>
-        <div class="modal-title">Tow Assistance Active</div>
-        <div class="modal-text">
-            Alert: This vehicle is equipped with tow assistance.<br><br>
-            🛠️ Please note that tow assistance is strictly limited to mechanical failures only.<br><br>
-            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
-            ⚖️ As an equal opportunity employer, all expectations and company policies apply equally to all employees and must be followed without exception.<br><br>
-            📞📲📞 For deliveries where the customer's location involves any of the conditions noted above, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
-            💰 Failure to comply with this directive, including disregarding this notice, will result in the driver being financially responsible for any towing or recovery costs incurred.
-        </div>
-        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
-    </div>
-</div>
-
-<div class="container">
-    <div class="header-row">
-        <a href="/" class="back-link">← Back to Menu</a>
-        <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
-    </div>
+if (DISCORD_BOT_TOKEN) {
+    client.login(DISCORD_BOT_TOKEN)
+        .then(() => console.log('✅ Discord bot connected'))
+        .catch(err => console.log('⚠️  Discord bot disabled:', err.message));
     
-    <div class="timestamp" id="ts">Loading...</div>
-    <h1>Video Inspection</h1>
-
-    <div class="form-group">
-        <label>Driver Full Name</label>
-        <input type="text" id="driverName" placeholder="Enter Full Name">
-    </div>
-
-    <div class="form-group row-split">
-        <div class="vin-col">
-            <label>Last 4 VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
-        </div>
-        <div class="type-col">
-            <label>Vehicle Type / Fuel</label>
-            <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <label>Tow Assistance Status</label>
-        <div id="towStatusBox" class="status-box">Pending VIN...</div>
-    </div>
-
-    <label>Inspection Type</label>
-    <div class="type-grid">
-        <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
-        <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
-    </div>
-
-    <div class="video-box">
-        <div id="loading-overlay">
-            <div class="spinner"></div>
-            <p style="color: #94a3b8; margin-top: 15px; font-size: 12px;">Starting camera...</p>
-        </div>
-        <div id="camera-status">Initializing...</div>
-        <div id="timer-display">00:00</div>
-        <button id="flash-toggle" onclick="toggleFlash()">💡</button>
-        <video id="preview" autoplay playsinline muted></video>
-        <video id="playback" controls style="display:none;"></video>
-        
-        <div class="controls">
-            <button id="btn-record" class="btn-circle" onclick="toggleRecording()">REC</button>
-            <button id="btn-stop" class="btn-circle" onclick="stopRecording()">STOP</button>
-        </div>
-    </div>
-
-    <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
-    
-    <div id="progress-container">
-        <div id="progress-fill"></div>
-    </div>
-    
-    <div class="status-msg" id="status">Ready for Inspection</div>
-</div>
-
-<script>
-    document.getElementById('ts').innerText = new Date().toLocaleString();
-
-    // ============================================
-    // CONFIGURATION
-    // ============================================
-    const CONFIG = {
-        VIDEO_BITRATE: 2500000,
-        VIDEO_WIDTH: 1920,
-        VIDEO_HEIGHT: 1080,
-        MAX_RETRY_ATTEMPTS: 3,
-        CAMERA_TIMEOUT: 15000, // 15 seconds max to start camera
-        BRIGHTNESS_THRESHOLD: 40, // 0-255, below this = dark
-        BRIGHTNESS_CHECK_INTERVAL: 2000 // Check every 2 seconds
-    };
-
-    let localVersion = null;
-    let wakeLock = null;
-    let mediaRecorder;
-    let chunks = [];
-    let videoBlob;
-    let timerInterval;
-    let seconds = 0;
-    let inspectionType = '';
-    let currentStream = null;
-    let currentVideoTrack = null;
-    let flashEnabled = false;
-    let brightnessCheckInterval = null;
-
-    // ============================================
-    // VIN DATABASE (same as before)
-    // ============================================
-    const vinDatabase = {
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel", tow: true },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "2866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "2860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "2863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "2859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "2857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: true },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: true },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true }
-    };
-
-    // ============================================
-    // AUTO-UPDATE
-    // ============================================
-    async function checkForUpdates() {
-        try {
-            const res = await fetch('/version');
-            if (res.ok) {
-                const data = await res.json();
-                if (!localVersion) localVersion = data.version; 
-                else if (localVersion !== data.version) window.location.reload(true);
-            }
-        } catch (err) {}
-    }
-    setInterval(checkForUpdates, 30000);
-    checkForUpdates();
-
-    // ============================================
-    // WAKE LOCK
-    // ============================================
-    async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator && !wakeLock) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('✅ Wake Lock Active');
-                wakeLock.addEventListener('release', () => {
-                    wakeLock = null;
-                });
-            }
-        } catch (err) {} 
-    }
-
-    // ============================================
-    // BRIGHTNESS DETECTION & AUTO-FLASH
-    // ============================================
-    function detectBrightness() {
-        const video = document.getElementById('preview');
-        if (!video.srcObject || video.readyState < 2) return;
-
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 160; // Small sample size for performance
-            canvas.height = 120;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            let totalBrightness = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                // Calculate perceived brightness
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                const brightness = (0.299 * r + 0.587 * g + 0.114 * b);
-                totalBrightness += brightness;
-            }
-            
-            const avgBrightness = totalBrightness / (canvas.width * canvas.height);
-            console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
-            
-            // Auto-enable flash if too dark
-            if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 Auto-enabling flash (dark scene detected)');
-                setFlash(true);
-                updateFlashUI(true);
-            }
-            
-        } catch (e) {
-            console.log('Brightness detection failed:', e.message);
-        }
-    }
-
-    function startBrightnessMonitoring() {
-        stopBrightnessMonitoring();
-        // Check brightness after camera settles
-        setTimeout(() => {
-            detectBrightness();
-            brightnessCheckInterval = setInterval(detectBrightness, CONFIG.BRIGHTNESS_CHECK_INTERVAL);
-        }, 3000);
-    }
-
-    function stopBrightnessMonitoring() {
-        if (brightnessCheckInterval) {
-            clearInterval(brightnessCheckInterval);
-            brightnessCheckInterval = null;
-        }
-    }
-
-    // ============================================
-    // FLASH CONTROL
-    // ============================================
-    async function setFlash(enable) {
-        if (!currentVideoTrack) return false;
-        
-        try {
-            const capabilities = currentVideoTrack.getCapabilities();
-            if (capabilities.torch) {
-                await currentVideoTrack.applyConstraints({
-                    advanced: [{ torch: enable }]
-                });
-                flashEnabled = enable;
-                console.log(`💡 Flash ${enable ? 'ON' : 'OFF'}`);
-                return true;
-            } else {
-                console.log('⚠️  Flash not supported on this device');
-                return false;
-            }
-        } catch (e) {
-            console.log('Flash control error:', e.message);
-            return false;
-        }
-    }
-
-    function toggleFlash() {
-        setFlash(!flashEnabled);
-        updateFlashUI(!flashEnabled);
-    }
-
-    function updateFlashUI(enabled) {
-        const flashBtn = document.getElementById('flash-toggle');
-        const statusEl = document.getElementById('camera-status');
-        
-        if (enabled) {
-            flashBtn.classList.add('active');
-            statusEl.innerText = '💡 Flash ON';
-            statusEl.className = 'flash-on';
-            statusEl.style.display = 'block';
-            setTimeout(() => {
-                if (statusEl.className === 'flash-on') {
-                    statusEl.style.display = 'none';
-                }
-            }, 2000);
-        } else {
-            flashBtn.classList.remove('active');
-        }
-    }
-
-    // ============================================
-    // BLACK SCREEN FIX - ENHANCED CAMERA INIT
-    // ============================================
-    async function startCamera() {
-        const preview = document.getElementById('preview');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const statusEl = document.getElementById('camera-status');
-        const flashBtn = document.getElementById('flash-toggle');
-        
-        loadingOverlay.style.display = 'flex';
-        statusEl.style.display = 'none';
-        flashBtn.style.display = 'none';
-
-        // Cleanup existing
-        stopBrightnessMonitoring();
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-            currentStream = null;
-            currentVideoTrack = null;
-        }
-        if (preview.srcObject) {
-            preview.srcObject.getTracks().forEach(track => track.stop());
-            preview.srcObject = null;
-        }
-
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Camera timeout')), CONFIG.CAMERA_TIMEOUT)
-        );
-
-        try {
-            // Check permission first
-            if (navigator.permissions) {
-                const permissionResult = await navigator.permissions.query({ name: 'camera' });
-                if (permissionResult.state === 'denied') {
-                    throw new Error('Camera permission denied. Please enable in settings.');
-                }
-            }
-
-            // Force permission request by trying basic getUserMedia first
-            await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                .then(stream => {
-                    stream.getTracks().forEach(track => track.stop());
-                });
-
-            // Get devices
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(d => d.kind === 'videoinput');
-            
-            console.log(`📹 Found ${videoDevices.length} camera(s)`);
-
-            if (videoDevices.length === 0) {
-                throw new Error('No cameras found on this device');
-            }
-
-            // Find rear camera
-            let rearCamera = videoDevices.find(d => 
-                d.label.toLowerCase().includes('back') || 
-                d.label.toLowerCase().includes('rear') || 
-                d.label.toLowerCase().includes('environment')
-            );
-
-            if (!rearCamera && videoDevices.length > 1) {
-                rearCamera = videoDevices[videoDevices.length - 1];
-            }
-
-            // Constraint strategies
-            const strategies = [];
-
-            if (rearCamera) {
-                strategies.push({
-                    name: 'Rear Camera (1080p)',
-                    constraints: {
-                        video: {
-                            deviceId: { exact: rearCamera.deviceId },
-                            width: { ideal: CONFIG.VIDEO_WIDTH },
-                            height: { ideal: CONFIG.VIDEO_HEIGHT },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
-                });
-            }
-
-            strategies.push(
-                {
-                    name: 'Environment (1080p)',
-                    constraints: {
-                        video: {
-                            facingMode: { exact: "environment" },
-                            width: { ideal: CONFIG.VIDEO_WIDTH },
-                            height: { ideal: CONFIG.VIDEO_HEIGHT },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Environment (720p)',
-                    constraints: {
-                        video: {
-                            facingMode: { ideal: "environment" },
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Any Camera (480p)',
-                    constraints: {
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Basic Fallback',
-                    constraints: { video: true, audio: true }
-                }
-            );
-
-            // Try each strategy
-            for (let i = 0; i < strategies.length; i++) {
-                const strategy = strategies[i];
-                console.log(`📹 Trying: ${strategy.name} (${i + 1}/${strategies.length})`);
-                
-                try {
-                    const stream = await Promise.race([
-                        navigator.mediaDevices.getUserMedia(strategy.constraints),
-                        timeoutPromise
-                    ]);
-                    
-                    const videoTrack = stream.getVideoTracks()[0];
-                    const settings = videoTrack.getSettings();
-                    
-                    console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
-
-                    // Skip if got front camera on early attempts
-                    if (i < strategies.length - 2 && settings.facingMode === 'user') {
-                        console.log('⚠️  Got front camera, trying next...');
-                        videoTrack.stop();
-                        continue;
-                    }
-
-                    currentStream = stream;
-                    currentVideoTrack = videoTrack;
-                    preview.srcObject = stream;
-
-                    // Wait for video to actually start playing
-                    await new Promise((resolve, reject) => {
-                        const playTimeout = setTimeout(() => reject(new Error('Video play timeout')), 5000);
-                        
-                        preview.onloadedmetadata = () => {
-                            preview.play()
-                                .then(() => {
-                                    clearTimeout(playTimeout);
-                                    resolve();
-                                })
-                                .catch(reject);
-                        };
-                    });
-
-                    // Apply advanced settings
-                    try {
-                        const capabilities = videoTrack.getCapabilities();
-                        const advConstraints = { advanced: [] };
-
-                        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
-                            advConstraints.advanced.push({ focusMode: 'continuous' });
-                        }
-                        if (capabilities.exposureMode && capabilities.exposureMode.includes('continuous')) {
-                            advConstraints.advanced.push({ exposureMode: 'continuous' });
-                        }
-                        if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('continuous')) {
-                            advConstraints.advanced.push({ whiteBalanceMode: 'continuous' });
-                        }
-
-                        if (advConstraints.advanced.length > 0) {
-                            await videoTrack.applyConstraints(advConstraints);
-                        }
-
-                        // Show flash button if supported
-                        if (capabilities.torch) {
-                            flashBtn.style.display = 'block';
-                        }
-                    } catch (e) {
-                        console.log('Advanced settings skipped:', e.message);
-                    }
-
-                    // Hide loading, show status
-                    loadingOverlay.style.display = 'none';
-                    statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
-                    statusEl.className = 'ready';
-                    statusEl.style.display = 'block';
-                    setTimeout(() => {
-                        if (statusEl.className === 'ready') statusEl.style.display = 'none';
-                    }, 3000);
-
-                    // Start brightness monitoring
-                    startBrightnessMonitoring();
-
-                    return; // Success!
-                    
-                } catch (err) {
-                    console.warn(`❌ ${strategy.name} failed:`, err.message);
-                    if (i === strategies.length - 1) throw err;
-                }
-            }
-            
-        } catch (error) {
-            console.error('❌ Camera initialization failed:', error);
-            loadingOverlay.style.display = 'none';
-            statusEl.innerText = 'Camera Failed';
-            statusEl.className = 'error';
-            statusEl.style.display = 'block';
-            
-            let errorMsg = 'Camera Error: ' + error.message;
-            if (error.message.includes('denied')) {
-                errorMsg += '\n\n✅ Fix:\n1. Open Settings\n2. Find this website\n3. Enable Camera permission\n4. Refresh page';
-            } else if (error.message.includes('timeout') || error.message.includes('not found')) {
-                errorMsg += '\n\n✅ Fix:\n1. Close other camera apps\n2. Try Reset Camera button\n3. Restart your phone if needed';
-            }
-            
-            alert(errorMsg);
-        }
-    }
-
-    function resetCamera() {
-        console.log('🔄 Resetting camera...');
-        const preview = document.getElementById('preview');
-        const playback = document.getElementById('playback');
-        
-        stopBrightnessMonitoring();
-        
-        preview.style.display = 'block';
-        playback.style.display = 'none';
-        playback.src = '';
-        
-        document.getElementById('btn-record').style.display = 'flex';
-        document.getElementById('btn-stop').style.display = 'none';
-        document.getElementById('btn-upload').style.display = 'none';
-        document.getElementById('status').innerText = "Restarting...";
-        
-        flashEnabled = false;
-        updateFlashUI(false);
-        
-        startCamera();
-    }
-
-    // ============================================
-    // VIN CHECKING
-    // ============================================
-    function checkVin() {
-        let vin = document.getElementById('vinInput').value.toUpperCase();
-        const typeBox = document.getElementById('vehicleType');
-        const towBox = document.getElementById('towStatusBox');
-        const warnModal = document.getElementById('towWarningModal');
-        const activeModal = document.getElementById('towActiveModal');
-
-        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        towBox.classList.remove('active', 'inactive');
-        towBox.innerText = "Pending VIN...";
-        
-        if (vin.length >= 4) {
-            let found = vinDatabase[vin] || vinDatabase[vin.slice(-4)];
-            
-            if (vin.startsWith("W")) { 
-                typeBox.value = "Mercedes (Diesel)"; 
-                typeBox.classList.add('diesel-mode');
-                towBox.innerText = "COVERAGE ACTIVE";
-                towBox.classList.add('active');
-                activeModal.style.display = 'flex';
-                return; 
-            }
-
-            if (found) {
-                typeBox.value = found.type; 
-                typeBox.classList.add(found.fuel + '-mode');
-
-                if (found.tow) {
-                    towBox.innerText = "COVERAGE ACTIVE";
-                    towBox.classList.add('active');
-                    activeModal.style.display = 'flex';
-                } else {
-                    towBox.innerText = "NO COVERAGE - CONTACT DISPATCH";
-                    towBox.classList.add('inactive');
-                    warnModal.style.display = 'flex';
-                }
-            } else {
-                typeBox.value = "Unknown Vehicle";
-                towBox.innerText = "Unknown Status";
-            }
-        } else {
-            typeBox.value = "";
-        }
-    }
-
-    function closeModal() {
-        document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
-    }
-
-    function selectType(type) {
-        inspectionType = type;
-        document.getElementById('btn-pre').classList.remove('selected');
-        document.getElementById('btn-post').classList.remove('selected');
-        document.getElementById(type === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
-    }
-
-    function autoSelectInspection() {
-        const hour = new Date().getHours();
-        selectType(hour < 13 ? 'Pre-Trip' : 'Post-Trip');
-    }
-
-    // ============================================
-    // TIMER
-    // ============================================
-    function startTimer() {
-        seconds = 0;
-        const timerEl = document.getElementById('timer-display');
-        timerEl.style.display = 'block';
-        timerEl.innerText = "00:00";
-        
-        timerInterval = setInterval(() => {
-            seconds++;
-            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const secs = (seconds % 60).toString().padStart(2, '0');
-            timerEl.innerText = `${mins}:${secs}`;
-        }, 1000);
-    }
-
-    function stopTimer() {
-        clearInterval(timerInterval);
-        document.getElementById('timer-display').style.display = 'none';
-    }
-
-    // ============================================
-    // RECORDING
-    // ============================================
-    function toggleRecording() {
-        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-            if (!currentStream) {
-                alert('Camera not ready. Please wait or reset camera.');
-                return;
-            }
-
-            requestWakeLock();
-
-            const codecOptions = [
-                { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
-                { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
-                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High' },
-                { mimeType: 'video/mp4; codecs="avc1"', name: 'H.264' },
-                { mimeType: 'video/webm; codecs="vp8,opus"', name: 'VP8' },
-                { mimeType: 'video/webm', name: 'WebM' }
-            ];
-
-            let selectedOption = codecOptions.find(opt => MediaRecorder.isTypeSupported(opt.mimeType));
-
-            if (!selectedOption) {
-                alert('No supported video codec found!');
-                return;
-            }
-
-            console.log(`🎥 Recording with: ${selectedOption.name}`);
-
-            try {
-                mediaRecorder = new MediaRecorder(currentStream, {
-                    mimeType: selectedOption.mimeType,
-                    videoBitsPerSecond: CONFIG.VIDEO_BITRATE
-                });
-                
-                chunks = [];
-
-                mediaRecorder.ondataavailable = e => {
-                    if (e.data && e.data.size > 0) chunks.push(e.data);
-                };
-
-                mediaRecorder.onstop = () => {
-                    stopTimer();
-                    stopBrightnessMonitoring();
-                    
-                    if (chunks.length === 0) {
-                        alert('Recording failed: No data captured');
-                        return;
-                    }
-
-                    videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
-                    console.log(`✅ Recording complete: ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB`);
-                    
-                    const preview = document.getElementById('preview');
-                    const playback = document.getElementById('playback');
-                    
-                    preview.style.display = 'none';
-                    playback.style.display = 'block';
-                    playback.src = URL.createObjectURL(videoBlob);
-                    
-                    document.getElementById('btn-record').style.display = 'none';
-                    document.getElementById('btn-stop').style.display = 'none';
-                    document.getElementById('btn-upload').style.display = 'block';
-                    document.getElementById('flash-toggle').style.display = 'none';
-                    document.getElementById('status').innerText = `Video Ready (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB)`;
-                };
-
-                mediaRecorder.onerror = (event) => {
-                    console.error('❌ MediaRecorder error:', event.error);
-                    alert('Recording error: ' + event.error);
-                    stopTimer();
-                };
-
-                mediaRecorder.start(1000);
-                startTimer();
-                document.getElementById('btn-record').classList.add('recording');
-                document.getElementById('btn-stop').style.display = 'flex';
-                document.getElementById('status').innerText = "Recording... Walk around vehicle";
-                
-            } catch (error) {
-                console.error('❌ Failed to start recording:', error);
-                alert('Failed to start recording: ' + error.message);
-            }
-        }
-    }
-
-    function stopRecording() {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-            document.getElementById('btn-record').classList.remove('recording');
-        }
-    }
-
-    // ============================================
-    // OPTIMIZED UPLOAD WITH PROGRESS REPORTING
-    // ============================================
-    async function uploadVideo() {
-        const driver = document.getElementById('driverName').value.trim();
-        const vin = document.getElementById('vinInput').value.trim();
-        
-        if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields and record a video.");
-            return;
-        }
-
-        if (videoBlob.size > 150 * 1024 * 1024) {
-            alert(`Video too large (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 150MB.`);
-            return;
-        }
-
-        requestWakeLock();
-
-        const btn = document.getElementById('btn-upload');
-        const status = document.getElementById('status');
-        const progressBar = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
-
-        btn.style.display = 'none';
-        progressBar.style.display = 'block';
-        status.innerText = "Preparing upload...";
-
-        const formData = new FormData();
-        formData.append('video', videoBlob, 'inspection.mp4');
-        formData.append('driverName', driver);
-        formData.append('vin', vin);
-        formData.append('inspectionType', inspectionType);
-
-        let attempts = 0;
-
-        async function attemptUpload() {
-            attempts++;
-            console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
-            
-            return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/upload-to-google-drive', true);
-                xhr.timeout = 300000;
-
-                xhr.upload.onprogress = function(e) {
-                    if (e.lengthComputable) {
-                        const percent = Math.round((e.loaded / e.total) * 100);
-                        progressFill.style.width = percent + '%';
-                        const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
-                        const mbTotal = (e.total / 1024 / 1024).toFixed(1);
-                        status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
-                    }
-                };
-
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        try {
-                            const response = JSON.parse(xhr.responseText);
-                            if (response.success) {
-                                resolve(response);
-                            } else {
-                                reject(new Error(response.error || 'Upload failed'));
-                            }
-                        } catch (e) {
-                            reject(new Error('Invalid server response'));
-                        }
-                    } else {
-                        reject(new Error(`Server error: ${xhr.status}`));
-                    }
-                };
-
-                xhr.onerror = () => reject(new Error('Network error'));
-                xhr.ontimeout = () => reject(new Error('Upload timeout'));
-
-                xhr.send(formData);
+    client.once(Events.ClientReady, c => {
+        console.log(`🤖 Fleet Bot Ready: ${c.user.tag}`);
+    });
+
+    client.on(Events.MessageCreate, async message => {
+        if (message.author.bot || message.channelId !== DISCORD_CHANNEL_ID) return;
+        if (fs.existsSync(SUBSCRIPTION_FILE)) {
+            let subs = [];
+            try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
+            const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
+            const pushPromises = subs.map(async (sub) => {
+                try { await webpush.sendNotification(sub, payload); } catch (e) {}
             });
-        }
-
-        while (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
-            try {
-                await attemptUpload();
-                
-                if (wakeLock) {
-                    wakeLock.release();
-                    wakeLock = null;
-                }
-                
-                status.innerText = "Upload Complete! ✅";
-                progressFill.style.backgroundColor = "#4ade80";
-                
-                setTimeout(() => window.location.href = '/', 2000);
-                return;
-                
-            } catch (error) {
-                console.error(`❌ Attempt ${attempts} failed:`, error.message);
-                
-                if (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
-                    status.innerText = `Retrying (${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS})...`;
-                    progressFill.style.width = '0%';
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                } else {
-                    if (wakeLock) {
-                        wakeLock.release();
-                        wakeLock = null;
-                    }
-                    
-                    alert(`Upload failed after ${CONFIG.MAX_RETRY_ATTEMPTS} attempts:\n${error.message}\n\nPlease check your connection and try again.`);
-                    
-                    btn.style.display = 'block';
-                    progressBar.style.display = 'none';
-                    progressFill.style.width = '0%';
-                    status.innerText = "Upload failed. Ready to retry.";
-                }
-            }
-        }
-    }
-
-    // ============================================
-    // INITIALIZE
-    // ============================================
-    startCamera();
-    autoSelectInspection();
-    
-    window.addEventListener('beforeunload', () => {
-        stopBrightnessMonitoring();
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-        }
-        if (wakeLock) {
-            wakeLock.release();
+            await Promise.all(pushPromises);
         }
     });
-</script>
+}
+
+// ============================================
+// VAPID KEYS SETUP
+// ============================================
+let publicVapidKey = process.env.VAPID_PUBLIC_KEY ? process.env.VAPID_PUBLIC_KEY.trim().replace(/['"]+/g, '') : null;
+let privateVapidKey = process.env.VAPID_PRIVATE_KEY ? process.env.VAPID_PRIVATE_KEY.trim().replace(/['"]+/g, '') : null;
+
+if (!publicVapidKey || !privateVapidKey) {
+    const vapidKeys = webpush.generateVAPIDKeys();
+    publicVapidKey = vapidKeys.publicKey;
+    privateVapidKey = vapidKeys.privateKey;
+    console.log('⚠️  VAPID keys generated (set env vars for production)');
+}
+
+webpush.setVapidDetails(
+    'mailto:' + (process.env.EMAIL_USER || 'slgpfleetmanager@gmail.com'),
+    publicVapidKey,
+    privateVapidKey
+);
+
+// ============================================
+// GOOGLE DRIVE SETUP
+// ============================================
+let driveClient = null;
+
+function initializeDrive() {
+    try {
+        if (!process.env.GCP_SA_KEY) {
+            console.error('❌ GCP_SA_KEY not set - Google Drive disabled');
+            return;
+        }
+        
+        const credentials = JSON.parse(process.env.GCP_SA_KEY);
+        const auth = new google.auth.GoogleAuth({
+            credentials: credentials,
+            scopes: ['https://www.googleapis.com/auth/drive.file']
+        });
+        
+        driveClient = google.drive({ version: 'v3', auth });
+        console.log('✅ Google Drive connected');
+    } catch (error) {
+        console.error('❌ Google Drive failed:', error.message);
+    }
+}
+
+initializeDrive();
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+function isDuplicate(file, name) {
+    if (!fs.existsSync(file)) return false;
+    try {
+        const logs = JSON.parse(fs.readFileSync(file));
+        if (logs.length === 0) return false;
+        const lastLog = logs[logs.length - 1];
+        const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
+        return (lastLog.name === name && (Date.now() - lastTime < 60000));
+    } catch (e) { return false; }
+}
+
+function sanitizeText(text) {
+    if (!text) return "";
+    return text.toString().replace(/(\r\n|\n|\r)/gm, " ").replace(/[^\x20-\x7E]/g, "");
+}
+
+function wrapText(text, font, size, maxWidth) {
+    if (!text) return [];
+    const cleanText = sanitizeText(text);
+    const words = cleanText.split(' ');
+    let lines = [];
+    let currentLine = words[0] || '';
+
+    for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + " " + words[i];
+        const width = font.widthOfTextAtSize(testLine, size);
+        if (width < maxWidth) {
+            currentLine = testLine;
+        } else {
+            lines.push(currentLine);
+            currentLine = words[i];
+        }
+    }
+    lines.push(currentLine);
+    return lines;
+}
+
+// ============================================
+// API ROUTES - GATE CHECKS
+// ============================================
+
+app.post('/log-gate-check', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
+        
+        const now = new Date();
+        const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
+        let logs = [];
+        if (fs.existsSync(GATE_LOG_FILE)) {
+            try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
+        }
+        logs.push({ name, timestamp, rawTimestamp: now.getTime() });
+        fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+
+        const doc = await PDFDocument.create();
+        const page = doc.addPage([400, 750]);
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
+        page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
+
+        const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
+        let yPos = 600;
+        items.forEach(text => {
+            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
+            yPos -= 30;
+        });
+
+        page.drawRectangle({ x: 35, y: 220, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+        page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+
+        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+
+        const pdfBytes = await doc.save();
+        const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
+        fs.writeFileSync(snapshotPath, pdfBytes);
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `CHECKLIST ALERT: ${name}`,
+            text: `Receipt attached for DA ${name}.`,
+            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
+        });
+        
+        fs.unlinkSync(snapshotPath);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Gate check error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/log-arrival-check', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
+
+        const now = new Date();
+        const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
+        let logs = [];
+        if (fs.existsSync(ARRIVAL_LOG_FILE)) {
+            try { logs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE)); } catch(e) {}
+        }
+        logs.push({ name, timestamp, rawTimestamp: now.getTime() });
+        fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
+
+        const doc = await PDFDocument.create();
+        const page = doc.addPage([400, 850]);
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+        page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
+        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+
+        const items = ["Remove trash & belongings.", "Keys/Power Bank returned.", "Post-trip DVIC complete.", "Video uploaded.", "Lights off.", "No packages left."];
+        let yPos = 700;
+        items.forEach(text => {
+            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
+            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+            yPos -= 30;
+        });
+
+        page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
+        page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
+        page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 340, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+
+        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
+        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+
+        const pdfBytes = await doc.save();
+        const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
+        fs.writeFileSync(snapshotPath, pdfBytes);
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `ARRIVAL COMPLETED: ${name}`,
+            text: `Arrival receipt attached for DA ${name}.`,
+            attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }]
+        });
+        
+        fs.unlinkSync(snapshotPath);
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Arrival check error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ============================================
+// API ROUTES - REPORTS
+// ============================================
+
+app.post('/submit-report', async (req, res) => {
+    try {
+        const data = req.body;
+        
+        if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
+            return res.json({ success: true });
+        }
+
+        let currentLogs = [];
+        if (fs.existsSync(DAILY_LOG_FILE)) {
+            try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
+        }
+        data.timestamp = new Date();
+        data.rawTimestamp = Date.now();
+        data.name = (data.vinLast4 || '') + (data.reportType || '');
+        currentLogs.push(data);
+        fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
+
+        if (client.isReady()) {
+            try {
+                const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
+                const title = data.reportType === 'ACCIDENT_REPORT' ? "🚨 **ACCIDENT REPORT FILED**" : "⚠️ **ISSUE REPORT**";
+                if (channel) {
+                    channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}`);
+                }
+            } catch(e) {
+                console.error('Discord notification failed:', e.message);
+            }
+        }
+
+        let folderId = null;
+        if (driveClient) {
+            try {
+                let targetFolderId = data.reportType === 'ACCIDENT_REPORT' ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
+                
+                const folder = await driveClient.files.create({
+                    resource: {
+                        name: `${data.driverName} - ${data.reportType} - ${new Date().toLocaleDateString()}`,
+                        mimeType: 'application/vnd.google-apps.folder',
+                        parents: [targetFolderId]
+                    },
+                    fields: 'id',
+                    supportsAllDrives: true
+                });
+                
+                folderId = folder.data.id;
+
+                if (data.photos && data.photos.length) {
+                    for (let i = 0; i < data.photos.length; i++) {
+                        const buffer = Buffer.from(data.photos[i].data, 'base64');
+                        const bs = new stream.PassThrough();
+                        bs.end(buffer);
+                        
+                        await driveClient.files.create({
+                            resource: {
+                                name: `Photo_${i+1}.jpg`,
+                                parents: [folderId]
+                            },
+                            media: {
+                                mimeType: 'image/jpeg',
+                                body: bs
+                            },
+                            supportsAllDrives: true
+                        });
+                    }
+                }
+            } catch (driveError) {
+                console.error("Drive upload failed:", driveError.message);
+            }
+        }
+
+        const doc = await PDFDocument.create();
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+        let emailUser = process.env.EMAIL_USER;
+        let emailPass = process.env.EMAIL_PASS;
+        
+        if (data.reportType === 'ACCIDENT_REPORT' && process.env.INCIDENTS_EMAIL_USER) {
+            emailUser = process.env.INCIDENTS_EMAIL_USER;
+            emailPass = process.env.INCIDENTS_PASS;
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: emailUser, pass: emailPass }
+        });
+
+        if (data.reportType === 'ACCIDENT_REPORT') {
+            let page = doc.addPage([600, 800]);
+            
+            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
+            page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            page.drawText('OFFICIAL INCIDENT DOCUMENTATION', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+
+            let y = 650;
+            const drawLabel = (txt, val) => {
+                page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
+                page.drawText(sanitizeText(val || 'N/A'), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+                y -= 25;
+            };
+
+            drawLabel('DRIVER NAME', data.driverName);
+            drawLabel('VIN', data.vinLast4);
+            drawLabel('DATE/TIME', `${data.date} ${data.time}`);
+            drawLabel('INCIDENT TYPE', data.incidentType);
+            drawLabel('POLICE REPORT #', data.policeReport);
+            drawLabel('LMET CASE #', data.lmetCase);
+            
+            y -= 10;
+            page.drawLine({ start: { x: 30, y }, end: { x: 570, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+            y -= 25;
+
+            page.drawText('LOCATION DETAILS', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            const loc = data.locationData || {};
+            drawLabel('ADDRESS', `${loc.street || ''}, ${loc.city || ''}, ${loc.state || ''} ${loc.zip || ''}`);
+            drawLabel('GPS COORDS', `${loc.gpsLat || ''}, ${loc.gpsLng || ''}`);
+            drawLabel('WEATHER', data.weather || 'Unknown');
+
+            y -= 20;
+            page.drawText('DRIVER STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            const stateLines = wrapText(data.statement || '', fontReg, 10, 540);
+            stateLines.forEach(line => {
+                page.drawText(line, { x: 30, y, size: 10, font: fontReg });
+                y -= 14;
+            });
+
+            y -= 30;
+            page.drawText('AFFIDAVIT & ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
+            y -= 20;
+            
+            if (data.checklist && Array.isArray(data.checklist)) {
+                data.checklist.forEach(item => {
+                    page.drawText('[X] ' + sanitizeText(item), { x: 30, y, size: 9, font: fontReg });
+                    y -= 12;
+                });
+            }
+            y -= 10;
+            const affLines = wrapText(data.affidavit || '', fontReg, 9, 540);
+            affLines.forEach(line => {
+                page.drawText(line, { x: 30, y, size: 9, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
+                y -= 11;
+            });
+
+            y -= 20;
+            page.drawText('SIGNED:', { x: 30, y, size: 10, font: fontBold });
+            if (data.signature) {
+                try {
+                    const sigImage = await doc.embedPng(data.signature);
+                    const dims = sigImage.scale(0.5);
+                    page.drawImage(sigImage, { x: 80, y: y - 40, width: dims.width, height: dims.height });
+                } catch(e) {
+                    page.drawText('(Signature Error)', { x: 80, y });
+                }
+            }
+
+            if (data.photos && data.photos.length > 0) {
+                for (let i = 0; i < data.photos.length; i++) {
+                    const photoPage = doc.addPage([600, 800]);
+                    photoPage.drawText(`EVIDENCE PHOTO ${i + 1}`, { x: 30, y: 750, size: 16, font: fontBold });
+                    try {
+                        const imgBytes = Buffer.from(data.photos[i].data, 'base64');
+                        const jpgImage = await doc.embedJpg(imgBytes);
+                        const jpgDims = jpgImage.scaleToFit(540, 700);
+                        photoPage.drawImage(jpgImage, {
+                            x: 30,
+                            y: 700 - jpgDims.height,
+                            width: jpgDims.width,
+                            height: jpgDims.height
+                        });
+                    } catch(e) {
+                        photoPage.drawText('(Image Error)', { x: 30, y: 700 });
+                    }
+                }
+            }
+
+            const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
+            fs.writeFileSync(pdfPath, await doc.save());
+
+            const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
+            const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
+            const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
+
+            await transporter.sendMail({
+                from: emailUser,
+                to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
+                subject: `URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
+                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report.\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
+            });
+
+            if (data.driverEmail && data.driverEmail.includes('@')) {
+                const driverAttachments = [];
+                if (fs.existsSync(PANEL_DOC_PATH)) {
+                    driverAttachments.push({ filename: 'Panel_of_Physicians.pdf', path: PANEL_DOC_PATH });
+                }
+
+                await transporter.sendMail({
+                    from: emailUser,
+                    to: data.driverEmail,
+                    subject: 'SLGP Accident Protocol - Panel of Physicians',
+                    text: `Hello ${data.driverName},\n\nWe have received your accident report. Per company policy, please review the attached Panel of Physicians document.\n\nThank you,\nSLGP Fleet Management`,
+                    attachments: driverAttachments
+                });
+            }
+
+            fs.unlinkSync(pdfPath);
+            
+        } else {
+            let page = doc.addPage([600, 800]);
+            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
+            page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
+
+            let y = 650;
+            const drawRow = (label, value) => {
+                page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
+                const safeValue = value ? String(value) : 'N/A';
+                page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
+                page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
+                y -= 40;
+            };
+
+            drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
+            drawRow('DRIVER NAME', data.driverName || 'N/A');
+            drawRow('VIN (LAST 4)', data.vinLast4 || 'N/A');
+            drawRow('VEHICLE TYPE', data.vehicleType || 'N/A');
+            drawRow('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
+            
+            let issuesText = (data.tags && data.tags.length) ? data.tags.join(', ') : 'None';
+            drawRow('ISSUES SELECTED', issuesText);
+            
+            y -= 20;
+            page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
+            y -= 25;
+            
+            const notes = data.otherDescription || "No additional notes provided.";
+            const noteLines = wrapText(notes, fontReg, 11, 540);
+            noteLines.forEach(line => {
+                page.drawText(line, { x: 30, y, size: 11, font: fontReg });
+                y -= 15;
+            });
+
+            const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
+            fs.writeFileSync(pdfPath, await doc.save());
+
+            await transporter.sendMail({
+                from: emailUser,
+                to: ['slgpfleetmanager@gmail.com'],
+                subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
+                text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
+            });
+
+            fs.unlinkSync(pdfPath);
+        }
+
+        res.json({ success: true });
+        
+    } catch (error) {
+        console.error('Report submission error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// API ROUTES - ENHANCED VIDEO UPLOAD
+// ============================================
+
+app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+    const startTime = Date.now();
+    let videoPath = null;
     
-<script src="/auto-refresh.js"></script>
+    try {
+        console.log('📹 Video upload initiated');
+        
+        if (!driveClient) {
+            throw new Error('Google Drive not initialized');
+        }
 
-</body>
-</html>
+        if (!req.file) {
+            throw new Error('No video file received');
+        }
 
+        videoPath = req.file.path;
+        const { driverName, vin, inspectionType } = req.body;
 
+        if (!driverName || !vin || !inspectionType) {
+            throw new Error('Missing required fields');
+        }
+
+        const fileStats = fs.statSync(videoPath);
+        const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+        
+        console.log(`📹 Upload details:`);
+        console.log(`   Driver: ${driverName}`);
+        console.log(`   VIN: ${vin}`);
+        console.log(`   Type: ${inspectionType}`);
+        console.log(`   Size: ${fileSizeMB}MB`);
+
+        const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        
+        console.log('☁️  Starting Google Drive resumable upload...');
+        
+        // ============================================
+        // RESUMABLE UPLOAD WITH METADATA
+        // ============================================
+        
+        const fileMetadata = {
+            name: fileName,
+            parents: [VIDEO_DRIVE_ID],
+            mimeType: 'video/mp4',
+            properties: {
+                driver: driverName,
+                vin: vin,
+                inspectionType: inspectionType,
+                uploadDate: new Date().toISOString(),
+                codec: 'H.265/HEVC',
+                resolution: '1920x1080'
+            },
+            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
+        };
+
+        const media = {
+            mimeType: 'video/mp4',
+            body: fs.createReadStream(videoPath)
+        };
+
+        // Use resumable upload for files over 5MB, multipart for smaller
+        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
+        console.log(`📤 Using ${uploadType} upload method`);
+
+        const driveResponse = await driveClient.files.create({
+            requestBody: fileMetadata,
+            media: media,
+            fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
+            supportsAllDrives: true
+        });
+
+        const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
+        console.log(`   File ID: ${driveResponse.data.id}`);
+        console.log(`   Size uploaded: ${fileSizeMB}MB`);
+        
+        // ============================================
+        // SET PERMISSIONS FOR IMMEDIATE VIEWING
+        // ============================================
+        
+        try {
+            await driveClient.permissions.create({
+                fileId: driveResponse.data.id,
+                requestBody: {
+                    role: 'reader',
+                    type: 'anyone'
+                },
+                supportsAllDrives: true
+            });
+            console.log('✅ File permissions set (viewable via link)');
+        } catch (permError) {
+            console.warn('⚠️  Could not set permissions:', permError.message);
+        }
+
+        // ============================================
+        // GENERATE DIRECT LINKS
+        // ============================================
+        
+        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${driveResponse.data.id}/view`;
+        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${driveResponse.data.id}`;
+        const embedLink = `https://drive.google.com/file/d/${driveResponse.data.id}/preview`;
+
+        // ============================================
+        // EMAIL NOTIFICATION WITH ALL LINKS
+        // ============================================
+        
+        try {
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+            
+            const videoInfo = driveResponse.data.videoMediaMetadata || {};
+            const videoDuration = videoInfo.durationMillis ? `${(videoInfo.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
+            
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER,
+                subject: `📹 Video Inspection: ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 20px; border-radius: 10px 10px 0 0;">
+                            <h2 style="color: white; margin: 0;">✅ Video Inspection Uploaded</h2>
+                        </div>
+                        
+                        <div style="background: #f3f4f6; padding: 20px; border-radius: 0 0 10px 10px;">
+                            <h3 style="color: #1f2937; margin-top: 0;">Inspection Details</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">Driver:</td>
+                                    <td style="padding: 8px;">${driverName}</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">VIN:</td>
+                                    <td style="padding: 8px;">${vin}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">Type:</td>
+                                    <td style="padding: 8px;">${inspectionType}</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">File Name:</td>
+                                    <td style="padding: 8px;">${fileName}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">File Size:</td>
+                                    <td style="padding: 8px;">${fileSizeMB}MB</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">Duration:</td>
+                                    <td style="padding: 8px;">${videoDuration}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">Upload Time:</td>
+                                    <td style="padding: 8px;">${uploadTime}s</td>
+                                </tr>
+                                <tr style="background: white;">
+                                    <td style="padding: 8px; font-weight: bold; color: #4b5563;">Resolution:</td>
+                                    <td style="padding: 8px;">1920x1080 (H.265)</td>
+                                </tr>
+                            </table>
+                            
+                            <hr style="border: none; border-top: 2px solid #e5e7eb; margin: 20px 0;">
+                            
+                            <h3 style="color: #1f2937;">📥 Access Video:</h3>
+                            
+                            <div style="margin: 15px 0;">
+                                <a href="${viewLink}" style="display: inline-block; background: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 5px;">
+                                    ▶️ View in Drive
+                                </a>
+                                
+                                <a href="${directDownloadLink}" style="display: inline-block; background: #4ade80; color: #064e3b; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 5px;">
+                                    ⬇️ Download Original (Full Quality)
+                                </a>
+                            </div>
+                            
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 20px; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px;">
+                                    <strong>💡 Important:</strong> If the Drive preview shows low quality, it's because Google is still processing the high-resolution version. 
+                                    Click <strong>"Download Original"</strong> to get the full 1080p H.265 video immediately (no waiting for processing).
+                                </p>
+                            </div>
+                            
+                            <div style="background: #e0f2fe; border-left: 4px solid #0284c7; padding: 12px; margin-top: 15px; border-radius: 4px;">
+                                <p style="margin: 0; color: #075985; font-size: 13px;">
+                                    <strong>ℹ️ Tech Info:</strong> Video was recorded in H.265 (HEVC) codec at ${fileSizeMB}MB for optimal quality and file size.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `
+            });
+            console.log('✅ Email notification sent with all access links');
+        } catch (emailError) {
+            console.error('⚠️  Email notification failed:', emailError.message);
+        }
+
+        // ============================================
+        // CLEANUP & RESPONSE
+        // ============================================
+        
+        if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+            console.log('✅ Temporary file cleaned up');
+        }
+
+        res.json({
+            success: true,
+            fileId: driveResponse.data.id,
+            fileName: driveResponse.data.name,
+            fileSize: fileSizeMB,
+            uploadTime: uploadTime,
+            viewLink: viewLink,
+            downloadLink: directDownloadLink,
+            embedLink: embedLink,
+            metadata: driveResponse.data.videoMediaMetadata || null,
+            createdTime: driveResponse.data.createdTime
+        });
+        
+    } catch (error) {
+        console.error('❌ Video upload error:', error);
+        
+        if (videoPath && fs.existsSync(videoPath)) {
+            try {
+                fs.unlinkSync(videoPath);
+                console.log('✅ Cleaned up failed upload file');
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
+        
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: {
+                driver: req.body.driverName,
+                vin: req.body.vin,
+                inspectionType: req.body.inspectionType,
+                receivedFile: !!req.file,
+                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
+            }
+        });
+    }
+});
+
+// ============================================
+// API ROUTES - PUSH NOTIFICATIONS
+// ============================================
+
+app.get('/vapid-key', (req, res) => {
+    res.json({ publicKey: publicVapidKey });
+});
+
+app.post('/subscribe', (req, res) => {
+    try {
+        const subscription = req.body;
+        let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
+        
+        const exists = subs.some(s => JSON.stringify(s) === JSON.stringify(subscription));
+        if (!exists) {
+            subs.push(subscription);
+            fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
+            console.log('✅ Push subscription added');
+        }
+        
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Subscription error:', e);
+        res.status(500).json({ success: false });
+    }
+});
+
+// ============================================
+// API ROUTES - VERSION (AUTO-REFRESH SYSTEM)
+// ============================================
+
+app.get('/version', (req, res) => {
+    res.json(BUILD_INFO);
+});
+
+// ============================================
+// HTML PAGE ROUTES
+// ============================================
+
+app.get('/video', (req, res) => {
+    console.log('📍 GET /video');
+    res.sendFile(path.join(__dirname, 'video.html'));
+});
+
+app.get('/success', (req, res) => {
+    console.log('📍 GET /success');
+    res.sendFile(path.join(__dirname, 'success.html'));
+});
+
+app.get('/alerts', (req, res) => {
+    console.log('📍 GET /alerts');
+    res.sendFile(path.join(__dirname, 'alerts.html'));
+});
+
+app.get('/report', (req, res) => {
+    const mode = req.query.mode;
+    console.log(`📍 GET /report?mode=${mode}`);
+    
+    let filePath;
+    
+    if (mode === 'issue') {
+        filePath = path.join(__dirname, 'report-issue.html');
+    } else if (mode === 'accident') {
+        filePath = path.join(__dirname, 'accident-report.html');
+    } else if (mode === 'insurance') {
+        filePath = path.join(__dirname, 'insurance.html');
+    } else {
+        console.error('❌ Unknown report mode:', mode);
+        return res.status(404).send('Unknown report type');
+    }
+    
+    if (fs.existsSync(filePath)) {
+        console.log('✅ Serving:', filePath);
+        res.sendFile(filePath);
+    } else {
+        console.error('❌ File not found:', filePath);
+        res.status(404).send(`File not found: ${mode}`);
+    }
+});
+
+// ============================================
+// STATIC FILES
+// ============================================
+
+app.use(express.static(__dirname, {
+    setHeaders: (res, filepath) => {
+        if (filepath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
+
+// ============================================
+// ROOT ROUTE
+// ============================================
+
+app.get('/', (req, res) => {
+    console.log('📍 GET / - Serving menu.html');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    const menuPath = path.join(__dirname, 'menu.html');
+    
+    if (fs.existsSync(menuPath)) {
+        console.log('✅ Serving menu.html from:', menuPath);
+        res.sendFile(menuPath);
+    } else {
+        console.error('❌ menu.html not found at:', menuPath);
+        res.status(404).send('menu.html not found');
+    }
+});
+
+// ============================================
+// CRON JOB - DAILY SUMMARY
+// ============================================
+
+cron.schedule('30 23 * * *', async () => {
+    try {
+        console.log('🕐 Running daily summary...');
+        
+        let summaryText = "\n--- DEPARTURE LOGS ---\n";
+        if (fs.existsSync(GATE_LOG_FILE)) {
+            const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
+            gateLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
+            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([]));
+        }
+        
+        summaryText += "\n--- ARRIVAL LOGS ---\n";
+        if (fs.existsSync(ARRIVAL_LOG_FILE)) {
+            const arrLogs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE));
+            arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
+            fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify([]));
+        }
+        
+        if (!fs.existsSync(DAILY_LOG_FILE)) return;
+        
+        const allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
+        if (allLogs.length === 0 && summaryText.length < 40) return;
+        
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
+            text: `Daily Summary\nTotal Reports: ${allLogs.length}\n${summaryText}`
+        });
+        
+        fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
+        console.log('✅ Daily summary sent');
+    } catch (e) {
+        console.error('❌ Cron job error:', e);
+    }
+}, { timezone: "America/New_York" });
+
+// ============================================
+// ERROR HANDLER
+// ============================================
+
+app.use((err, req, res, next) => {
+    console.error('❌ Server Error:', err);
+    res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        details: err.message
+    });
+});
+
+// ============================================
+// START SERVER
+// ============================================
+
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+╔══════════════════════════════════════╗
+║  SLGP Fleet Manager                  ║
+║  Enhanced Video Upload System        ║
+╠══════════════════════════════════════╣
+║  Port: ${PORT}                            ║
+║  Version: ${BUILD_INFO.version}
+║  Built: ${BUILD_INFO.buildDate}
+║  Node: ${BUILD_INFO.nodeVersion}
+╚══════════════════════════════════════╝
+
+✅ Server started
+✅ Email configured
+${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
+✅ Push notifications ready
+${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
+✅ Auto-refresh system active
+⚠️  NO AUTHENTICATION - Direct access enabled
+
+📹 ENHANCED Video Upload Features:
+   • H.265 (HEVC) codec optimization
+   • Resumable uploads for reliability
+   • Immediate full-quality download links
+   • Direct access (no Google processing wait)
+   • Detailed metadata tracking
+   • 200MB file size limit
+   • Automatic retry on failure
+   • Rich HTML email notifications
+
+🔄 Auto-refresh features:
+   • Version checking every 30s
+   • Automatic client refresh on deploy
+
+🌐 Ready at: http://localhost:${PORT}
+
+📍 Routes configured:
+   GET  /                → menu.html
+   GET  /video          → video.html (H.265 optimized)
+   GET  /success        → success.html
+   GET  /alerts         → alerts.html
+   GET  /report?mode=   → accident/issue/insurance
+   GET  /version        → Build info
+   POST /upload-to-google-drive (ENHANCED - Resumable)
+   POST /log-gate-check
+   POST /log-arrival-check
+   POST /submit-report
+    `);
+});
+
+process.on('SIGTERM', () => {
+    console.log('⚠️  SIGTERM received - shutting down gracefully');
+    process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
