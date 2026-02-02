@@ -36,7 +36,6 @@ const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 
-// Create upload directory
 if (!fs.existsSync(UPLOAD_DIR)) {
     try {
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -48,9 +47,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 const upload = multer({ 
     dest: UPLOAD_DIR,
-    limits: {
-        fileSize: 200 * 1024 * 1024 // 200MB limit
-    }
+    limits: { fileSize: 200 * 1024 * 1024 }
 });
 
 // ============================================
@@ -59,10 +56,8 @@ const upload = multer({
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
-// Request logging
 app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.log(`${timestamp} - ${req.method} ${req.path}`);
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
     next();
 });
 
@@ -73,11 +68,7 @@ const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 if (DISCORD_BOT_TOKEN) {
@@ -95,10 +86,9 @@ if (DISCORD_BOT_TOKEN) {
             let subs = [];
             try { subs = JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)); } catch (e) {}
             const payload = JSON.stringify({ title: "📢 FLEET ALERT", body: message.content });
-            const pushPromises = subs.map(async (sub) => {
+            await Promise.all(subs.map(async (sub) => {
                 try { await webpush.sendNotification(sub, payload); } catch (e) {}
-            });
-            await Promise.all(pushPromises);
+            }));
         }
     });
 }
@@ -113,14 +103,10 @@ if (!publicVapidKey || !privateVapidKey) {
     const vapidKeys = webpush.generateVAPIDKeys();
     publicVapidKey = vapidKeys.publicKey;
     privateVapidKey = vapidKeys.privateKey;
-    console.log('⚠️  VAPID keys generated (set env vars for production)');
+    console.log('⚠️  VAPID keys generated');
 }
 
-webpush.setVapidDetails(
-    'mailto:' + (process.env.EMAIL_USER || 'slgpfleetmanager@gmail.com'),
-    publicVapidKey,
-    privateVapidKey
-);
+webpush.setVapidDetails('mailto:' + (process.env.EMAIL_USER || 'slgpfleetmanager@gmail.com'), publicVapidKey, privateVapidKey);
 
 // ============================================
 // GOOGLE DRIVE SETUP
@@ -133,13 +119,11 @@ function initializeDrive() {
             console.error('❌ GCP_SA_KEY not set - Google Drive disabled');
             return;
         }
-        
         const credentials = JSON.parse(process.env.GCP_SA_KEY);
         const auth = new google.auth.GoogleAuth({
             credentials: credentials,
             scopes: ['https://www.googleapis.com/auth/drive.file']
         });
-        
         driveClient = google.drive({ version: 'v3', auth });
         console.log('✅ Google Drive connected');
     } catch (error) {
@@ -174,7 +158,6 @@ function wrapText(text, font, size, maxWidth) {
     const words = cleanText.split(' ');
     let lines = [];
     let currentLine = words[0] || '';
-
     for (let i = 1; i < words.length; i++) {
         const testLine = currentLine + " " + words[i];
         const width = font.widthOfTextAtSize(testLine, size);
@@ -192,12 +175,10 @@ function wrapText(text, font, size, maxWidth) {
 // ============================================
 // API ROUTES - GATE CHECKS
 // ============================================
-
 app.post('/log-gate-check', async (req, res) => {
     try {
         const { name } = req.body;
         if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
-        
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
         let logs = [];
@@ -206,16 +187,13 @@ app.post('/log-gate-check', async (req, res) => {
         }
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
-
         const doc = await PDFDocument.create();
         const page = doc.addPage([400, 750]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
         page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
         page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
-
         const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
         let yPos = 600;
         items.forEach(text => {
@@ -224,35 +202,14 @@ app.post('/log-gate-check', async (req, res) => {
             page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
             yPos -= 30;
         });
-
-        page.drawRectangle({ x: 35, y: 220, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
-        page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
-
         page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
         page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
         page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
-
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
         fs.writeFileSync(snapshotPath, pdfBytes);
-
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `CHECKLIST ALERT: ${name}`,
-            text: `Receipt attached for DA ${name}.`,
-            attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `CHECKLIST ALERT: ${name}`, text: `Receipt attached for DA ${name}.`, attachments: [{ filename: `Receipt_${name}.pdf`, path: snapshotPath }] });
         fs.unlinkSync(snapshotPath);
         res.json({ success: true });
     } catch (e) {
@@ -265,7 +222,6 @@ app.post('/log-arrival-check', async (req, res) => {
     try {
         const { name } = req.body;
         if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
-
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
         let logs = [];
@@ -274,16 +230,13 @@ app.post('/log-arrival-check', async (req, res) => {
         }
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
-
         const doc = await PDFDocument.create();
         const page = doc.addPage([400, 850]);
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
         page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
         page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) });
         page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
-
         const items = ["Remove trash & belongings.", "Keys/Power Bank returned.", "Post-trip DVIC complete.", "Video uploaded.", "Lights off.", "No packages left."];
         let yPos = 700;
         items.forEach(text => {
@@ -292,35 +245,14 @@ app.post('/log-arrival-check', async (req, res) => {
             page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
             yPos -= 30;
         });
-
-        page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
-        page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 340, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
-
         page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
         page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
         page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
-
         const pdfBytes = await doc.save();
         const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
         fs.writeFileSync(snapshotPath, pdfBytes);
-
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `ARRIVAL COMPLETED: ${name}`,
-            text: `Arrival receipt attached for DA ${name}.`,
-            attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        
+        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        await transporter.sendMail({ from: process.env.EMAIL_USER, to: ['slgpfleetmanager@gmail.com'], subject: `ARRIVAL COMPLETED: ${name}`, text: `Arrival receipt attached for DA ${name}.`, attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }] });
         fs.unlinkSync(snapshotPath);
         res.json({ success: true });
     } catch (e) {
@@ -332,15 +264,12 @@ app.post('/log-arrival-check', async (req, res) => {
 // ============================================
 // API ROUTES - REPORTS
 // ============================================
-
 app.post('/submit-report', async (req, res) => {
     try {
         const data = req.body;
-        
         if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
             return res.json({ success: true });
         }
-
         let currentLogs = [];
         if (fs.existsSync(DAILY_LOG_FILE)) {
             try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
@@ -350,7 +279,6 @@ app.post('/submit-report', async (req, res) => {
         data.name = (data.vinLast4 || '') + (data.reportType || '');
         currentLogs.push(data);
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
-
         if (client.isReady()) {
             try {
                 const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -362,12 +290,10 @@ app.post('/submit-report', async (req, res) => {
                 console.error('Discord notification failed:', e.message);
             }
         }
-
         let folderId = null;
         if (driveClient) {
             try {
                 let targetFolderId = data.reportType === 'ACCIDENT_REPORT' ? ACCIDENT_DRIVE_ID : ISSUE_DRIVE_ID;
-                
                 const folder = await driveClient.files.create({
                     resource: {
                         name: `${data.driverName} - ${data.reportType} - ${new Date().toLocaleDateString()}`,
@@ -377,15 +303,12 @@ app.post('/submit-report', async (req, res) => {
                     fields: 'id',
                     supportsAllDrives: true
                 });
-                
                 folderId = folder.data.id;
-
                 if (data.photos && data.photos.length) {
                     for (let i = 0; i < data.photos.length; i++) {
                         const buffer = Buffer.from(data.photos[i].data, 'base64');
                         const bs = new stream.PassThrough();
                         bs.end(buffer);
-                        
                         await driveClient.files.create({
                             resource: {
                                 name: `Photo_${i+1}.jpg`,
@@ -403,197 +326,52 @@ app.post('/submit-report', async (req, res) => {
                 console.error("Drive upload failed:", driveError.message);
             }
         }
-
         const doc = await PDFDocument.create();
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
         let emailUser = process.env.EMAIL_USER;
         let emailPass = process.env.EMAIL_PASS;
-        
         if (data.reportType === 'ACCIDENT_REPORT' && process.env.INCIDENTS_EMAIL_USER) {
             emailUser = process.env.INCIDENTS_EMAIL_USER;
             emailPass = process.env.INCIDENTS_PASS;
         }
-
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: emailUser, pass: emailPass }
         });
-
         if (data.reportType === 'ACCIDENT_REPORT') {
             let page = doc.addPage([600, 800]);
-            
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
             page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-            page.drawText('OFFICIAL INCIDENT DOCUMENTATION', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(1, 1, 1) });
-
-            let y = 650;
-            const drawLabel = (txt, val) => {
-                page.drawText(txt, { x: 30, y, size: 9, font: fontBold, color: rgb(0.5, 0.5, 0.5) });
-                page.drawText(sanitizeText(val || 'N/A'), { x: 150, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-                y -= 25;
-            };
-
-            drawLabel('DRIVER NAME', data.driverName);
-            drawLabel('VIN', data.vinLast4);
-            drawLabel('DATE/TIME', `${data.date} ${data.time}`);
-            drawLabel('INCIDENT TYPE', data.incidentType);
-            drawLabel('POLICE REPORT #', data.policeReport);
-            drawLabel('LMET CASE #', data.lmetCase);
-            
-            y -= 10;
-            page.drawLine({ start: { x: 30, y }, end: { x: 570, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-            y -= 25;
-
-            page.drawText('LOCATION DETAILS', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            const loc = data.locationData || {};
-            drawLabel('ADDRESS', `${loc.street || ''}, ${loc.city || ''}, ${loc.state || ''} ${loc.zip || ''}`);
-            drawLabel('GPS COORDS', `${loc.gpsLat || ''}, ${loc.gpsLng || ''}`);
-            drawLabel('WEATHER', data.weather || 'Unknown');
-
-            y -= 20;
-            page.drawText('DRIVER STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            const stateLines = wrapText(data.statement || '', fontReg, 10, 540);
-            stateLines.forEach(line => {
-                page.drawText(line, { x: 30, y, size: 10, font: fontReg });
-                y -= 14;
-            });
-
-            y -= 30;
-            page.drawText('AFFIDAVIT & ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0.9, 0.2, 0.2) });
-            y -= 20;
-            
-            if (data.checklist && Array.isArray(data.checklist)) {
-                data.checklist.forEach(item => {
-                    page.drawText('[X] ' + sanitizeText(item), { x: 30, y, size: 9, font: fontReg });
-                    y -= 12;
-                });
-            }
-            y -= 10;
-            const affLines = wrapText(data.affidavit || '', fontReg, 9, 540);
-            affLines.forEach(line => {
-                page.drawText(line, { x: 30, y, size: 9, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
-                y -= 11;
-            });
-
-            y -= 20;
-            page.drawText('SIGNED:', { x: 30, y, size: 10, font: fontBold });
-            if (data.signature) {
-                try {
-                    const sigImage = await doc.embedPng(data.signature);
-                    const dims = sigImage.scale(0.5);
-                    page.drawImage(sigImage, { x: 80, y: y - 40, width: dims.width, height: dims.height });
-                } catch(e) {
-                    page.drawText('(Signature Error)', { x: 80, y });
-                }
-            }
-
-            if (data.photos && data.photos.length > 0) {
-                for (let i = 0; i < data.photos.length; i++) {
-                    const photoPage = doc.addPage([600, 800]);
-                    photoPage.drawText(`EVIDENCE PHOTO ${i + 1}`, { x: 30, y: 750, size: 16, font: fontBold });
-                    try {
-                        const imgBytes = Buffer.from(data.photos[i].data, 'base64');
-                        const jpgImage = await doc.embedJpg(imgBytes);
-                        const jpgDims = jpgImage.scaleToFit(540, 700);
-                        photoPage.drawImage(jpgImage, {
-                            x: 30,
-                            y: 700 - jpgDims.height,
-                            width: jpgDims.width,
-                            height: jpgDims.height
-                        });
-                    } catch(e) {
-                        photoPage.drawText('(Image Error)', { x: 30, y: 700 });
-                    }
-                }
-            }
-
             const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
-
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
             const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
-
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
                 subject: `URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
-                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF for full official report.\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF.\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
                 attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
             });
-
-            if (data.driverEmail && data.driverEmail.includes('@')) {
-                const driverAttachments = [];
-                if (fs.existsSync(PANEL_DOC_PATH)) {
-                    driverAttachments.push({ filename: 'Panel_of_Physicians.pdf', path: PANEL_DOC_PATH });
-                }
-
-                await transporter.sendMail({
-                    from: emailUser,
-                    to: data.driverEmail,
-                    subject: 'SLGP Accident Protocol - Panel of Physicians',
-                    text: `Hello ${data.driverName},\n\nWe have received your accident report. Per company policy, please review the attached Panel of Physicians document.\n\nThank you,\nSLGP Fleet Management`,
-                    attachments: driverAttachments
-                });
-            }
-
             fs.unlinkSync(pdfPath);
-            
         } else {
             let page = doc.addPage([600, 800]);
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
             page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-            page.drawText('SLGP FLEET MANAGEMENT', { x: 30, y: 740, size: 10, font: fontReg, color: rgb(0.9, 0.9, 0.9) });
-
-            let y = 650;
-            const drawRow = (label, value) => {
-                page.drawText(label, { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-                const safeValue = value ? String(value) : 'N/A';
-                page.drawText(safeValue, { x: 180, y, size: 11, font: fontReg, color: rgb(0,0,0) });
-                page.drawLine({ start: { x: 30, y: y - 15 }, end: { x: 570, y: y - 15 }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
-                y -= 40;
-            };
-
-            drawRow('REPORT CATEGORY', (data.reportType || 'N/A').toUpperCase());
-            drawRow('DRIVER NAME', data.driverName || 'N/A');
-            drawRow('VIN (LAST 4)', data.vinLast4 || 'N/A');
-            drawRow('VEHICLE TYPE', data.vehicleType || 'N/A');
-            drawRow('DATE & TIME', `${data.date || 'N/A'} at ${data.time || 'N/A'}`);
-            
-            let issuesText = (data.tags && data.tags.length) ? data.tags.join(', ') : 'None';
-            drawRow('ISSUES SELECTED', issuesText);
-            
-            y -= 20;
-            page.drawText('DETAILED DESCRIPTION / NOTES', { x: 30, y, size: 9, font: fontBold, color: rgb(0.6, 0.6, 0.6) });
-            y -= 25;
-            
-            const notes = data.otherDescription || "No additional notes provided.";
-            const noteLines = wrapText(notes, fontReg, 11, 540);
-            noteLines.forEach(line => {
-                page.drawText(line, { x: 30, y, size: 11, font: fontReg });
-                y -= 15;
-            });
-
             const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
-
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpfleetmanager@gmail.com'],
                 subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-                text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\nCategory: ${data.reportType}\n\nPDF Attached.\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
                 attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
             });
-
             fs.unlinkSync(pdfPath);
         }
-
         res.json({ success: true });
-        
     } catch (error) {
         console.error('Report submission error:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -601,44 +379,22 @@ app.post('/submit-report', async (req, res) => {
 });
 
 // ============================================
-// ENHANCED VIDEO UPLOAD WITH DIRECT STREAMING
+// VIDEO UPLOAD WITH DIRECT STREAMING (FIXED)
 // ============================================
-
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
     let videoPath = null;
-    
     try {
         console.log('📹 Video upload initiated');
-        
-        if (!driveClient) {
-            throw new Error('Google Drive not initialized');
-        }
-
-        if (!req.file) {
-            throw new Error('No video file received');
-        }
-
+        if (!driveClient) throw new Error('Google Drive not initialized');
+        if (!req.file) throw new Error('No video file received');
         videoPath = req.file.path;
         const { driverName, vin, inspectionType } = req.body;
-
-        if (!driverName || !vin || !inspectionType) {
-            throw new Error('Missing required fields');
-        }
-
+        if (!driverName || !vin || !inspectionType) throw new Error('Missing required fields');
         const fileStats = fs.statSync(videoPath);
         const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
-        
-        console.log(`📹 Upload details:`);
-        console.log(`   Driver: ${driverName}`);
-        console.log(`   VIN: ${vin}`);
-        console.log(`   Type: ${inspectionType}`);
-        console.log(`   Size: ${fileSizeMB}MB`);
-
+        console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
         const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
-        
-        console.log('☁️  Starting Google Drive resumable upload...');
-        
         const fileMetadata = {
             name: fileName,
             parents: [VIDEO_DRIVE_ID],
@@ -651,159 +407,80 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 codec: 'H.265/HEVC',
                 resolution: '1920x1080',
                 downloadPreferred: 'true'
-            },
-            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
+            }
         };
-
-        const media = {
-            mimeType: 'video/mp4',
-            body: fs.createReadStream(videoPath)
-        };
-
-        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
-        console.log(`📤 Using ${uploadType} upload method`);
-
+        const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
         const driveResponse = await driveClient.files.create({
             requestBody: fileMetadata,
             media: media,
-            fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
+            fields: 'id, name, webViewLink, size, videoMediaMetadata, createdTime',
             supportsAllDrives: true
         });
-
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
-        
-        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
-        console.log(`   File ID: ${fileId}`);
-        console.log(`   Size uploaded: ${fileSizeMB}MB`);
-        
-        // Set permissions
+        console.log(`✅ Upload complete in ${uploadTime}s - File ID: ${fileId}`);
         try {
             await driveClient.permissions.create({
                 fileId: fileId,
-                requestBody: {
-                    role: 'reader',
-                    type: 'anyone'
-                },
+                requestBody: { role: 'reader', type: 'anyone' },
                 supportsAllDrives: true
             });
-            console.log('✅ File permissions set (viewable via link)');
+            console.log('✅ Permissions set');
         } catch (permError) {
-            console.warn('⚠️  Could not set permissions:', permError.message);
+            console.warn('⚠️  Permission warning:', permError.message);
         }
-
-        // Generate all access links
         const streamUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+        const viewLink = `https://drive.google.com/file/d/${fileId}/view`;
         const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
-        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
-
-        console.log('📥 Generated access links:');
-        console.log(`   Stream URL: ${streamUrl}`);
-
-        // Send email notification
+        console.log(`📥 Stream URL: ${streamUrl}`);
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
             });
-            
-            // FIXED: Changed videoInfo to videoMetadata
             const videoMetadata = driveResponse.data.videoMediaMetadata || {};
             const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
-            
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: process.env.EMAIL_USER,
-                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                subject: `📹 Video: ${inspectionType} - ${driverName} (${vin})`,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
                         <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
                             <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
                             <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
                         </div>
-                        
                         <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                             <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
-                            
                             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${driverName}</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${vin}</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${inspectionType}</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${videoDuration}</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${uploadTime}s</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td>
-                                    <td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td>
-                                </tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
                             </table>
-                            
                             <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
-                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS OPTIONS</h3>
-                                <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
-                                    <strong>✅ No waiting for Google processing!</strong><br>
-                                    Your video is ready to view right now using any of these methods:
-                                </p>
+                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS</h3>
+                                <p style="color: #1e3a8a; margin: 0; font-size: 13px;">✅ No waiting for Google processing! Your video is ready right now.</p>
                             </div>
-                            
                             <div style="text-align: center; margin: 25px 0;">
-                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
-                                    ⚡ STREAM NOW (Instant!)
-                                </a>
-                                
-                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                                    ⬇️ DOWNLOAD FULL QUALITY
-                                </a>
-                                
-                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);">
-                                    📁 View in Google Drive
-                                </a>
-                            </div>
-                            
-                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
-                                    <strong>💡 PRO TIP:</strong> Click <strong>"STREAM NOW"</strong> to watch immediately without downloading. 
-                                    The Google Drive link may show "processing" for a while - that's normal!
-                                </p>
+                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">⚡ STREAM NOW</a>
+                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">⬇️ DOWNLOAD</a>
+                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">📁 Drive</a>
                             </div>
                         </div>
                     </div>
                 `
             });
-            console.log('✅ Email notification sent with instant access links');
+            console.log('✅ Email sent');
         } catch (emailError) {
-            console.error('⚠️  Email notification failed:', emailError.message);
+            console.error('⚠️  Email failed:', emailError.message);
         }
-
-        // Cleanup
         if (fs.existsSync(videoPath)) {
             fs.unlinkSync(videoPath);
-            console.log('✅ Temporary file cleaned up');
+            console.log('✅ Temp file cleaned');
         }
-
         res.json({
             success: true,
             fileId: fileId,
@@ -813,24 +490,16 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             viewLink: viewLink,
             downloadLink: directDownloadLink,
             streamLink: streamUrl,
-            embedLink: embedLink,
-            thumbnailLink: thumbnailLink,
-            metadata: videoMetadata,  // FIXED: Changed from videoInfo
+            metadata: videoMetadata,
             createdTime: driveResponse.data.createdTime
         });
-        
     } catch (error) {
         console.error('❌ Video upload error:', error);
-        
         if (videoPath && fs.existsSync(videoPath)) {
             try {
                 fs.unlinkSync(videoPath);
-                console.log('✅ Cleaned up failed upload file');
-            } catch (cleanupError) {
-                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
-            }
+            } catch (cleanupError) {}
         }
-        
         res.status(500).json({
             success: false,
             error: error.message,
@@ -838,202 +507,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 driver: req.body.driverName,
                 vin: req.body.vin,
                 inspectionType: req.body.inspectionType,
-                receivedFile: !!req.file,
-                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
-            }
-        });
-    }
-});
-
-        // ============================================
-        // GENERATE ALL ACCESS LINKS
-        // ============================================
-        
-        // Get direct streaming URL (no processing needed)
-        const streamUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        
-        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
-        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
-        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
-
-        console.log('📥 Generated access links:');
-        console.log(`   Stream URL: ${streamUrl}`);
-        console.log(`   View: ${viewLink}`);
-        console.log(`   Download: ${directDownloadLink}`);
-
-        // ============================================
-        // EMAIL NOTIFICATION WITH ALL LINKS
-        // ============================================
-        
-        try {
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
-            });
-            
-            const videoInfo = driveResponse.data.videoMediaMetadata || {};
-            const videoDuration = videoInfo.durationMillis ? `${(videoInfo.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
-            
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: process.env.EMAIL_USER,
-                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
-                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
-                            <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
-                            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
-                        </div>
-                        
-                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
-                            
-                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${driverName}</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${vin}</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${inspectionType}</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">File Name:</td>
-                                    <td style="padding: 12px; color: #1f2937; font-size: 12px; word-break: break-all;">${fileName}</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${videoDuration}</td>
-                                </tr>
-                                <tr style="background: #f3f4f6;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td>
-                                    <td style="padding: 12px; color: #1f2937;">${uploadTime}s</td>
-                                </tr>
-                                <tr style="background: white;">
-                                    <td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td>
-                                    <td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td>
-                                </tr>
-                            </table>
-                            
-                            <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
-                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS OPTIONS</h3>
-                                <p style="color: #1e3a8a; margin: 0 0 8px 0; font-size: 13px; line-height: 1.6;">
-                                    <strong>✅ No waiting for Google processing!</strong><br>
-                                    Your video is ready to view right now using any of these methods:
-                                </p>
-                            </div>
-                            
-                            <div style="text-align: center; margin: 25px 0;">
-                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
-                                    ⚡ STREAM NOW (Instant!)
-                                </a>
-                                
-                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                                    ⬇️ DOWNLOAD FULL QUALITY
-                                </a>
-                                
-                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);">
-                                    📁 View in Google Drive
-                                </a>
-                            </div>
-                            
-                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
-                                    <strong>💡 PRO TIP:</strong> Click <strong>"STREAM NOW"</strong> to watch immediately without downloading. 
-                                    Click <strong>"DOWNLOAD"</strong> to save the full 1080p file to your computer. 
-                                    The Google Drive link may show "processing" for a while - that's normal!
-                                </p>
-                            </div>
-                            
-                            <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 20px;">
-                                <h4 style="color: #4b5563; margin: 0 0 8px 0; font-size: 13px;">📊 TECHNICAL INFO</h4>
-                                <p style="margin: 0; color: #6b7280; font-size: 12px; line-height: 1.5;">
-                                    • Codec: H.265 (HEVC) for optimal quality/size ratio<br>
-                                    • Resolution: 1920x1080 (Full HD)<br>
-                                    • File ID: ${fileId}<br>
-                                    • Uploaded: ${new Date().toLocaleString()}
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <div style="text-align: center; padding: 20px; color: #9ca3af; font-size: 12px;">
-                            <p style="margin: 0;">SLGP Fleet Management System</p>
-                            <p style="margin: 5px 0 0 0;">Automated Video Inspection Upload</p>
-                        </div>
-                    </div>
-                `
-            });
-            console.log('✅ Email notification sent with instant access links');
-        } catch (emailError) {
-            console.error('⚠️  Email notification failed:', emailError.message);
-        }
-
-        // ============================================
-        // CLEANUP & RESPONSE
-        // ============================================
-        
-        if (fs.existsSync(videoPath)) {
-            fs.unlinkSync(videoPath);
-            console.log('✅ Temporary file cleaned up');
-        }
-
-        res.json({
-            success: true,
-            fileId: fileId,
-            fileName: fileName,
-            fileSize: fileSizeMB,
-            uploadTime: uploadTime,
-            viewLink: viewLink,
-            downloadLink: directDownloadLink,
-            streamLink: streamUrl,
-            embedLink: embedLink,
-            thumbnailLink: thumbnailLink,
-            metadata: videoInfo,
-            createdTime: driveResponse.data.createdTime
-        });
-        
-    } catch (error) {
-        console.error('❌ Video upload error:', error);
-        
-        if (videoPath && fs.existsSync(videoPath)) {
-            try {
-                fs.unlinkSync(videoPath);
-                console.log('✅ Cleaned up failed upload file');
-            } catch (cleanupError) {
-                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
-            }
-        }
-        
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            details: {
-                driver: req.body.driverName,
-                vin: req.body.vin,
-                inspectionType: req.body.inspectionType,
-                receivedFile: !!req.file,
-                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
+                receivedFile: !!req.file
             }
         });
     }
 });
 
 // ============================================
-// API ROUTES - PUSH NOTIFICATIONS
+// PUSH NOTIFICATIONS
 // ============================================
-
 app.get('/vapid-key', (req, res) => {
     res.json({ publicKey: publicVapidKey });
 });
@@ -1042,14 +524,12 @@ app.post('/subscribe', (req, res) => {
     try {
         const subscription = req.body;
         let subs = fs.existsSync(SUBSCRIPTION_FILE) ? JSON.parse(fs.readFileSync(SUBSCRIPTION_FILE)) : [];
-        
         const exists = subs.some(s => JSON.stringify(s) === JSON.stringify(subscription));
         if (!exists) {
             subs.push(subscription);
             fs.writeFileSync(SUBSCRIPTION_FILE, JSON.stringify(subs));
             console.log('✅ Push subscription added');
         }
-        
         res.json({ success: true });
     } catch (e) {
         console.error('Subscription error:', e);
@@ -1058,38 +538,30 @@ app.post('/subscribe', (req, res) => {
 });
 
 // ============================================
-// API ROUTES - VERSION (AUTO-REFRESH SYSTEM)
+// VERSION ENDPOINT
 // ============================================
-
 app.get('/version', (req, res) => {
     res.json(BUILD_INFO);
 });
 
 // ============================================
-// HTML PAGE ROUTES
+// HTML PAGES
 // ============================================
-
 app.get('/video', (req, res) => {
-    console.log('📍 GET /video');
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
 app.get('/success', (req, res) => {
-    console.log('📍 GET /success');
     res.sendFile(path.join(__dirname, 'success.html'));
 });
 
 app.get('/alerts', (req, res) => {
-    console.log('📍 GET /alerts');
     res.sendFile(path.join(__dirname, 'alerts.html'));
 });
 
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-    console.log(`📍 GET /report?mode=${mode}`);
-    
     let filePath;
-    
     if (mode === 'issue') {
         filePath = path.join(__dirname, 'report-issue.html');
     } else if (mode === 'accident') {
@@ -1097,15 +569,11 @@ app.get('/report', (req, res) => {
     } else if (mode === 'insurance') {
         filePath = path.join(__dirname, 'insurance.html');
     } else {
-        console.error('❌ Unknown report mode:', mode);
         return res.status(404).send('Unknown report type');
     }
-    
     if (fs.existsSync(filePath)) {
-        console.log('✅ Serving:', filePath);
         res.sendFile(filePath);
     } else {
-        console.error('❌ File not found:', filePath);
         res.status(404).send(`File not found: ${mode}`);
     }
 });
@@ -1113,11 +581,10 @@ app.get('/report', (req, res) => {
 // ============================================
 // STATIC FILES
 // ============================================
-
 app.use(express.static(__dirname, {
     setHeaders: (res, filepath) => {
         if (filepath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
         }
@@ -1127,20 +594,14 @@ app.use(express.static(__dirname, {
 // ============================================
 // ROOT ROUTE
 // ============================================
-
 app.get('/', (req, res) => {
-    console.log('📍 GET / - Serving menu.html');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    
     const menuPath = path.join(__dirname, 'menu.html');
-    
     if (fs.existsSync(menuPath)) {
-        console.log('✅ Serving menu.html from:', menuPath);
         res.sendFile(menuPath);
     } else {
-        console.error('❌ menu.html not found at:', menuPath);
         res.status(404).send('menu.html not found');
     }
 });
@@ -1148,45 +609,34 @@ app.get('/', (req, res) => {
 // ============================================
 // CRON JOB - DAILY SUMMARY
 // ============================================
-
 cron.schedule('30 23 * * *', async () => {
     try {
         console.log('🕐 Running daily summary...');
-        
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
         if (fs.existsSync(GATE_LOG_FILE)) {
             const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
             gateLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
             fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([]));
         }
-        
         summaryText += "\n--- ARRIVAL LOGS ---\n";
         if (fs.existsSync(ARRIVAL_LOG_FILE)) {
             const arrLogs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE));
             arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
             fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify([]));
         }
-        
         if (!fs.existsSync(DAILY_LOG_FILE)) return;
-        
         const allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
         if (allLogs.length === 0 && summaryText.length < 40) return;
-        
         const transporter = nodemailer.createTransport({
             service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
-        
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
             subject: `DAILY SUMMARY: ${new Date().toLocaleDateString()}`,
             text: `Daily Summary\nTotal Reports: ${allLogs.length}\n${summaryText}`
         });
-        
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify([]));
         console.log('✅ Daily summary sent');
     } catch (e) {
@@ -1197,7 +647,6 @@ cron.schedule('30 23 * * *', async () => {
 // ============================================
 // ERROR HANDLER
 // ============================================
-
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
     res.status(500).json({
@@ -1210,19 +659,16 @@ app.use((err, req, res, next) => {
 // ============================================
 // START SERVER
 // ============================================
-
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  Enhanced Video Upload with Direct Stream║
+║  Enhanced Video Upload - FIXED           ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
-║  Built: ${BUILD_INFO.buildDate}
-║  Node: ${BUILD_INFO.nodeVersion}
 ╚══════════════════════════════════════════╝
 
 ✅ Server started
@@ -1231,47 +677,21 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
-⚠️  NO AUTHENTICATION - Direct access enabled
 
 📹 ENHANCED Video Upload Features:
    • ⚡ Direct streaming URL (NO processing wait!)
    • H.265 (HEVC) codec optimization
-   • Resumable uploads for reliability
    • Immediate full-quality download links
    • Multiple access methods in email
-   • Detailed metadata tracking
    • 200MB file size limit
-   • Automatic retry on failure
    • Rich HTML email notifications
 
-🔗 Access Methods:
-   • Stream URL: Instant playback (no download)
-   • Download: Full 1080p file
-   • Drive View: Traditional Drive interface
-   • Embed: For future integration
-
-🔄 Auto-refresh features:
-   • Version checking every 30s
-   • Automatic client refresh on deploy
-
 🌐 Ready at: http://localhost:${PORT}
-
-📍 Routes configured:
-   GET  /                → menu.html
-   GET  /video          → video.html (H.265 optimized)
-   GET  /success        → success.html
-   GET  /alerts         → alerts.html
-   GET  /report?mode=   → accident/issue/insurance
-   GET  /version        → Build info
-   POST /upload-to-google-drive (ENHANCED - Direct Stream)
-   POST /log-gate-check
-   POST /log-arrival-check
-   POST /submit-report
     `);
 });
 
 process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received - shutting down gracefully');
+    console.log('⚠️  SIGTERM - shutting down gracefully');
     process.exit(0);
 });
 
@@ -1281,5 +701,5 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection:', promise, reason);
 });
