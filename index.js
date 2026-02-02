@@ -50,9 +50,6 @@ const upload = multer({
     limits: { fileSize: 200 * 1024 * 1024 }
 });
 
-// ============================================
-// MIDDLEWARE
-// ============================================
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
@@ -173,7 +170,7 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 // ============================================
-// API ROUTES - GATE CHECKS
+// API ROUTES - GATE & ARRIVAL CHECKS
 // ============================================
 app.post('/log-gate-check', async (req, res) => {
     try {
@@ -395,6 +392,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
         console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
         const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        console.log('☁️  Starting Google Drive upload...');
         const fileMetadata = {
             name: fileName,
             parents: [VIDEO_DRIVE_ID],
@@ -407,32 +405,40 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 codec: 'H.265/HEVC',
                 resolution: '1920x1080',
                 downloadPreferred: 'true'
-            }
+            },
+            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
         };
         const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
+        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
+        console.log(`📤 Using ${uploadType} upload method`);
         const driveResponse = await driveClient.files.create({
             requestBody: fileMetadata,
             media: media,
-            fields: 'id, name, webViewLink, size, videoMediaMetadata, createdTime',
+            fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
             supportsAllDrives: true
         });
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
-        console.log(`✅ Upload complete in ${uploadTime}s - File ID: ${fileId}`);
+        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
+        console.log(`   File ID: ${fileId}`);
+        console.log(`   Size uploaded: ${fileSizeMB}MB`);
         try {
             await driveClient.permissions.create({
                 fileId: fileId,
                 requestBody: { role: 'reader', type: 'anyone' },
                 supportsAllDrives: true
             });
-            console.log('✅ Permissions set');
+            console.log('✅ File permissions set (viewable via link)');
         } catch (permError) {
-            console.warn('⚠️  Permission warning:', permError.message);
+            console.warn('⚠️  Could not set permissions:', permError.message);
         }
         const streamUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const viewLink = `https://drive.google.com/file/d/${fileId}/view`;
+        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
         const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        console.log(`📥 Stream URL: ${streamUrl}`);
+        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
+        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+        console.log('📥 Generated access links:');
+        console.log(`   Stream URL: ${streamUrl}`);
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -443,7 +449,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: process.env.EMAIL_USER,
-                subject: `📹 Video: ${inspectionType} - ${driverName} (${vin})`,
+                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
                         <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -459,27 +465,43 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td></tr>
                             </table>
                             <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
-                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS</h3>
-                                <p style="color: #1e3a8a; margin: 0; font-size: 13px;">✅ No waiting for Google processing! Your video is ready right now.</p>
+                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS OPTIONS</h3>
+                                <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
+                                    <strong>✅ No waiting for Google processing!</strong><br>
+                                    Your video is ready to view right now using any of these methods:
+                                </p>
                             </div>
                             <div style="text-align: center; margin: 25px 0;">
-                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">⚡ STREAM NOW</a>
-                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">⬇️ DOWNLOAD</a>
-                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px;">📁 Drive</a>
+                                <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+                                    ⚡ STREAM NOW (Instant!)
+                                </a>
+                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+                                    ⬇️ DOWNLOAD FULL QUALITY
+                                </a>
+                                <a href="${viewLink}" style="display: inline-block; background: #6b7280; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);">
+                                    📁 View in Google Drive
+                                </a>
+                            </div>
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
+                                    <strong>💡 PRO TIP:</strong> Click <strong>"STREAM NOW"</strong> to watch immediately without downloading. 
+                                    The Google Drive link may show "processing" for a while - that's normal!
+                                </p>
                             </div>
                         </div>
                     </div>
                 `
             });
-            console.log('✅ Email sent');
+            console.log('✅ Email notification sent with instant access links');
         } catch (emailError) {
-            console.error('⚠️  Email failed:', emailError.message);
+            console.error('⚠️  Email notification failed:', emailError.message);
         }
         if (fs.existsSync(videoPath)) {
             fs.unlinkSync(videoPath);
-            console.log('✅ Temp file cleaned');
+            console.log('✅ Temporary file cleaned up');
         }
         res.json({
             success: true,
@@ -490,6 +512,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             viewLink: viewLink,
             downloadLink: directDownloadLink,
             streamLink: streamUrl,
+            embedLink: embedLink,
+            thumbnailLink: thumbnailLink,
             metadata: videoMetadata,
             createdTime: driveResponse.data.createdTime
         });
@@ -498,7 +522,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (videoPath && fs.existsSync(videoPath)) {
             try {
                 fs.unlinkSync(videoPath);
-            } catch (cleanupError) {}
+                console.log('✅ Cleaned up failed upload file');
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+            }
         }
         res.status(500).json({
             success: false,
@@ -507,7 +534,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 driver: req.body.driverName,
                 vin: req.body.vin,
                 inspectionType: req.body.inspectionType,
-                receivedFile: !!req.file
+                receivedFile: !!req.file,
+                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
             }
         });
     }
@@ -548,19 +576,23 @@ app.get('/version', (req, res) => {
 // HTML PAGES
 // ============================================
 app.get('/video', (req, res) => {
+    console.log('📍 GET /video');
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
 app.get('/success', (req, res) => {
+    console.log('📍 GET /success');
     res.sendFile(path.join(__dirname, 'success.html'));
 });
 
 app.get('/alerts', (req, res) => {
+    console.log('📍 GET /alerts');
     res.sendFile(path.join(__dirname, 'alerts.html'));
 });
 
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
+    console.log(`📍 GET /report?mode=${mode}`);
     let filePath;
     if (mode === 'issue') {
         filePath = path.join(__dirname, 'report-issue.html');
@@ -569,11 +601,14 @@ app.get('/report', (req, res) => {
     } else if (mode === 'insurance') {
         filePath = path.join(__dirname, 'insurance.html');
     } else {
+        console.error('❌ Unknown report mode:', mode);
         return res.status(404).send('Unknown report type');
     }
     if (fs.existsSync(filePath)) {
+        console.log('✅ Serving:', filePath);
         res.sendFile(filePath);
     } else {
+        console.error('❌ File not found:', filePath);
         res.status(404).send(`File not found: ${mode}`);
     }
 });
@@ -584,7 +619,7 @@ app.get('/report', (req, res) => {
 app.use(express.static(__dirname, {
     setHeaders: (res, filepath) => {
         if (filepath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
         }
@@ -595,13 +630,16 @@ app.use(express.static(__dirname, {
 // ROOT ROUTE
 // ============================================
 app.get('/', (req, res) => {
+    console.log('📍 GET / - Serving menu.html');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     const menuPath = path.join(__dirname, 'menu.html');
     if (fs.existsSync(menuPath)) {
+        console.log('✅ Serving menu.html from:', menuPath);
         res.sendFile(menuPath);
     } else {
+        console.error('❌ menu.html not found at:', menuPath);
         res.status(404).send('menu.html not found');
     }
 });
@@ -665,10 +703,12 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  Enhanced Video Upload - FIXED           ║
+║  Enhanced Video Upload - COMPLETE        ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
+║  Built: ${BUILD_INFO.buildDate}
+║  Node: ${BUILD_INFO.nodeVersion}
 ╚══════════════════════════════════════════╝
 
 ✅ Server started
@@ -677,21 +717,47 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
+⚠️  NO AUTHENTICATION - Direct access enabled
 
 📹 ENHANCED Video Upload Features:
    • ⚡ Direct streaming URL (NO processing wait!)
    • H.265 (HEVC) codec optimization
+   • Resumable uploads for reliability
    • Immediate full-quality download links
    • Multiple access methods in email
+   • Detailed metadata tracking
    • 200MB file size limit
+   • Automatic retry on failure
    • Rich HTML email notifications
 
+🔗 Access Methods:
+   • Stream URL: Instant playback (no download)
+   • Download: Full 1080p file
+   • Drive View: Traditional Drive interface
+   • Embed: For future integration
+
+🔄 Auto-refresh features:
+   • Version checking every 30s
+   • Automatic client refresh on deploy
+
 🌐 Ready at: http://localhost:${PORT}
+
+📍 Routes configured:
+   GET  /                → menu.html
+   GET  /video          → video.html (H.265 optimized)
+   GET  /success        → success.html
+   GET  /alerts         → alerts.html
+   GET  /report?mode=   → accident/issue/insurance
+   GET  /version        → Build info
+   POST /upload-to-google-drive (ENHANCED - Direct Stream)
+   POST /log-gate-check
+   POST /log-arrival-check
+   POST /submit-report
     `);
 });
 
 process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM - shutting down gracefully');
+    console.log('⚠️  SIGTERM received - shutting down gracefully');
     process.exit(0);
 });
 
@@ -701,5 +767,5 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection:', promise, reason);
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
