@@ -315,8 +315,11 @@
 <script>
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
+    // ============================================
+    // CONFIGURATION - HIGH QUALITY VIDEO SETTINGS
+    // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 10000000,     ← NEW: 10 Mbps
+        VIDEO_BITRATE: 10000000,  // 10 Mbps - HIGH QUALITY (was 2.5 Mbps)
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -832,6 +835,7 @@
 
             requestWakeLock();
 
+            // Codec selection with H.265 first for best compression at high bitrate
             const codecOptions = [
                 { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
                 { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
@@ -848,7 +852,7 @@
                 return;
             }
 
-            console.log(`🎥 Recording with: ${selectedOption.name}`);
+            console.log(`🎥 Recording with: ${selectedOption.name} @ ${(CONFIG.VIDEO_BITRATE / 1000000).toFixed(1)} Mbps`);
 
             try {
                 mediaRecorder = new MediaRecorder(currentStream, {
@@ -1045,4 +1049,3 @@
 
 </body>
 </html>
-
