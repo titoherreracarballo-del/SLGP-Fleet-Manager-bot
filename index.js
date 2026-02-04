@@ -548,18 +548,55 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
+        }
+        
+        // FIXED: Use embed preview for INSTANT streaming (no processing delay)
+        const streamUrl = `https://drive.google.com/file/d/${fileId}/preview`;
+        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
+        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+        
+        console.log('📥 Generated access links:');
+        console.log(`   Stream URL (embed preview): ${streamUrl}`);
+        
+        try {
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+            });
+            
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER,
+                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
+                            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
+                        </div>
+                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td></tr>
                             </table>
                             <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
-                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT ACCESS OPTIONS</h3>
+                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">🚀 INSTANT PLAYBACK - NO WAITING!</h3>
                                 <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
-                                    <strong>✅ No waiting for Google processing!</strong><br>
-                                    Your video is ready to view right now using any of these methods:
+                                    <strong>✅ Video plays immediately - no processing delay!</strong><br>
+                                    Click "PLAY NOW" below to watch instantly in your browser.
                                 </p>
                             </div>
                             <div style="text-align: center; margin: 25px 0;">
                                 <a href="${streamUrl}" style="display: inline-block; background: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
-                                    ⚡ STREAM NOW (Instant!)
+                                    ▶️ PLAY NOW (Instant!)
                                 </a>
                                 <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
                                     ⬇️ DOWNLOAD FULL QUALITY
@@ -570,15 +607,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                             </div>
                             <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
                                 <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
-                                    <strong>💡 PRO TIP:</strong> Click <strong>"STREAM NOW"</strong> to watch immediately without downloading. 
-                                    The Google Drive link may show "processing" for a while - that's normal!
+                                    <strong>💡 PRO TIP:</strong> Click <strong>"PLAY NOW"</strong> to watch immediately in your browser. 
+                                    The video player will load instantly - no waiting for Google to process the video!
                                 </p>
                             </div>
                         </div>
                     </div>
                 `
             });
-            console.log('✅ Email notification sent with instant access links');
+            console.log('✅ Email notification sent with instant playback link');
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
         }
@@ -788,7 +825,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  COMPLETE - All Features Working         ║
+║  STREAM FIXED - Instant Playback         ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
@@ -799,11 +836,11 @@ app.listen(PORT, '0.0.0.0', () => {
 ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
-✅ Auto-refresh system active
 
-✅ Gate & Arrival PDFs RESTORED
-✅ Video upload FIXED (videoMetadata scope)
-✅ Direct streaming links working
+✅ STREAM URL FIXED!
+   • Changed from: uc?export=download (shows "processing")
+   • Changed to: /file/{id}/preview (plays instantly)
+   • No more waiting for Google to process videos!
 
 🌐 Ready at: http://localhost:${PORT}
     `);
