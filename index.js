@@ -414,8 +414,101 @@ app.post('/submit-report', async (req, res) => {
         });
         if (data.reportType === 'ACCIDENT_REPORT') {
             let page = doc.addPage([600, 800]);
+            let y = 780;
+            
+            // Header
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
             page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            page.drawText(`Filed: ${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}`, 
+                { x: 30, y: 730, size: 10, font: fontReg, color: rgb(1,1,1) });
+            
+            y = 680;
+            
+            // Driver & Vehicle Info
+            page.drawText('DRIVER & VEHICLE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            page.drawText(`Driver Name: ${data.driverName || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+            page.drawText(`VIN Last 4: ${data.vinLast4 || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+            page.drawText(`Incident Type: ${data.incidentType || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 25;
+            
+            // Location Info
+            page.drawText('LOCATION INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            if (data.locationData) {
+                page.drawText(`Address: ${data.locationData.street || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+                y -= 15;
+                page.drawText(`City: ${data.locationData.city || 'N/A'}, State: ${data.locationData.state || 'N/A'}, Zip: ${data.locationData.zip || 'N/A'}`, 
+                    { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+                y -= 15;
+                page.drawText(`GPS: ${data.locationData.gpsLat || 'N/A'}, ${data.locationData.gpsLng || 'N/A'}`, 
+                    { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+                y -= 15;
+            }
+            page.drawText(`Weather: ${data.weather || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 25;
+            
+            // Case Numbers
+            page.drawText('CASE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            page.drawText(`Police Report #: ${data.policeReport || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+            page.drawText(`LMET Case #: ${data.lmetCase || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 25;
+            
+            // Statement
+            page.drawText('DETAILED STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            const statement = data.statement || 'No statement provided';
+            const statementLines = wrapText(statement, fontReg, 10, 540);
+            for (let line of statementLines) {
+                if (y < 50) {
+                    page = doc.addPage([600, 800]);
+                    y = 780;
+                }
+                page.drawText(line, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+                y -= 15;
+            }
+            y -= 10;
+            
+            // Photos Info
+            if (data.photos && data.photos.length > 0) {
+                page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
+                    { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                y -= 25;
+            }
+            
+            // Signature
+            if (data.signature) {
+                page.drawText('DRIVER SIGNATURE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                try {
+                    const sigImage = await doc.embedPng('data:image/png;base64,' + data.signature);
+                    page.drawImage(sigImage, { x: 30, y: y - 60, width: 200, height: 60 });
+                    y -= 70;
+                } catch (sigErr) {
+                    page.drawText('(Signature image error)', { x: 30, y, size: 10, font: fontReg, color: rgb(0.5,0,0) });
+                    y -= 20;
+                }
+            }
+            
+            // Affidavit & Checklist
+            if (data.affidavit) {
+                if (y < 150) {
+                    page = doc.addPage([600, 800]);
+                    y = 780;
+                }
+                page.drawText('AFFIDAVIT ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                const affLines = wrapText(data.affidavit, fontReg, 8, 540);
+                for (let line of affLines.slice(0, 10)) {
+                    page.drawText(line, { x: 30, y, size: 8, font: fontReg, color: rgb(0,0,0) });
+                    y -= 12;
+                }
+            }
+            
             const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
@@ -431,8 +524,49 @@ app.post('/submit-report', async (req, res) => {
             fs.unlinkSync(pdfPath);
         } else {
             let page = doc.addPage([600, 800]);
+            let y = 780;
+            
+            // Header
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
             page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+            page.drawText(`Filed: ${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}`, 
+                { x: 30, y: 730, size: 10, font: fontReg, color: rgb(1,1,1) });
+            
+            y = 680;
+            
+            // Driver & Vehicle Info
+            page.drawText('DRIVER & VEHICLE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            page.drawText(`Driver Name: ${data.driverName || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+            page.drawText(`VIN Last 4: ${data.vinLast4 || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+            page.drawText(`Report Type: ${data.reportType || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 25;
+            
+            // Issue Details
+            if (data.otherDescription) {
+                page.drawText('ISSUE DESCRIPTION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                const descLines = wrapText(data.otherDescription, fontReg, 10, 540);
+                for (let line of descLines) {
+                    if (y < 50) {
+                        page = doc.addPage([600, 800]);
+                        y = 780;
+                    }
+                    page.drawText(line, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+                    y -= 15;
+                }
+                y -= 10;
+            }
+            
+            // Photos Info
+            if (data.photos && data.photos.length > 0) {
+                page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
+                    { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                y -= 25;
+            }
+            
             const pdfPath = path.join(UPLOAD_DIR, `Report_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
             await transporter.sendMail({
