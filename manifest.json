@@ -1,20 +1,49 @@
 {
   "name": "SLGP Fleet Health",
   "short_name": "FleetCheck",
+  "description": "Fleet management system for video inspections, reports, and gate checks",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0e17",
   "theme_color": "#0066ff",
+  "orientation": "portrait",
+  "scope": "/",
   "icons": [
     {
       "src": "icon.jpg",
       "sizes": "192x192",
-      "type": "image/jpeg"
+      "type": "image/jpeg",
+      "purpose": "any maskable"
     },
     {
       "src": "icon.jpg",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Fleet Inspection",
+      "short_name": "Inspection",
+      "description": "Start video inspection",
+      "url": "/video",
+      "icons": [{ "src": "icon.jpg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Accident Report",
+      "short_name": "Accident",
+      "description": "File accident report",
+      "url": "/report?mode=accident",
+      "icons": [{ "src": "icon.jpg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Issue Report",
+      "short_name": "Issue",
+      "description": "File issue report",
+      "url": "/report?mode=issue",
+      "icons": [{ "src": "icon.jpg", "sizes": "192x192" }]
     }
   ]
 }
