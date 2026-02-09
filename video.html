@@ -569,6 +569,7 @@
 
             const strategies = [];
 
+            // Strategy 1: Rear camera with exact device ID (highest priority)
             if (rearCamera) {
                 strategies.push({
                     name: 'Rear Camera (1080p)',
@@ -584,46 +585,69 @@
                 });
             }
 
-            strategies.push(
-                {
-                    name: 'Environment (1080p)',
-                    constraints: {
-                        video: {
-                            facingMode: { exact: "environment" },
-                            width: { ideal: CONFIG.VIDEO_WIDTH },
-                            height: { ideal: CONFIG.VIDEO_HEIGHT },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Environment (720p)',
-                    constraints: {
-                        video: {
-                            facingMode: { ideal: "environment" },
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Any Camera (480p)',
-                    constraints: {
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 }
-                        },
-                        audio: true
-                    }
-                },
-                {
-                    name: 'Basic Fallback',
-                    constraints: { video: true, audio: true }
+            // Strategy 2: Environment facing mode (exact) with 1080p
+            strategies.push({
+                name: 'Environment (1080p exact)',
+                constraints: {
+                    video: {
+                        facingMode: { exact: "environment" },
+                        width: { ideal: CONFIG.VIDEO_WIDTH },
+                        height: { ideal: CONFIG.VIDEO_HEIGHT },
+                        frameRate: { ideal: 30, max: 30 }
+                    },
+                    audio: true
                 }
-            );
+            });
+
+            // Strategy 3: Environment facing mode (ideal) with 1080p
+            strategies.push({
+                name: 'Environment (1080p ideal)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: CONFIG.VIDEO_WIDTH },
+                        height: { ideal: CONFIG.VIDEO_HEIGHT },
+                        frameRate: { ideal: 30, max: 30 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 4: Environment with 720p
+            strategies.push({
+                name: 'Environment (720p)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30, max: 30 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 5: Any rear-facing camera (480p fallback)
+            strategies.push({
+                name: 'Rear Fallback (480p)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 6: Absolute last resort (any camera)
+            strategies.push({
+                name: 'Basic Fallback (any camera)',
+                constraints: { 
+                    video: true, 
+                    audio: true 
+                }
+            });
 
             for (let i = 0; i < strategies.length; i++) {
                 const strategy = strategies[i];
@@ -639,10 +663,19 @@
                     const settings = videoTrack.getSettings();
                     
                     console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
+                    console.log(`   Facing mode: ${settings.facingMode || 'unknown'}`);
 
-                    if (i < strategies.length - 2 && settings.facingMode === 'user') {
-                        console.log('⚠️  Got front camera, trying next...');
-                        videoTrack.stop();
+                    // CRITICAL FIX: Reject front camera for ALL strategies except the last one
+                    if (i < strategies.length - 1 && settings.facingMode === 'user') {
+                        console.log('⚠️  Front camera detected, trying next strategy...');
+                        stream.getTracks().forEach(track => track.stop());
+                        continue;
+                    }
+
+                    // CRITICAL FIX: Reject low resolution if we're not on the last 2 strategies
+                    if (i < strategies.length - 2 && settings.width < 1280) {
+                        console.log(`⚠️  Low resolution (${settings.width}x${settings.height}), trying next strategy...`);
+                        stream.getTracks().forEach(track => track.stop());
                         continue;
                     }
 
