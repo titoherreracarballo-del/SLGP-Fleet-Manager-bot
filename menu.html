@@ -109,7 +109,17 @@
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
-                <input type="text" id="da-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate('gate')">
+                <input 
+                    type="text" 
+                    id="da-name" 
+                    class="ack-input" 
+                    placeholder="Enter Full Name" 
+                    oninput="validateGate('gate')"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    data-form-type="other">
             </div>
             <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
         </div>
@@ -135,7 +145,7 @@
                 SLGP is not responsible for any personal items left behind.<br><br>
                 Drivers must also ensure the following before leaving the lot:<br>
                 Do not leave headlights or hazard lights on. Confirm all exterior and interior lights are turned off before parking your vehicle.<br>
-                Any and all vehicle issues must be reported using the “Report Issue” feature on the Fleet Check app.<br><br>
+                Any and all vehicle issues must be reported using the "Report Issue" feature on the Fleet Check app.<br><br>
                 For operators of EDVs, you are required to:<br>
                 Plug in the vehicle upon return<br>
                 Ensure all doors are fully closed<br>
@@ -144,7 +154,17 @@
             </div>
             <div class="ack-container">
                 <label class="ack-label">DA Acknowledgment</label>
-                <input type="text" id="arr-name" class="ack-input" placeholder="Enter Full Name" oninput="validateGate('arrival')">
+                <input 
+                    type="text" 
+                    id="arr-name" 
+                    class="ack-input" 
+                    placeholder="Enter Full Name" 
+                    oninput="validateGate('arrival')"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    data-form-type="other">
             </div>
             <button id="arrival-submit" class="gate-btn" onclick="unlockArrival()">Confirm Arrival</button>
         </div>
@@ -183,12 +203,24 @@
             // Departure: 10:00 AM (600) to 6:00 PM (1080)
             if (mins >= 600 && mins < 1080) {
                 if (lastDep && (currentTime - lastDep < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
+                
+                // Clear name field before showing gate
+                document.getElementById('da-name').value = '';
+                document.querySelectorAll('.gate-check').forEach(cb => cb.checked = false);
+                validateGate('gate');
+                
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
             } 
             // Arrival: 6:15 PM (1095) to 9:00 AM (540)
             else if (mins >= 1095 || mins < 540) {
                 if (lastArr && (currentTime - lastArr < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
+                
+                // Clear name field before showing gate
+                document.getElementById('arr-name').value = '';
+                document.querySelectorAll('.arrival-check').forEach(cb => cb.checked = false);
+                validateGate('arrival');
+                
                 document.getElementById('security-gate-arrival').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
             } 
@@ -197,6 +229,20 @@
 
         document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
         document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
+        
+        // Prevent autofill on focus
+        document.addEventListener('DOMContentLoaded', function() {
+            const daName = document.getElementById('da-name');
+            const arrName = document.getElementById('arr-name');
+            
+            daName.addEventListener('focus', function() {
+                this.setAttribute('autocomplete', 'new-password');
+            });
+            
+            arrName.addEventListener('focus', function() {
+                this.setAttribute('autocomplete', 'new-password');
+            });
+        });
         
         // --- FIXED VALIDATION LOGIC ---
         function validateGate(type) {
@@ -284,5 +330,3 @@
 
 </body>
 </html>
-
-
