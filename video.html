@@ -543,10 +543,13 @@
                 }
             }
 
-            await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                .then(stream => {
-                    stream.getTracks().forEach(track => track.stop());
-                });
+            // Request camera permission (prefer rear camera from the start)
+            await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: { ideal: "environment" } }, 
+                audio: false 
+            }).then(stream => {
+                stream.getTracks().forEach(track => track.stop());
+            });
 
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
@@ -563,8 +566,15 @@
                 d.label.toLowerCase().includes('environment')
             );
 
+            // Enhanced fallback: Avoid front cameras even if rear not explicitly labeled
             if (!rearCamera && videoDevices.length > 1) {
-                rearCamera = videoDevices[videoDevices.length - 1];
+                // Try to find camera that's NOT explicitly front-facing
+                rearCamera = videoDevices.find(d => 
+                    !d.label.toLowerCase().includes('front') &&
+                    !d.label.toLowerCase().includes('selfie') &&
+                    !d.label.toLowerCase().includes('user') &&
+                    !d.label.toLowerCase().includes('face')
+                ) || videoDevices[videoDevices.length - 1]; // Last resort
             }
 
             const strategies = [];
@@ -591,8 +601,8 @@
                 constraints: {
                     video: {
                         facingMode: { exact: "environment" },
-                        width: { ideal: CONFIG.VIDEO_WIDTH },
-                        height: { ideal: CONFIG.VIDEO_HEIGHT },
+                        width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
+                        height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
                         frameRate: { ideal: 30, max: 30 }
                     },
                     audio: true
@@ -605,8 +615,8 @@
                 constraints: {
                     video: {
                         facingMode: { ideal: "environment" },
-                        width: { ideal: CONFIG.VIDEO_WIDTH },
-                        height: { ideal: CONFIG.VIDEO_HEIGHT },
+                        width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
+                        height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
                         frameRate: { ideal: 30, max: 30 }
                     },
                     audio: true
@@ -661,9 +671,15 @@
                     
                     const videoTrack = stream.getVideoTracks()[0];
                     const settings = videoTrack.getSettings();
+                    const capabilities = videoTrack.getCapabilities();
                     
                     console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
                     console.log(`   Facing mode: ${settings.facingMode || 'unknown'}`);
+                    console.log(`   Capabilities: ${JSON.stringify({
+                        width: capabilities.width,
+                        height: capabilities.height,
+                        facingMode: capabilities.facingMode
+                    })}`);
 
                     // CRITICAL FIX: Reject front camera for ALL strategies except the last one
                     if (i < strategies.length - 1 && settings.facingMode === 'user') {
@@ -675,6 +691,13 @@
                     // CRITICAL FIX: Reject low resolution if we're not on the last 2 strategies
                     if (i < strategies.length - 2 && settings.width < 1280) {
                         console.log(`⚠️  Low resolution (${settings.width}x${settings.height}), trying next strategy...`);
+                        stream.getTracks().forEach(track => track.stop());
+                        continue;
+                    }
+                    
+                    // ADDITIONAL CHECK: For first 3 strategies, prefer 1080p
+                    if (i < 3 && settings.width < 1920 && settings.height < 1080) {
+                        console.log(`⚠️  Not full 1080p (${settings.width}x${settings.height}), trying next strategy...`);
                         stream.getTracks().forEach(track => track.stop());
                         continue;
                     }
@@ -725,6 +748,16 @@
                     statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
                     statusEl.className = 'ready';
                     statusEl.style.display = 'block';
+                    
+                    // CRITICAL DIAGNOSTIC: Alert user if not 1080p
+                    if (settings.width < 1920 || settings.height < 1080) {
+                        console.warn(`⚠️ WARNING: Camera is ${settings.width}x${settings.height}, not full 1080p!`);
+                        console.warn(`   This may be a phone hardware limitation.`);
+                        console.warn(`   Phone capabilities:`, capabilities.width, capabilities.height);
+                    } else {
+                        console.log(`✅ SUCCESS: Full 1080p camera active!`);
+                    }
+                    
                     setTimeout(() => {
                         if (statusEl.className === 'ready') statusEl.style.display = 'none';
                     }, 3000);
@@ -871,6 +904,7 @@
             // Codec selection with H.265 first for best compression at high bitrate
             const codecOptions = [
                 { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
+                { mimeType: 'video/webm; codecs="av01.0.05M.08,opus"', name: 'AV1' },
                 { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
                 { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High' },
                 { mimeType: 'video/mp4; codecs="avc1"', name: 'H.264' },
