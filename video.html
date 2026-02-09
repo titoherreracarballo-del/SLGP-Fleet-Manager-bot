@@ -688,8 +688,8 @@
                         continue;
                     }
 
-                    // CRITICAL FIX: Reject low resolution if we're not on the last 2 strategies
-                    if (i < strategies.length - 2 && settings.width < 1280) {
+                    // CRITICAL FIX: Reject low resolution if we're not on the last strategy
+                    if (i < strategies.length - 1 && settings.width < 1280) {
                         console.log(`⚠️  Low resolution (${settings.width}x${settings.height}), trying next strategy...`);
                         stream.getTracks().forEach(track => track.stop());
                         continue;
