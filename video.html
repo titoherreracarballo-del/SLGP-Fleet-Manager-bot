@@ -250,6 +250,23 @@
     </div>
 </div>
 
+<div id="frontCameraWarningModal" class="modal">
+    <div class="modal-content modal-red">
+        <span class="warning-icon">📷</span>
+        <div class="modal-title">⚠️ FRONT CAMERA DETECTED</div>
+        <div class="modal-text">
+            <strong>WARNING: The front-facing camera is currently active.</strong><br><br>
+            🔄 Please try the following:<br><br>
+            1️⃣ <strong>Close this page completely</strong> (swipe away from recent apps)<br>
+            2️⃣ <strong>Reopen the Fleet Portal</strong><br>
+            3️⃣ If problem persists, <strong>restart your phone</strong><br><br>
+            📹 Vehicle inspections must use the <strong>rear camera</strong> for proper documentation.<br><br>
+            ⚠️ If rear camera continues to fail, contact fleet management immediately.
+        </div>
+        <button class="modal-btn" onclick="closeFrontCameraWarning()">I Understand - Continue Anyway</button>
+    </div>
+</div>
+
 <div class="container">
     <div class="header-row">
         <a href="/" class="back-link">← Back to Menu</a>
@@ -681,9 +698,20 @@
                         facingMode: capabilities.facingMode
                     })}`);
 
-                    // CRITICAL FIX: Reject front camera for ALL strategies except the last one
-                    if (i < strategies.length - 1 && settings.facingMode === 'user') {
-                        console.log('⚠️  Front camera detected, trying next strategy...');
+                    // CRITICAL FIX: Multi-layer front camera rejection
+                    const isFrontCamera = (
+                        settings.facingMode === 'user' || 
+                        capabilities.facingMode === 'user' ||
+                        (capabilities.facingMode && capabilities.facingMode.includes && capabilities.facingMode.includes('user')) ||
+                        videoTrack.label.toLowerCase().includes('front') ||
+                        videoTrack.label.toLowerCase().includes('selfie') ||
+                        videoTrack.label.toLowerCase().includes('user') ||
+                        videoTrack.label.toLowerCase().includes('face')
+                    );
+                    
+                    // REJECT front camera for ALL strategies except the very last one
+                    if (i < strategies.length - 1 && isFrontCamera) {
+                        console.log('⚠️  Front camera detected (label: "' + videoTrack.label + '", facing: "' + (settings.facingMode || capabilities.facingMode || 'unknown') + '"), trying next strategy...');
                         stream.getTracks().forEach(track => track.stop());
                         continue;
                     }
@@ -756,6 +784,31 @@
                         console.warn(`   Phone capabilities:`, capabilities.width, capabilities.height);
                     } else {
                         console.log(`✅ SUCCESS: Full 1080p camera active!`);
+                    }
+                    
+                    // CRITICAL WARNING: Check if front camera ended up being used
+                    const finalIsFrontCamera = (
+                        settings.facingMode === 'user' || 
+                        capabilities.facingMode === 'user' ||
+                        videoTrack.label.toLowerCase().includes('front') ||
+                        videoTrack.label.toLowerCase().includes('selfie') ||
+                        videoTrack.label.toLowerCase().includes('user')
+                    );
+                    
+                    if (finalIsFrontCamera) {
+                        console.error('❌ CRITICAL: FRONT CAMERA IS ACTIVE!');
+                        console.error('   Camera label:', videoTrack.label);
+                        console.error('   Facing mode:', settings.facingMode || capabilities.facingMode || 'unknown');
+                        console.error('   This phone may not have a rear camera, or rear camera is unavailable.');
+                        statusEl.innerText = `⚠️ FRONT CAMERA (${settings.width}x${settings.height})`;
+                        statusEl.className = 'error';
+                        
+                        // Show warning modal to user
+                        document.getElementById('frontCameraWarningModal').style.display = 'flex';
+                    } else {
+                        console.log(`✅ Rear camera confirmed active`);
+                        console.log(`   Camera label: "${videoTrack.label}"`);
+                        console.log(`   Facing mode: ${settings.facingMode || capabilities.facingMode || 'environment (assumed)'}`);
                     }
                     
                     setTimeout(() => {
@@ -859,6 +912,10 @@
 
     function closeModal() {
         document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
+    }
+    
+    function closeFrontCameraWarning() {
+        document.getElementById('frontCameraWarningModal').style.display = 'none';
     }
 
     function selectType(type) {
@@ -1112,6 +1169,68 @@
             wakeLock.release();
         }
     });
+</script>
+
+<!-- ============================================ -->
+<!-- SERVICE WORKER & AUTO-UPDATE                -->
+<!-- ============================================ -->
+<script>
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                console.log('✅ Service Worker registered');
+                
+                // Auto-update check
+                let localVersion = null;
+                let isRecording = false;
+                
+                // Track recording state
+                const originalStartRecording = window.startRecording;
+                window.startRecording = function() {
+                    isRecording = true;
+                    return originalStartRecording.apply(this, arguments);
+                };
+                
+                const originalStopRecording = window.stopRecording;
+                window.stopRecording = function() {
+                    isRecording = false;
+                    return originalStopRecording.apply(this, arguments);
+                };
+                
+                async function checkForUpdates() {
+                    // Don't interrupt active recording
+                    if (isRecording) {
+                        console.log('⏸️  Skipping update check - recording in progress');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch('/version');
+                        if (res.ok) {
+                            const data = await res.json();
+                            
+                            if (!localVersion) {
+                                localVersion = data.version;
+                            } else if (localVersion !== data.version) {
+                                console.log('🔄 New version detected - reloading...');
+                                window.location.reload(true);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Update check failed:', err);
+                    }
+                }
+                
+                checkForUpdates();
+                setInterval(checkForUpdates, 30000);
+                
+            } catch (error) {
+                console.error('❌ Service Worker registration failed:', error);
+            }
+        });
+    }
 </script>
 
 </body>
