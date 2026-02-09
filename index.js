@@ -170,7 +170,7 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 // ============================================
-// API ROUTES - GATE & ARRIVAL CHECKS (FULL PDF RESTORED)
+// API ROUTES - GATE & ARRIVAL CHECKS (INSTANT RESPONSE - ASYNC EMAIL)
 // ============================================
 app.post('/log-gate-check', async (req, res) => {
     try {
@@ -186,62 +186,66 @@ app.post('/log-gate-check', async (req, res) => {
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 750]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
-        // Background
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
-        
-        // Warning icon and title
-        page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
-
-        // Checklist items with checkboxes
-        const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
-        let yPos = 600;
-        items.forEach(text => {
-            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
-            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
-            yPos -= 30;
-        });
-
-        // Warning box
-        page.drawRectangle({ x: 35, y: 220, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
-        page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
-        page.drawText('Missing items will delay departure.', { x: 45, y: 305, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-        page.drawText('Contact dispatch immediately for support.', { x: 45, y: 290, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-        page.drawText('Safety First: Never depart unprepared.', { x: 45, y: 250, size: 9, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText('All equipment must be verified functional.', { x: 45, y: 235, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-
-        // Acknowledgment section
-        page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
-        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
-        page.drawText('I confirm all departure requirements are met.', { x: 40, y: 75, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
-
-        const pdfBytes = await doc.save();
-        const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
-        fs.writeFileSync(snapshotPath, pdfBytes);
-
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `✅ DEPARTURE CHECKLIST: ${name}`,
-            text: `Receipt attached for DA ${name}.\n\nAll departure requirements confirmed at ${timestamp}.`,
-            attachments: [{ filename: `Departure_Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        
-        fs.unlinkSync(snapshotPath);
+        // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
+
+        // Generate PDF and send email AFTER response (async)
+        setImmediate(async () => {
+            try {
+                const doc = await PDFDocument.create();
+                const page = doc.addPage([400, 750]);
+                const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+                const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+                page.drawRectangle({ x: 0, y: 0, width: 400, height: 750, color: rgb(0.05, 0.08, 0.12) });
+                page.drawText('!', { x: 190, y: 690, size: 50, font: fontBold, color: rgb(1, 0.6, 0) });
+                page.drawText('DEPARTURE REQUIREMENTS', { x: 70, y: 650, size: 16, font: fontBold, color: rgb(1, 0.6, 0) });
+
+                const items = ["Device functional.", "Van bag tools.", "Phone mount.", "Health video.", "Flex DVIC."];
+                let yPos = 600;
+                items.forEach(text => {
+                    page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+                    page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(1, 0.6, 0) });
+                    page.drawText(text, { x: 65, y: yPos + 2, size: 11, font: fontReg, color: rgb(1, 1, 1) });
+                    yPos -= 30;
+                });
+
+                page.drawRectangle({ x: 35, y: 220, width: 330, height: 100, color: rgb(0.12, 0.15, 0.2) });
+                page.drawRectangle({ x: 35, y: 220, width: 4, height: 100, color: rgb(1, 0.6, 0) });
+                page.drawText('Report needs before wave time.', { x: 45, y: 320, size: 9, font: fontBold, color: rgb(0.8, 0.8, 0.8) });
+                page.drawText('Missing items will delay departure.', { x: 45, y: 305, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+                page.drawText('Contact dispatch immediately for support.', { x: 45, y: 290, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+                page.drawText('Safety First: Never depart unprepared.', { x: 45, y: 250, size: 9, font: fontBold, color: rgb(1, 0.6, 0) });
+                page.drawText('All equipment must be verified functional.', { x: 45, y: 235, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+
+                page.drawText('DA ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(1, 0.6, 0) });
+                page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+                page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+                page.drawText('I confirm all departure requirements are met.', { x: 40, y: 75, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
+
+                const pdfBytes = await doc.save();
+                const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
+                fs.writeFileSync(snapshotPath, pdfBytes);
+
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+                });
+                
+                await transporter.sendMail({
+                    from: process.env.EMAIL_USER,
+                    to: ['slgpfleetmanager@gmail.com'],
+                    subject: `✅ DEPARTURE CHECKLIST: ${name}`,
+                    text: `Receipt attached for DA ${name}.\n\nAll departure requirements confirmed at ${timestamp}.`,
+                    attachments: [{ filename: `Departure_Receipt_${name}.pdf`, path: snapshotPath }]
+                });
+                
+                fs.unlinkSync(snapshotPath);
+                console.log(`✅ Gate check PDF emailed for ${name}`);
+            } catch (e) {
+                console.error('Gate check PDF/email error:', e);
+            }
+        });
     } catch (e) {
         console.error('Gate check error:', e);
         res.status(500).json({ success: false, error: e.message });
@@ -262,72 +266,76 @@ app.post('/log-arrival-check', async (req, res) => {
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
 
-        const doc = await PDFDocument.create();
-        const page = doc.addPage([400, 850]);
-        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
-
-        // Background
-        page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
-        
-        // Icon and title
-        page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
-
-        // Checklist items with checkboxes
-        const items = [
-            "Remove trash & belongings.", 
-            "Keys/Power Bank returned.", 
-            "Post-trip DVIC complete.", 
-            "Video uploaded.", 
-            "Lights off.", 
-            "No packages left."
-        ];
-        let yPos = 700;
-        items.forEach(text => {
-            page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
-            page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
-            page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
-            yPos -= 30;
-        });
-
-        // Information box
-        page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
-        page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
-        page.drawText('END OF SHIFT CHECKLIST', { x: 45, y: 350, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 330, size: 9, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
-        page.drawText('All equipment must be accounted for.', { x: 45, y: 315, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-        page.drawText('Report any damage or issues immediately.', { x: 45, y: 300, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-        page.drawText('Incomplete arrivals delay next shift.', { x: 45, y: 270, size: 9, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText('Double-check all items before leaving.', { x: 45, y: 255, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-        page.drawText('Missing packages = escalation to management.', { x: 45, y: 240, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
-
-        // Acknowledgment section
-        page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
-        page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
-        page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
-        page.drawText('I confirm all arrival requirements are met.', { x: 40, y: 75, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
-        page.drawText('Vehicle is secured and ready for next shift.', { x: 40, y: 60, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
-
-        const pdfBytes = await doc.save();
-        const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
-        fs.writeFileSync(snapshotPath, pdfBytes);
-
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
-        
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: ['slgpfleetmanager@gmail.com'],
-            subject: `✅ ARRIVAL COMPLETED: ${name}`,
-            text: `Arrival receipt attached for DA ${name}.\n\nAll arrival requirements confirmed at ${timestamp}.`,
-            attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }]
-        });
-        
-        fs.unlinkSync(snapshotPath);
+        // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
+
+        // Generate PDF and send email AFTER response (async)
+        setImmediate(async () => {
+            try {
+                const doc = await PDFDocument.create();
+                const page = doc.addPage([400, 850]);
+                const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+                const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+
+                page.drawRectangle({ x: 0, y: 0, width: 400, height: 850, color: rgb(0.05, 0.08, 0.12) });
+                page.drawText('!', { x: 190, y: 790, size: 50, font: fontBold, color: rgb(0, 0.66, 0.88) });
+                page.drawText('ARRIVAL REQUIREMENTS', { x: 80, y: 750, size: 16, font: fontBold, color: rgb(0, 0.66, 0.88) });
+
+                const items = [
+                    "Remove trash & belongings.", 
+                    "Keys/Power Bank returned.", 
+                    "Post-trip DVIC complete.", 
+                    "Video uploaded.", 
+                    "Lights off.", 
+                    "No packages left."
+                ];
+                let yPos = 700;
+                items.forEach(text => {
+                    page.drawRectangle({ x: 40, y: yPos, width: 14, height: 14, color: rgb(1, 1, 1) });
+                    page.drawText('X', { x: 43, y: yPos + 2, size: 11, font: fontBold, color: rgb(0, 0.66, 0.88) });
+                    page.drawText(text, { x: 65, y: yPos + 2, size: 10, font: fontReg, color: rgb(1, 1, 1) });
+                    yPos -= 30;
+                });
+
+                page.drawRectangle({ x: 35, y: 220, width: 330, height: 150, color: rgb(0.12, 0.15, 0.2) });
+                page.drawRectangle({ x: 35, y: 220, width: 4, height: 150, color: rgb(0, 0.66, 0.88) });
+                page.drawText('END OF SHIFT CHECKLIST', { x: 45, y: 350, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
+                page.drawText('Ensure vehicle is locked and plugged in (EDV).', { x: 45, y: 330, size: 9, font: fontReg, color: rgb(0.8, 0.8, 0.8) });
+                page.drawText('All equipment must be accounted for.', { x: 45, y: 315, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+                page.drawText('Report any damage or issues immediately.', { x: 45, y: 300, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+                page.drawText('Incomplete arrivals delay next shift.', { x: 45, y: 270, size: 9, font: fontBold, color: rgb(0, 0.66, 0.88) });
+                page.drawText('Double-check all items before leaving.', { x: 45, y: 255, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+                page.drawText('Missing packages = escalation to management.', { x: 45, y: 240, size: 9, font: fontReg, color: rgb(0.7, 0.7, 0.7) });
+
+                page.drawText('ARRIVAL ACKNOWLEDGMENT', { x: 40, y: 150, size: 10, font: fontBold, color: rgb(0, 0.66, 0.88) });
+                page.drawText(name.toUpperCase(), { x: 50, y: 125, size: 13, font: fontBold, color: rgb(1, 1, 1) });
+                page.drawText(`TIME: ${timestamp}`, { x: 40, y: 100, size: 9, font: fontReg, color: rgb(0.5, 0.5, 0.5) });
+                page.drawText('I confirm all arrival requirements are met.', { x: 40, y: 75, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
+                page.drawText('Vehicle is secured and ready for next shift.', { x: 40, y: 60, size: 8, font: fontReg, color: rgb(0.6, 0.6, 0.6) });
+
+                const pdfBytes = await doc.save();
+                const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
+                fs.writeFileSync(snapshotPath, pdfBytes);
+
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+                });
+                
+                await transporter.sendMail({
+                    from: process.env.EMAIL_USER,
+                    to: ['slgpfleetmanager@gmail.com'],
+                    subject: `✅ ARRIVAL COMPLETED: ${name}`,
+                    text: `Arrival receipt attached for DA ${name}.\n\nAll arrival requirements confirmed at ${timestamp}.`,
+                    attachments: [{ filename: `Arrival_Receipt_${name}.pdf`, path: snapshotPath }]
+                });
+                
+                fs.unlinkSync(snapshotPath);
+                console.log(`✅ Arrival check PDF emailed for ${name}`);
+            } catch (e) {
+                console.error('Arrival check PDF/email error:', e);
+            }
+        });
     } catch (e) {
         console.error('Arrival check error:', e);
         res.status(500).json({ success: false, error: e.message });
@@ -416,7 +424,6 @@ app.post('/submit-report', async (req, res) => {
             let page = doc.addPage([600, 800]);
             let y = 780;
             
-            // Header
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
             page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
             page.drawText(`Filed: ${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}`, 
@@ -424,7 +431,6 @@ app.post('/submit-report', async (req, res) => {
             
             y = 680;
             
-            // Driver & Vehicle Info
             page.drawText('DRIVER & VEHICLE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             page.drawText(`Driver Name: ${data.driverName || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
@@ -434,7 +440,6 @@ app.post('/submit-report', async (req, res) => {
             page.drawText(`Incident Type: ${data.incidentType || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
             y -= 25;
             
-            // Location Info
             page.drawText('LOCATION INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             if (data.locationData) {
@@ -450,7 +455,6 @@ app.post('/submit-report', async (req, res) => {
             page.drawText(`Weather: ${data.weather || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
             y -= 25;
             
-            // Case Numbers
             page.drawText('CASE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             page.drawText(`Police Report #: ${data.policeReport || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
@@ -458,7 +462,6 @@ app.post('/submit-report', async (req, res) => {
             page.drawText(`LMET Case #: ${data.lmetCase || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
             y -= 25;
             
-            // Statement
             page.drawText('DETAILED STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             const statement = data.statement || 'No statement provided';
@@ -473,14 +476,12 @@ app.post('/submit-report', async (req, res) => {
             }
             y -= 10;
             
-            // Photos Info
             if (data.photos && data.photos.length > 0) {
                 page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
                     { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
                 y -= 25;
             }
             
-            // Signature
             if (data.signature) {
                 page.drawText('DRIVER SIGNATURE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
                 y -= 20;
@@ -494,7 +495,6 @@ app.post('/submit-report', async (req, res) => {
                 }
             }
             
-            // Affidavit & Checklist
             if (data.affidavit) {
                 if (y < 150) {
                     page = doc.addPage([600, 800]);
@@ -526,7 +526,6 @@ app.post('/submit-report', async (req, res) => {
             let page = doc.addPage([600, 800]);
             let y = 780;
             
-            // Header
             page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.145, 0.388, 0.922) });
             page.drawText('ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
             page.drawText(`Filed: ${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}`, 
@@ -534,7 +533,6 @@ app.post('/submit-report', async (req, res) => {
             
             y = 680;
             
-            // Driver & Vehicle Info
             page.drawText('DRIVER & VEHICLE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
             y -= 20;
             page.drawText(`Driver Name: ${data.driverName || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
@@ -544,7 +542,6 @@ app.post('/submit-report', async (req, res) => {
             page.drawText(`Report Type: ${data.reportType || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
             y -= 25;
             
-            // Issue Details
             if (data.otherDescription) {
                 page.drawText('ISSUE DESCRIPTION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
                 y -= 20;
@@ -560,7 +557,6 @@ app.post('/submit-report', async (req, res) => {
                 y -= 10;
             }
             
-            // Photos Info
             if (data.photos && data.photos.length > 0) {
                 page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
                     { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
@@ -586,7 +582,7 @@ app.post('/submit-report', async (req, res) => {
 });
 
 // ============================================
-// VIDEO UPLOAD WITH DIRECT STREAMING (FIXED - videoMetadata scope)
+// VIDEO UPLOAD WITH DIRECT STREAMING
 // ============================================
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
@@ -918,7 +914,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  COMPLETE - All Features Working         ║
+║  v2.0 - INSTANT GATE RESPONSE            ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
@@ -931,9 +927,10 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
 
-✅ Gate & Arrival PDFs RESTORED
-✅ Video upload FIXED (videoMetadata scope)
-✅ Direct streaming links working
+✅ Gate checks: INSTANT response (< 1 second)
+✅ Arrival checks: INSTANT response (< 1 second)  
+✅ PDFs generated in background
+✅ Video upload: Direct streaming with H.265/HEVC
 
 🌐 Ready at: http://localhost:${PORT}
     `);
