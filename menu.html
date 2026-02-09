@@ -325,8 +325,113 @@
             return outputArray;
         }
 </script>
-    
-<script src="/auto-refresh.js"></script>
+
+<!-- ============================================ -->
+<!-- SERVICE WORKER REGISTRATION & AUTO-UPDATE   -->
+<!-- ============================================ -->
+<script>
+    // Register Service Worker for background updates and offline capability
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                console.log('✅ Service Worker registered:', registration.scope);
+                
+                // Check for updates every 30 seconds
+                let localVersion = null;
+                
+                async function checkForUpdates() {
+                    try {
+                        const res = await fetch('/version');
+                        if (res.ok) {
+                            const data = await res.json();
+                            
+                            if (!localVersion) {
+                                localVersion = data.version;
+                                console.log('📱 Current version:', localVersion);
+                            } else if (localVersion !== data.version) {
+                                console.log('🔄 New version detected!', data.version);
+                                console.log('   Old:', localVersion);
+                                console.log('   New:', data.version);
+                                
+                                // Show update notification
+                                showUpdateNotification();
+                                
+                                // Wait 3 seconds then reload
+                                setTimeout(() => {
+                                    console.log('🔄 Reloading to apply update...');
+                                    window.location.reload(true);
+                                }, 3000);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Update check failed:', err);
+                    }
+                }
+                
+                function showUpdateNotification() {
+                    const banner = document.createElement('div');
+                    banner.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        background: linear-gradient(135deg, #00A8E1 0%, #0084b4 100%);
+                        color: white;
+                        padding: 15px 25px;
+                        border-radius: 10px;
+                        box-shadow: 0 4px 20px rgba(0,168,225,0.4);
+                        z-index: 10000;
+                        font-weight: bold;
+                        text-align: center;
+                        animation: slideDown 0.3s ease;
+                    `;
+                    banner.innerHTML = '🔄 Update available! Reloading in 3 seconds...';
+                    document.body.appendChild(banner);
+                    
+                    // Add slide down animation
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        @keyframes slideDown {
+                            from { transform: translateX(-50%) translateY(-100px); opacity: 0; }
+                            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+                
+                // Check immediately
+                checkForUpdates();
+                
+                // Then check every 30 seconds
+                setInterval(checkForUpdates, 30000);
+                
+                // Listen for service worker updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('🔄 Service Worker update found');
+                    
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('✅ New Service Worker installed');
+                            // Tell the new service worker to skip waiting
+                            newWorker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    });
+                });
+                
+                // Reload when new service worker takes control
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    console.log('🔄 New Service Worker activated - reloading');
+                    window.location.reload();
+                });
+                
+            } catch (error) {
+                console.error('❌ Service Worker registration failed:', error);
+            }
+        });
+    }
+</script>
 
 </body>
 </html>
