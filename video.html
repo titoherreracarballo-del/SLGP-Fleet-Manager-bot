@@ -571,7 +571,22 @@
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             
-            console.log(`📹 Found ${videoDevices.length} camera(s)`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('📹 CAMERA DIAGNOSTICS v' + Date.now());
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log(`📹 Found ${videoDevices.length} camera(s) on this device:`);
+            console.log('');
+            
+            videoDevices.forEach((device, index) => {
+                console.log(`Camera ${index}:`);
+                console.log(`  Label: "${device.label}"`);
+                console.log(`  ID: ${device.deviceId}`);
+                console.log(`  Group: ${device.groupId}`);
+                console.log('');
+            });
+            
+            console.log('Analyzing camera labels for rear camera detection...');
+            console.log('');
 
             if (videoDevices.length === 0) {
                 throw new Error('No cameras found on this device');
@@ -583,16 +598,44 @@
                 d.label.toLowerCase().includes('environment')
             );
 
+            if (rearCamera) {
+                console.log(`✅ Rear camera found by label: "${rearCamera.label}"`);
+            } else {
+                console.log('⚠️  No camera with "back", "rear", or "environment" in label');
+            }
+
             // Enhanced fallback: Avoid front cameras even if rear not explicitly labeled
             if (!rearCamera && videoDevices.length > 1) {
+                console.log('🔍 Trying negative filtering (exclude front cameras)...');
                 // Try to find camera that's NOT explicitly front-facing
                 rearCamera = videoDevices.find(d => 
                     !d.label.toLowerCase().includes('front') &&
                     !d.label.toLowerCase().includes('selfie') &&
                     !d.label.toLowerCase().includes('user') &&
                     !d.label.toLowerCase().includes('face')
-                ) || videoDevices[videoDevices.length - 1]; // Last resort
+                );
+                
+                if (rearCamera) {
+                    console.log(`✅ Found non-front camera: "${rearCamera.label}"`);
+                } else {
+                    console.log('⚠️  All cameras appear to be front-facing or unlabeled');
+                    console.log('📍 Using last camera as fallback');
+                    rearCamera = videoDevices[videoDevices.length - 1];
+                }
             }
+            
+            if (!rearCamera && videoDevices.length === 1) {
+                console.log('⚠️  Only ONE camera found - using it (may be front camera)');
+                rearCamera = videoDevices[0];
+            }
+
+            console.log('');
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('Selected camera for testing:');
+            console.log(`  Label: "${rearCamera ? rearCamera.label : 'NONE'}"`);
+            console.log(`  ID: ${rearCamera ? rearCamera.deviceId : 'NONE'}`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('');
 
             const strategies = [];
 
@@ -709,9 +752,19 @@
                         videoTrack.label.toLowerCase().includes('face')
                     );
                     
+                    console.log(`🔍 Front camera check:`);
+                    console.log(`   Camera label: "${videoTrack.label}"`);
+                    console.log(`   settings.facingMode: ${settings.facingMode || 'undefined'}`);
+                    console.log(`   capabilities.facingMode: ${JSON.stringify(capabilities.facingMode || 'undefined')}`);
+                    console.log(`   Label includes 'front': ${videoTrack.label.toLowerCase().includes('front')}`);
+                    console.log(`   Label includes 'selfie': ${videoTrack.label.toLowerCase().includes('selfie')}`);
+                    console.log(`   Label includes 'user': ${videoTrack.label.toLowerCase().includes('user')}`);
+                    console.log(`   Result: ${isFrontCamera ? '❌ FRONT CAMERA' : '✅ NOT FRONT CAMERA'}`);
+                    
                     // REJECT front camera for ALL strategies except the very last one
                     if (i < strategies.length - 1 && isFrontCamera) {
-                        console.log('⚠️  Front camera detected (label: "' + videoTrack.label + '", facing: "' + (settings.facingMode || capabilities.facingMode || 'unknown') + '"), trying next strategy...');
+                        console.log('⚠️  🚫 REJECTING FRONT CAMERA - Trying next strategy...');
+                        console.log('');
                         stream.getTracks().forEach(track => track.stop());
                         continue;
                     }
