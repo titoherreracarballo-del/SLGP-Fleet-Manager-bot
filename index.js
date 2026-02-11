@@ -32,18 +32,37 @@ const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
 const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf');
 
+// ============================================
+// 🐛 DEBUG SYSTEM - LOG FILES
+// ============================================
+const LOGS_DIR = path.join(VOLUME_PATH, 'logs');
+const DEBUG_LOG = path.join(LOGS_DIR, 'debug.json');
+const ERROR_LOG = path.join(LOGS_DIR, 'errors.json');
+const CAMERA_LOG = path.join(LOGS_DIR, 'camera-issues.json');
+const PERFORMANCE_LOG = path.join(LOGS_DIR, 'performance.json');
+
 const VIDEO_DRIVE_ID = process.env.GDRIVE_FOLDER_ID || '0AC1GE3XEm4K9Uk9PVA';
 const ACCIDENT_DRIVE_ID = '1-N4Y8OydIhQSMpD5lMTSHsOf0qi2mnGy';
 const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-    try {
-        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-        console.log('✅ Upload directory created');
-    } catch (e) {
-        console.error('❌ Failed to create upload directory:', e.message);
+// ============================================
+// DIRECTORY INITIALIZATION
+// ============================================
+async function ensureDirectories() {
+    const dirs = [UPLOAD_DIR, LOGS_DIR];
+    for (const dir of dirs) {
+        if (!fs.existsSync(dir)) {
+            try {
+                fs.mkdirSync(dir, { recursive: true });
+                console.log(`✅ Created directory: ${dir}`);
+            } catch (e) {
+                console.error(`❌ Failed to create ${dir}:`, e.message);
+            }
+        }
     }
 }
+
+ensureDirectories();
 
 const upload = multer({ 
     dest: UPLOAD_DIR,
@@ -57,6 +76,46 @@ app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
     next();
 });
+
+// ============================================
+// 🐛 DEBUG SYSTEM - LOGGING UTILITIES
+// ============================================
+async function appendLog(logFile, entry) {
+    try {
+        let logs = [];
+        try {
+            const data = fs.readFileSync(logFile, 'utf8');
+            logs = JSON.parse(data);
+        } catch (err) {
+            // File doesn't exist or is empty, start fresh
+        }
+
+        logs.push({
+            ...entry,
+            timestamp: new Date().toISOString(),
+            serverTime: Date.now()
+        });
+
+        // Keep only last 1000 entries to prevent file from growing too large
+        if (logs.length > 1000) {
+            logs = logs.slice(-1000);
+        }
+
+        fs.writeFileSync(logFile, JSON.stringify(logs, null, 2));
+    } catch (err) {
+        console.error('Failed to write log:', err);
+    }
+}
+
+async function getRecentLogs(logFile, limit = 50) {
+    try {
+        const data = fs.readFileSync(logFile, 'utf8');
+        const logs = JSON.parse(data);
+        return logs.slice(-limit).reverse(); // Most recent first
+    } catch (err) {
+        return [];
+    }
+}
 
 // ============================================
 // DISCORD BOT SETUP
@@ -170,12 +229,159 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 // ============================================
+// 🐛 DEBUG SYSTEM - API ENDPOINTS
+// ============================================
+
+// Client-side error reporting
+app.post('/api/log-error', async (req, res) => {
+    const {
+        message,
+        stack,
+        url,
+        lineNo,
+        colNo,
+        userAgent,
+        screen,
+        viewport,
+        context,
+        severity
+    } = req.body;
+
+    const errorEntry = {
+        type: 'client_error',
+        severity: severity || 'error',
+        message,
+        stack,
+        url,
+        lineNo,
+        colNo,
+        userAgent: userAgent || req.get('user-agent'),
+        ip: req.ip,
+        screen,
+        viewport,
+        context
+    };
+
+    await appendLog(ERROR_LOG, errorEntry);
+    
+    console.error('❌ Client Error:', message);
+    console.error('   URL:', url);
+    console.error('   User:', userAgent);
+    
+    res.json({ success: true, logged: true });
+});
+
+// Camera debug logging
+app.post('/api/log-camera-debug', async (req, res) => {
+    const {
+        event,
+        cameras,
+        selectedCamera,
+        strategy,
+        resolution,
+        facingMode,
+        rejected,
+        reason,
+        userAgent,
+        deviceInfo
+    } = req.body;
+
+    const cameraEntry = {
+        type: 'camera_debug',
+        event,
+        cameras: cameras || [],
+        selectedCamera,
+        strategy,
+        resolution,
+        facingMode,
+        rejected,
+        reason,
+        userAgent: userAgent || req.get('user-agent'),
+        ip: req.ip,
+        deviceInfo
+    };
+
+    await appendLog(CAMERA_LOG, cameraEntry);
+    
+    console.log('📹 Camera Debug:', event);
+    if (selectedCamera) {
+        console.log('   Selected:', selectedCamera.label || selectedCamera);
+    }
+    
+    res.json({ success: true, logged: true });
+});
+
+// Performance tracking
+app.post('/api/log-performance', async (req, res) => {
+    const {
+        action,
+        duration,
+        success,
+        fileSize,
+        details,
+        userAgent
+    } = req.body;
+
+    const perfEntry = {
+        type: 'performance',
+        action,
+        duration,
+        success,
+        fileSize,
+        details,
+        userAgent: userAgent || req.get('user-agent'),
+        ip: req.ip
+    };
+
+    await appendLog(PERFORMANCE_LOG, perfEntry);
+    
+    res.json({ success: true, logged: true });
+});
+
+// General debug logging
+app.post('/api/log-debug', async (req, res) => {
+    const {
+        category,
+        message,
+        data,
+        userAgent
+    } = req.body;
+
+    const debugEntry = {
+        type: 'debug',
+        category,
+        message,
+        data,
+        userAgent: userAgent || req.get('user-agent'),
+        ip: req.ip
+    };
+
+    await appendLog(DEBUG_LOG, debugEntry);
+    
+    console.log('🐛 Debug:', category, '-', message);
+    
+    res.json({ success: true, logged: true });
+});
+
+// ============================================
 // API ROUTES - GATE & ARRIVAL CHECKS (INSTANT RESPONSE - ASYNC EMAIL)
 // ============================================
 app.post('/log-gate-check', async (req, res) => {
+    const perfStart = Date.now();
     try {
         const { name } = req.body;
-        if (isDuplicate(GATE_LOG_FILE, name)) return res.json({ success: true });
+        if (isDuplicate(GATE_LOG_FILE, name)) {
+            await appendLog(PERFORMANCE_LOG, {
+                type: 'performance',
+                action: 'gate_submission',
+                duration: Date.now() - perfStart,
+                success: true,
+                details: 'Duplicate detected',
+                userAgent: req.get('user-agent'),
+                ip: req.ip
+            });
+            return res.json({ success: true });
+        }
         
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -185,6 +391,17 @@ app.post('/log-gate-check', async (req, res) => {
         }
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+
+        // Log performance
+        await appendLog(PERFORMANCE_LOG, {
+            type: 'performance',
+            action: 'gate_submission',
+            duration: Date.now() - perfStart,
+            success: true,
+            details: `Gate check for ${name}`,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
+        });
 
         // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
@@ -244,18 +461,44 @@ app.post('/log-gate-check', async (req, res) => {
                 console.log(`✅ Gate check PDF emailed for ${name}`);
             } catch (e) {
                 console.error('Gate check PDF/email error:', e);
+                await appendLog(ERROR_LOG, {
+                    type: 'server_error',
+                    severity: 'error',
+                    message: 'Gate PDF generation failed',
+                    stack: e.stack,
+                    source: 'log-gate-check'
+                });
             }
         });
     } catch (e) {
         console.error('Gate check error:', e);
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'critical',
+            message: 'Gate check failed',
+            stack: e.stack,
+            source: 'log-gate-check'
+        });
         res.status(500).json({ success: false, error: e.message });
     }
 });
 
 app.post('/log-arrival-check', async (req, res) => {
+    const perfStart = Date.now();
     try {
         const { name } = req.body;
-        if (isDuplicate(ARRIVAL_LOG_FILE, name)) return res.json({ success: true });
+        if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
+            await appendLog(PERFORMANCE_LOG, {
+                type: 'performance',
+                action: 'arrival_submission',
+                duration: Date.now() - perfStart,
+                success: true,
+                details: 'Duplicate detected',
+                userAgent: req.get('user-agent'),
+                ip: req.ip
+            });
+            return res.json({ success: true });
+        }
 
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -265,6 +508,17 @@ app.post('/log-arrival-check', async (req, res) => {
         }
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
+
+        // Log performance
+        await appendLog(PERFORMANCE_LOG, {
+            type: 'performance',
+            action: 'arrival_submission',
+            duration: Date.now() - perfStart,
+            success: true,
+            details: `Arrival check for ${name}`,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
+        });
 
         // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
@@ -334,10 +588,24 @@ app.post('/log-arrival-check', async (req, res) => {
                 console.log(`✅ Arrival check PDF emailed for ${name}`);
             } catch (e) {
                 console.error('Arrival check PDF/email error:', e);
+                await appendLog(ERROR_LOG, {
+                    type: 'server_error',
+                    severity: 'error',
+                    message: 'Arrival PDF generation failed',
+                    stack: e.stack,
+                    source: 'log-arrival-check'
+                });
             }
         });
     } catch (e) {
         console.error('Arrival check error:', e);
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'critical',
+            message: 'Arrival check failed',
+            stack: e.stack,
+            source: 'log-arrival-check'
+        });
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -577,6 +845,13 @@ app.post('/submit-report', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('Report submission error:', error);
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'error',
+            message: 'Report submission failed',
+            stack: error.stack,
+            source: 'submit-report'
+        });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -632,6 +907,18 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
         console.log(`   Size uploaded: ${fileSizeMB}MB`);
+
+        // Log upload performance
+        await appendLog(PERFORMANCE_LOG, {
+            type: 'performance',
+            action: 'video_upload',
+            duration: Date.now() - startTime,
+            success: true,
+            fileSize: fileStats.size,
+            details: `${driverName} - ${vin} - ${inspectionType}`,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
+        });
         
         try {
             await driveClient.permissions.create({
@@ -730,6 +1017,32 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
     } catch (error) {
         console.error('❌ Video upload error:', error);
+        
+        // Log upload failure
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'error',
+            message: 'Video upload failed',
+            stack: error.stack,
+            source: 'upload-to-google-drive',
+            details: {
+                driver: req.body.driverName,
+                vin: req.body.vin,
+                inspectionType: req.body.inspectionType
+            }
+        });
+
+        await appendLog(PERFORMANCE_LOG, {
+            type: 'performance',
+            action: 'video_upload',
+            duration: Date.now() - startTime,
+            success: false,
+            fileSize: req.file ? req.file.size : 0,
+            details: error.message,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
+        });
+        
         if (videoPath && fs.existsSync(videoPath)) {
             try {
                 fs.unlinkSync(videoPath);
@@ -781,6 +1094,280 @@ app.post('/subscribe', (req, res) => {
 // ============================================
 app.get('/version', (req, res) => {
     res.json(BUILD_INFO);
+});
+
+// ============================================
+// 🐛 DEBUG DASHBOARD
+// ============================================
+app.get('/debug-dashboard', async (req, res) => {
+    // Simple password protection - CHANGE THIS PASSWORD!
+    const password = req.query.key;
+    if (password !== 'slgp-debug-2026') {
+        return res.status(401).send('Unauthorized - Invalid key');
+    }
+
+    const recentErrors = await getRecentLogs(ERROR_LOG, 50);
+    const recentCamera = await getRecentLogs(CAMERA_LOG, 50);
+    const recentPerf = await getRecentLogs(PERFORMANCE_LOG, 50);
+    const recentDebug = await getRecentLogs(DEBUG_LOG, 50);
+
+    // Generate HTML dashboard
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SLGP Debug Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: 'Courier New', monospace;
+                background: #0a0e17;
+                color: #e5e7eb;
+                padding: 20px;
+            }
+            .header {
+                background: linear-gradient(135deg, #00A8E1, #0084b4);
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 30px;
+            }
+            h1 { color: white; margin-bottom: 10px; }
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-bottom: 30px;
+            }
+            .stat-card {
+                background: #1a1f2e;
+                padding: 15px;
+                border-radius: 8px;
+                border: 2px solid #00A8E1;
+            }
+            .stat-number {
+                font-size: 32px;
+                font-weight: bold;
+                color: #00A8E1;
+            }
+            .stat-label {
+                font-size: 12px;
+                color: #a9b2bd;
+                text-transform: uppercase;
+            }
+            .section {
+                background: #1a1f2e;
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                border: 1px solid #2d3748;
+            }
+            .section-title {
+                font-size: 18px;
+                color: #00A8E1;
+                margin-bottom: 15px;
+                border-bottom: 2px solid #00A8E1;
+                padding-bottom: 10px;
+            }
+            .log-entry {
+                background: #0d1117;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-radius: 6px;
+                border-left: 4px solid #00A8E1;
+                font-size: 12px;
+            }
+            .log-entry.error { border-left-color: #ff2a2a; }
+            .log-entry.camera { border-left-color: #FF9900; }
+            .log-entry.performance { border-left-color: #00ff88; }
+            .log-time {
+                color: #6b7280;
+                font-size: 11px;
+                margin-bottom: 5px;
+            }
+            .log-message {
+                color: #e5e7eb;
+                margin-bottom: 8px;
+            }
+            .log-details {
+                color: #9ca3af;
+                font-size: 11px;
+                margin-top: 8px;
+            }
+            .error-stack {
+                background: #000;
+                padding: 10px;
+                border-radius: 4px;
+                margin-top: 8px;
+                overflow-x: auto;
+                font-size: 10px;
+                color: #ff6b6b;
+            }
+            .camera-info {
+                background: #1a1f2e;
+                padding: 8px;
+                margin-top: 8px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            .refresh-btn {
+                background: #00A8E1;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: bold;
+                margin-bottom: 20px;
+            }
+            .refresh-btn:hover {
+                background: #0084b4;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🐛 SLGP Debug Dashboard</h1>
+            <p>Real-time error tracking and diagnostics</p>
+            <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">Last updated: ${new Date().toLocaleString()}</p>
+        </div>
+
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Dashboard</button>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">${recentErrors.length}</div>
+                <div class="stat-label">Recent Errors</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${recentCamera.length}</div>
+                <div class="stat-label">Camera Logs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${recentPerf.length}</div>
+                <div class="stat-label">Performance Logs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${recentDebug.length}</div>
+                <div class="stat-label">Debug Messages</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">❌ Recent Errors (Last 50)</div>
+            ${recentErrors.map(log => `
+                <div class="log-entry error">
+                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
+                    <div class="log-message"><strong>${log.message || 'No message'}</strong></div>
+                    <div class="log-details">
+                        URL: ${log.url || 'N/A'}<br>
+                        User Agent: ${log.userAgent || 'N/A'}<br>
+                        IP: ${log.ip || 'N/A'}
+                    </div>
+                    ${log.stack ? `<div class="error-stack">${log.stack.substring(0, 500)}</div>` : ''}
+                </div>
+            `).join('') || '<p>No errors logged</p>'}
+        </div>
+
+        <div class="section">
+            <div class="section-title">📹 Camera Issues (Last 50)</div>
+            ${recentCamera.map(log => `
+                <div class="log-entry camera">
+                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
+                    <div class="log-message"><strong>Event: ${log.event || 'Unknown'}</strong></div>
+                    ${log.cameras && log.cameras.length > 0 ? `
+                        <div class="camera-info">
+                            <strong>Available Cameras:</strong><br>
+                            ${log.cameras.map((cam, i) => `${i + 1}. ${cam.label || 'Unknown'} (Facing: ${cam.facingMode || 'unknown'})`).join('<br>')}
+                        </div>
+                    ` : ''}
+                    ${log.selectedCamera ? `
+                        <div class="camera-info">
+                            <strong>Selected:</strong> ${log.selectedCamera.label || 'Unknown'}<br>
+                            <strong>Resolution:</strong> ${log.resolution || 'N/A'}<br>
+                            <strong>Facing Mode:</strong> ${log.facingMode || 'N/A'}<br>
+                            <strong>Strategy:</strong> ${log.strategy || 'N/A'}
+                        </div>
+                    ` : ''}
+                    ${log.rejected ? `<div class="log-details" style="color: #ff6b6b;">❌ Rejected: ${log.reason || 'Unknown reason'}</div>` : ''}
+                    <div class="log-details">
+                        User Agent: ${log.userAgent || 'N/A'}<br>
+                        IP: ${log.ip || 'N/A'}
+                    </div>
+                </div>
+            `).join('') || '<p>No camera issues logged</p>'}
+        </div>
+
+        <div class="section">
+            <div class="section-title">⚡ Performance Logs (Last 50)</div>
+            ${recentPerf.map(log => `
+                <div class="log-entry performance">
+                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
+                    <div class="log-message"><strong>${log.action || 'Unknown action'}</strong></div>
+                    <div class="log-details">
+                        Duration: ${log.duration || 0}ms<br>
+                        Success: ${log.success ? '✅' : '❌'}<br>
+                        ${log.fileSize ? `File Size: ${(log.fileSize / 1024 / 1024).toFixed(2)} MB<br>` : ''}
+                        ${log.details ? `Details: ${log.details}<br>` : ''}
+                        User Agent: ${log.userAgent || 'N/A'}
+                    </div>
+                </div>
+            `).join('') || '<p>No performance logs</p>'}
+        </div>
+
+        <div class="section">
+            <div class="section-title">🐛 Debug Messages (Last 50)</div>
+            ${recentDebug.map(log => `
+                <div class="log-entry">
+                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
+                    <div class="log-message"><strong>${log.category || 'General'}</strong>: ${log.message || 'No message'}</div>
+                    ${log.data ? `<div class="log-details">Data: <pre style="overflow-x: auto;">${JSON.stringify(log.data, null, 2).substring(0, 300)}</pre></div>` : ''}
+                    <div class="log-details">
+                        User Agent: ${log.userAgent || 'N/A'}<br>
+                        IP: ${log.ip || 'N/A'}
+                    </div>
+                </div>
+            `).join('') || '<p>No debug messages</p>'}
+        </div>
+
+        <script>
+            // Auto-refresh every 30 seconds
+            setTimeout(() => location.reload(), 30000);
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
+});
+
+// Export logs as JSON
+app.get('/debug-export', async (req, res) => {
+    const password = req.query.key;
+    if (password !== 'slgp-debug-2026') {
+        return res.status(401).send('Unauthorized');
+    }
+
+    const type = req.query.type || 'all';
+    
+    let logs = {};
+    
+    if (type === 'all' || type === 'errors') {
+        logs.errors = await getRecentLogs(ERROR_LOG, 1000);
+    }
+    if (type === 'all' || type === 'camera') {
+        logs.camera = await getRecentLogs(CAMERA_LOG, 1000);
+    }
+    if (type === 'all' || type === 'performance') {
+        logs.performance = await getRecentLogs(PERFORMANCE_LOG, 1000);
+    }
+    if (type === 'all' || type === 'debug') {
+        logs.debug = await getRecentLogs(DEBUG_LOG, 1000);
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="slgp-logs-${Date.now()}.json"`);
+    res.send(JSON.stringify(logs, null, 2));
 });
 
 // ============================================
@@ -898,10 +1485,51 @@ cron.schedule('30 23 * * *', async () => {
 // ============================================
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
+    
+    // Log server errors
+    appendLog(ERROR_LOG, {
+        type: 'server_error',
+        severity: 'error',
+        message: err.message,
+        stack: err.stack,
+        source: 'express_error_handler',
+        url: req.url,
+        method: req.method
+    });
+    
     res.status(500).json({
         success: false,
         error: 'Internal server error',
         details: err.message
+    });
+});
+
+// ============================================
+// SERVER ERROR TRACKING
+// ============================================
+process.on('uncaughtException', async (error) => {
+    console.error('💥 Uncaught Exception:', error);
+    
+    await appendLog(ERROR_LOG, {
+        type: 'server_error',
+        severity: 'critical',
+        message: error.message,
+        stack: error.stack,
+        source: 'uncaughtException'
+    });
+    
+    process.exit(1);
+});
+
+process.on('unhandledRejection', async (reason, promise) => {
+    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    
+    await appendLog(ERROR_LOG, {
+        type: 'server_error',
+        severity: 'critical',
+        message: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+        source: 'unhandledRejection'
     });
 });
 
@@ -914,7 +1542,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v2.0 - INSTANT GATE RESPONSE            ║
+║  v2.0 - INSTANT GATE + DEBUG SYSTEM      ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
@@ -926,11 +1554,15 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
+🐛 Debug system active
 
 ✅ Gate checks: INSTANT response (< 1 second)
 ✅ Arrival checks: INSTANT response (< 1 second)  
 ✅ PDFs generated in background
 ✅ Video upload: Direct streaming with H.265/HEVC
+
+🐛 Debug Dashboard: https://your-domain.com/debug-dashboard?key=slgp-debug-2026
+   ⚠️  CHANGE THE PASSWORD IN CODE!
 
 🌐 Ready at: http://localhost:${PORT}
     `);
@@ -939,13 +1571,4 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received - shutting down gracefully');
     process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
-    process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
