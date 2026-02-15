@@ -2,10 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v2.1 CACHE-BUSTER</title>
+    <title>Video Inspection v2.2-1771120594</title>
     <style>
         :root {
+        .version-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #4ade80;
+            color: #0F1115;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            z-index: 99999;
+            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.4);
+        }
             --bg-body: #0F1115;        
             --bg-card: #161B28;        
             --bg-input: #0b0d12;       
@@ -219,6 +235,44 @@
     </style>
 </head>
 <body>
+    <div class="version-indicator">NEW VERSION v2.2 ✅</div>
+    <script>
+    // ULTRA CACHE BUSTER
+    console.log("🔥 ULTRA CACHE BUSTER v2.2 LOADED!");
+    console.log("✅ This is the NEW version with progress bar");
+    
+    // Force unregister ALL service workers
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(reg => {
+                reg.unregister();
+                console.log("🗑️ Service worker unregistered:", reg.scope);
+            });
+        });
+    }
+    
+    // Clear ALL caches
+    if ("caches" in window) {
+        caches.keys().then(names => {
+            names.forEach(name => {
+                caches.delete(name);
+                console.log("🗑️ Cache deleted:", name);
+            });
+        });
+    }
+    
+    // Show alert if old version detected
+    setTimeout(() => {
+        const hasProgressBar = document.getElementById("progress-container");
+        const hasFlashBtn = document.getElementById("flash-toggle");
+        if (!hasProgressBar || !hasFlashBtn) {
+            alert("⚠️ OLD VERSION STILL CACHED!\n\nPress F12 → Application → Service Workers → Unregister ALL\nThen Ctrl+Shift+R");
+        } else {
+            console.log("✅ Progress bar found:", hasProgressBar);
+            console.log("✅ Flash button found:", hasFlashBtn);
+        }
+    }, 1000);
+    </script>
 
 <div id="towWarningModal" class="modal">
     <div class="modal-content modal-red">
@@ -266,24 +320,6 @@
         <button class="modal-btn" onclick="closeFrontCameraWarning()">I Understand - Continue Anyway</button>
     </div>
 </div>
-
-<script>
-// CACHE BUSTER - Forces detection of old versions
-const EXPECTED_VERSION = "v2.1 CACHE-BUSTER";
-const actualTitle = document.title;
-if (!actualTitle.includes(EXPECTED_VERSION)) {
-    alert("⚠️ OLD VERSION DETECTED!\n\nYou are seeing a CACHED old file.\n\nPress F12 → Application → Service Workers → Unregister\nThen refresh!");
-}
-// Force unregister service worker on load
-if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for(let registration of registrations) {
-            registration.unregister();
-            console.log("🔄 Service worker unregistered");
-        }
-    });
-}
-</script>
 
 <div class="container">
     <div class="header-row">
