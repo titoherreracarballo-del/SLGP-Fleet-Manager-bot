@@ -527,10 +527,6 @@
         }
     }
 
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ENHANCED CAMERA INITIALIZATION v2.0 - WITH ORIGINAL FORMS PRESERVED
-    // ═══════════════════════════════════════════════════════════════════
     async function startCamera() {
         const preview = document.getElementById('preview');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -539,7 +535,6 @@
         
         loadingOverlay.style.display = 'flex';
         statusEl.style.display = 'none';
-        if (flashBtn) flashBtn.style.display = 'none';
 
         stopBrightnessMonitoring();
         if (currentStream) {
@@ -554,38 +549,26 @@
 
         try {
             console.log('═══════════════════════════════════════════════════════════');
-            console.log('📹 ENHANCED CAMERA INITIALIZATION v2.0');
+            console.log('📹 ENHANCED CAMERA v2.0');
             console.log('═══════════════════════════════════════════════════════════');
-            console.log('🌐 User Agent:', navigator.userAgent);
-            console.log('💻 Platform:', navigator.platform);
-            console.log('');
             
-            console.log('📋 Step 1: Requesting camera permission...');
+            // Request permission first
             await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: "environment" } }
             }).then(stream => {
-                console.log('✅ Permission granted');
                 stream.getTracks().forEach(track => track.stop());
             });
             
-            console.log('');
-            console.log('📋 Step 2: Enumerating cameras...');
+            // Enumerate cameras
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             
-            console.log(`✅ Found ${videoDevices.length} camera(s):`);
+            console.log(`✅ Found ${videoDevices.length} camera(s)`);
             videoDevices.forEach((device, index) => {
-                console.log(`   Camera ${index}:`);
-                console.log(`      Label: "${device.label}"`);
-                console.log(`      ID: ${device.deviceId.substring(0, 20)}...`);
+                console.log(`   ${index}: ${device.label}`);
             });
-            console.log('');
             
-            if (videoDevices.length === 0) {
-                throw new Error('No cameras found on this device');
-            }
-            
-            console.log('📋 Step 3: Identifying rear camera...');
+            // Find rear camera by label
             let rearCamera = videoDevices.find(d => 
                 d.label.toLowerCase().includes('back') ||
                 d.label.toLowerCase().includes('rear') ||
@@ -593,57 +576,39 @@
             );
             
             if (rearCamera) {
-                console.log(`✅ Rear camera found by label: "${rearCamera.label}"`);
-            } else {
-                console.log('⚠️  No camera with rear/back/environment in label');
-                console.log('   Will try facingMode strategies...');
+                console.log(`✅ Rear camera found: ${rearCamera.label}`);
             }
             
-            // Try deviceId first if we found rear camera
+            // Try deviceId strategy first if we found rear camera
             if (rearCamera) {
-                console.log('');
-                console.log('📋 Step 4: Trying deviceId strategy (most reliable)...');
-                
                 const resolutions = [
-                    { width: 1920, height: 1080, name: '1080p' },
-                    { width: 1280, height: 720, name: '720p' }
+                    { width: 1920, height: 1080 },
+                    { width: 1280, height: 720 }
                 ];
                 
                 for (const res of resolutions) {
                     try {
-                        console.log(`   📹 Trying ${res.name} (${res.width}x${res.height})...`);
+                        console.log(`📹 Trying ${res.width}x${res.height}...`);
                         
-                        const stream = await navigator.mediaDevices.getUserMedia({
+                        currentStream = await navigator.mediaDevices.getUserMedia({
                             video: {
                                 deviceId: { exact: rearCamera.deviceId },
                                 width: { ideal: res.width },
-                                height: { ideal: res.height },
-                                frameRate: { ideal: 30, max: 30 }
+                                height: { ideal: res.height }
                             },
                             audio: true
                         });
                         
-                        const track = stream.getVideoTracks()[0];
-                        const settings = track.getSettings();
+                        currentVideoTrack = currentStream.getVideoTracks()[0];
+                        const settings = currentVideoTrack.getSettings();
                         
-                        console.log(`   ✅ Got ${settings.width}x${settings.height}`);
-                        console.log('');
-                        console.log('═══════════════════════════════════════════════════════════');
-                        console.log('✅ SUCCESS - Camera initialized via deviceId');
-                        console.log(`   Resolution: ${settings.width}x${settings.height}`);
-                        console.log(`   Camera: ${track.label}`);
-                        console.log(`   Facing: ${settings.facingMode || 'unknown'}`);
-                        console.log('═══════════════════════════════════════════════════════════');
+                        console.log(`✅ SUCCESS: ${settings.width}x${settings.height}`);
                         
-                        currentStream = stream;
-                        currentVideoTrack = track;
-                        preview.srcObject = stream;
-                        
+                        preview.srcObject = currentStream;
                         loadingOverlay.style.display = 'none';
-                        statusEl.style.display = 'block';
                         statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
                         statusEl.className = 'ready';
-                        if (flashBtn) flashBtn.style.display = 'block';
+                        statusEl.style.display = 'block';
                         
                         setTimeout(() => {
                             if (statusEl.className === 'ready') statusEl.style.display = 'none';
@@ -653,113 +618,108 @@
                         return;
                         
                     } catch (e) {
-                        console.log(`   ❌ ${res.name} failed: ${e.message}`);
+                        console.log(`❌ ${res.width}x${res.height} failed: ${e.message}`);
                     }
                 }
             }
             
-            // Fallback to facingMode
-            console.log('');
-            console.log('📋 Step 5: Trying facingMode strategies...');
+            // Fallback to facingMode strategies
+            console.log('📋 Trying facingMode strategies...');
             
             const strategies = [
-                {
-                    name: 'Environment (1080p ideal)',
-                    constraints: {
-                        video: {
-                            facingMode: { ideal: "environment" },
-                            width: { ideal: 1920 },
-                            height: { ideal: 1080 },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
+                { 
+                    name: 'Environment 1080p (exact)',
+                    video: { 
+                        facingMode: { exact: 'environment' }, 
+                        width: { min: 1920, ideal: 1920 }, 
+                        height: { min: 1080, ideal: 1080 } 
+                    },
+                    audio: true
                 },
-                {
-                    name: 'Environment (720p ideal)',
-                    constraints: {
-                        video: {
-                            facingMode: { ideal: "environment" },
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
+                { 
+                    name: 'Environment (exact, any res)',
+                    video: { facingMode: { exact: 'environment' } },
+                    audio: true
                 },
-                {
-                    name: 'Environment (any resolution)',
-                    constraints: {
-                        video: {
-                            facingMode: { ideal: "environment" },
-                            frameRate: { ideal: 30, max: 30 }
-                        },
-                        audio: true
-                    }
+                { 
+                    name: 'Environment 1080p (ideal)',
+                    video: { 
+                        facingMode: { ideal: 'environment' }, 
+                        width: { ideal: 1920 }, 
+                        height: { ideal: 1080 } 
+                    },
+                    audio: true
+                },
+                { 
+                    name: 'Environment 720p',
+                    video: { 
+                        facingMode: { ideal: 'environment' }, 
+                        width: { ideal: 1280 }, 
+                        height: { ideal: 720 } 
+                    },
+                    audio: true
+                },
+                { 
+                    name: 'Environment (ideal)',
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: true
+                },
+                { 
+                    name: 'Any camera (last resort)',
+                    video: true,
+                    audio: true
                 }
             ];
-            
+
             for (let i = 0; i < strategies.length; i++) {
                 const strategy = strategies[i];
-                
                 try {
-                    console.log(`   📹 Trying: ${strategy.name}`);
+                    console.log(`Trying: ${strategy.name}`);
                     
-                    const stream = await navigator.mediaDevices.getUserMedia(strategy.constraints);
-                    const track = stream.getVideoTracks()[0];
-                    const settings = track.getSettings();
+                    currentStream = await navigator.mediaDevices.getUserMedia(strategy);
+                    currentVideoTrack = currentStream.getVideoTracks()[0];
+                    const settings = currentVideoTrack.getSettings();
+                    const capabilities = currentVideoTrack.getCapabilities();
                     
-                    console.log(`   ✅ Got ${settings.width}x${settings.height}`);
-                    
-                    console.log('');
-                    console.log('═══════════════════════════════════════════════════════════');
-                    console.log('✅ SUCCESS - Camera initialized via facingMode');
-                    console.log(`   Resolution: ${settings.width}x${settings.height}`);
-                    console.log(`   Camera: ${track.label}`);
-                    console.log(`   Facing: ${settings.facingMode || 'unknown'}`);
-                    console.log('═══════════════════════════════════════════════════════════');
-                    
-                    currentStream = stream;
-                    currentVideoTrack = track;
-                    preview.srcObject = stream;
-                    
+                    preview.srcObject = currentStream;
                     loadingOverlay.style.display = 'none';
-                    statusEl.style.display = 'block';
                     statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
                     statusEl.className = 'ready';
-                    if (flashBtn) flashBtn.style.display = 'block';
+                    statusEl.style.display = 'block';
                     
-                    const capabilities = track.getCapabilities();
+                    // Check if front camera
                     const isFrontCamera = (
                         settings.facingMode === 'user' || 
                         capabilities.facingMode === 'user' ||
-                        track.label.toLowerCase().includes('front') ||
-                        track.label.toLowerCase().includes('selfie')
+                        currentVideoTrack.label.toLowerCase().includes('front') ||
+                        currentVideoTrack.label.toLowerCase().includes('selfie') ||
+                        currentVideoTrack.label.toLowerCase().includes('user')
                     );
                     
                     if (isFrontCamera) {
-                        console.warn('⚠️  Front camera detected');
+                        console.error('❌ FRONT CAMERA detected');
                         statusEl.innerText = `⚠️ FRONT CAMERA (${settings.width}x${settings.height})`;
                         statusEl.className = 'error';
                         document.getElementById('frontCameraWarningModal').style.display = 'flex';
+                    } else {
+                        console.log(`✅ Rear camera confirmed`);
                     }
                     
                     setTimeout(() => {
                         if (statusEl.className === 'ready') statusEl.style.display = 'none';
                     }, 3000);
-                    
+
                     startBrightnessMonitoring();
                     return;
                     
-                } catch (e) {
-                    console.log(`   ❌ Failed: ${e.message}`);
+                } catch (err) {
+                    console.warn(`❌ ${strategy.name} failed:`, err.message);
+                    if (i === strategies.length - 1) throw err;
                 }
             }
             
-            throw new Error('All camera strategies failed');
-            
         } catch (error) {
-            console.error('❌ Camera initialization failed:', error);
+            console.error('❌ Camera failed:', error);
             loadingOverlay.style.display = 'none';
             statusEl.innerText = 'Camera Failed';
             statusEl.className = 'error';
@@ -775,6 +735,7 @@
             alert(errorMsg);
         }
     }
+
 
     function resetCamera() {
         console.log('🔄 Resetting camera...');
