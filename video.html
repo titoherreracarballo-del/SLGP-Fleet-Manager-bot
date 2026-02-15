@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection</title>
+    <title>Video Inspection v2.1 CACHE-BUSTER</title>
     <style>
         :root {
             --bg-body: #0F1115;        
@@ -266,6 +266,24 @@
         <button class="modal-btn" onclick="closeFrontCameraWarning()">I Understand - Continue Anyway</button>
     </div>
 </div>
+
+<script>
+// CACHE BUSTER - Forces detection of old versions
+const EXPECTED_VERSION = "v2.1 CACHE-BUSTER";
+const actualTitle = document.title;
+if (!actualTitle.includes(EXPECTED_VERSION)) {
+    alert("⚠️ OLD VERSION DETECTED!\n\nYou are seeing a CACHED old file.\n\nPress F12 → Application → Service Workers → Unregister\nThen refresh!");
+}
+// Force unregister service worker on load
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+            registration.unregister();
+            console.log("🔄 Service worker unregistered");
+        }
+    });
+}
+</script>
 
 <div class="container">
     <div class="header-row">
