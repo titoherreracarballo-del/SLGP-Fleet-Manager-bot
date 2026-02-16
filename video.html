@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.0 COMPLETE FIX</title>
+    <title>Video Inspection v4.1 WITH FLIP BUTTON</title>
     <style>
         :root {
             --bg-body: #0F1115;        
@@ -188,6 +188,42 @@
         #camera-status.error { color: #ef4444; border: 1px solid #ef4444; }
         #camera-status.flash-on { color: #FCD34D; border: 1px solid #FCD34D; }
         
+        #flip-camera-btn {
+            position: absolute;
+            bottom: 80px;
+            left: 12px;
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            color: #3B82F6;
+            padding: 10px 14px;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 5;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #flip-camera-btn:active {
+            background-color: #1f2937;
+        }
+        
+        #current-camera-label {
+            position: absolute;
+            bottom: 150px;
+            left: 12px;
+            background: rgba(0,0,0,0.8);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #3B82F6;
+            z-index: 5;
+            border: 1px solid #3B82F6;
+        }
         #flash-toggle {
             position: absolute;
             bottom: 100px;
@@ -338,6 +374,8 @@
         </div>
         <div id="camera-status">Initializing...</div>
         <div id="timer-display">00:00</div>
+        <button id="flip-camera-btn" onclick="flipCamera()">🔄</button>
+        <div id="current-camera-label">REAR</div>
         <button id="flash-toggle" onclick="toggleFlash()">💡</button>
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
@@ -385,6 +423,7 @@
     let currentStream = null;
     let currentVideoTrack = null;
     let flashEnabled = false;
+    let preferredFacingMode = "environment"; // "environment" = rear, "user" = front
     let brightnessCheckInterval = null;
 
     const vinDatabase = {
@@ -556,6 +595,39 @@
         }
     }
 
+    async function flipCamera() {
+        console.log("🔄 FLIP CAMERA CLICKED");
+        
+        const label = document.getElementById('current-camera-label');
+        
+        // Toggle preference
+        if (preferredFacingMode === "environment") {
+            preferredFacingMode = "user";
+            label.innerText = "FRONT";
+            label.style.color = "#fbbf24";
+            label.style.borderColor = "#fbbf24";
+            console.log("👤 Switching to FRONT camera");
+        } else {
+            preferredFacingMode = "environment";
+            label.innerText = "REAR";
+            label.style.color = "#3B82F6";
+            label.style.borderColor = "#3B82F6";
+            console.log("📹 Switching to REAR camera");
+        }
+        
+        // Stop current camera
+        stopBrightnessMonitoring();
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+            currentVideoTrack = null;
+        }
+        
+        // Restart with new preference
+        setTimeout(() => {
+            startCamera();
+        }, 300);
+    }
     async function startCamera() {
         const preview = document.getElementById('preview');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -591,7 +663,7 @@
 
             // Request camera permission (prefer rear camera from the start)
             await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: { ideal: "environment" } }, 
+                video: { facingMode: { ideal: preferredFacingMode } }, 
                 audio: false 
             }).then(stream => {
                 stream.getTracks().forEach(track => track.stop());
@@ -689,7 +761,7 @@
                 name: 'Environment (1080p exact)',
                 constraints: {
                     video: {
-                        facingMode: { exact: "environment" },
+                        facingMode: { exact: preferredFacingMode },
                         width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
                         height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
                         frameRate: { ideal: 30, max: 30 }
@@ -703,7 +775,7 @@
                 name: 'Environment (1080p ideal)',
                 constraints: {
                     video: {
-                        facingMode: { ideal: "environment" },
+                        facingMode: { ideal: preferredFacingMode },
                         width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
                         height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
                         frameRate: { ideal: 30, max: 30 }
@@ -717,7 +789,7 @@
                 name: 'Environment (720p)',
                 constraints: {
                     video: {
-                        facingMode: { ideal: "environment" },
+                        facingMode: { ideal: preferredFacingMode },
                         width: { ideal: 1280 },
                         height: { ideal: 720 },
                         frameRate: { ideal: 30, max: 30 }
@@ -731,7 +803,7 @@
                 name: 'Rear Fallback (480p)',
                 constraints: {
                     video: {
-                        facingMode: { ideal: "environment" },
+                        facingMode: { ideal: preferredFacingMode },
                         width: { ideal: 640 },
                         height: { ideal: 480 }
                     },
