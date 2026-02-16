@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.1 WITH FLIP BUTTON</title>
+    <title>Video Inspection v4.2 FLIP BUTTON FIXED</title>
     <style>
         :root {
             --bg-body: #0F1115;        
@@ -596,7 +596,7 @@
     }
 
     async function flipCamera() {
-        console.log("🔄 FLIP CAMERA CLICKED");
+        console.log("🔄 === FLIP CAMERA BUTTON CLICKED ===");
         
         const label = document.getElementById('current-camera-label');
         
@@ -606,28 +606,44 @@
             label.innerText = "FRONT";
             label.style.color = "#fbbf24";
             label.style.borderColor = "#fbbf24";
-            console.log("👤 Switching to FRONT camera");
+            console.log("👤 User selected: FRONT camera");
         } else {
             preferredFacingMode = "environment";
             label.innerText = "REAR";
             label.style.color = "#3B82F6";
             label.style.borderColor = "#3B82F6";
-            console.log("📹 Switching to REAR camera");
+            console.log("📹 User selected: REAR camera");
         }
+        
+        console.log(`✅ preferredFacingMode set to: "${preferredFacingMode}"`);
         
         // Stop current camera
         stopBrightnessMonitoring();
+        
         if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
+            console.log("Stopping current camera streams...");
+            currentStream.getTracks().forEach(track => {
+                console.log(`  Stopping: ${track.kind} - ${track.label}`);
+                track.stop();
+            });
             currentStream = null;
             currentVideoTrack = null;
         }
         
-        // Restart with new preference
+        const preview = document.getElementById('preview');
+        if (preview && preview.srcObject) {
+            preview.srcObject.getTracks().forEach(track => track.stop());
+            preview.srcObject = null;
+        }
+        
+        // Wait 500ms for camera to fully release, then restart
+        console.log("Waiting 500ms before restarting camera...");
         setTimeout(() => {
+            console.log("Restarting camera with new preference...");
             startCamera();
-        }, 300);
+        }, 500);
     }
+
     async function startCamera() {
         const preview = document.getElementById('preview');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -693,60 +709,81 @@
                 throw new Error('No cameras found on this device');
             }
 
-            let rearCamera = videoDevices.find(d => 
-                d.label.toLowerCase().includes('back') || 
-                d.label.toLowerCase().includes('rear') || 
-                d.label.toLowerCase().includes('environment')
-            );
-
-            if (rearCamera) {
-                console.log(`✅ Rear camera found by label: "${rearCamera.label}"`);
-            } else {
-                console.log('⚠️  No camera with "back", "rear", or "environment" in label');
-            }
-
-            // Enhanced fallback: Avoid front cameras even if rear not explicitly labeled
-            if (!rearCamera && videoDevices.length > 1) {
-                console.log('🔍 Trying negative filtering (exclude front cameras)...');
-                // Try to find camera that's NOT explicitly front-facing
-                rearCamera = videoDevices.find(d => 
-                    !d.label.toLowerCase().includes('front') &&
-                    !d.label.toLowerCase().includes('selfie') &&
-                    !d.label.toLowerCase().includes('user') &&
-                    !d.label.toLowerCase().includes('face')
+            // ============================================
+            // FIND CAMERA BASED ON USER PREFERENCE
+            // ============================================
+            let selectedCamera = null;
+            
+            if (preferredFacingMode === "user") {
+                // User wants FRONT camera
+                console.log("👤 User preference: FRONT camera");
+                selectedCamera = videoDevices.find(d =>
+                    d.label.toLowerCase().includes('front') ||
+                    d.label.toLowerCase().includes('selfie') ||
+                    d.label.toLowerCase().includes('user') ||
+                    d.label.toLowerCase().includes('face')
                 );
                 
-                if (rearCamera) {
-                    console.log(`✅ Found non-front camera: "${rearCamera.label}"`);
+                if (selectedCamera) {
+                    console.log(`✅ Front camera found: "${selectedCamera.label}"`);
                 } else {
-                    console.log('⚠️  All cameras appear to be front-facing or unlabeled');
-                    console.log('📍 Using last camera as fallback');
-                    rearCamera = videoDevices[videoDevices.length - 1];
+                    console.log("⚠️  No front camera found by label, using first camera");
+                    selectedCamera = videoDevices[0];
                 }
-            }
-            
-            if (!rearCamera && videoDevices.length === 1) {
-                console.log('⚠️  Only ONE camera found - using it (may be front camera)');
-                rearCamera = videoDevices[0];
+            } else {
+                // User wants REAR camera (default)
+                console.log("📹 User preference: REAR camera");
+                selectedCamera = videoDevices.find(d =>
+                    d.label.toLowerCase().includes('back') ||
+                    d.label.toLowerCase().includes('rear') ||
+                    d.label.toLowerCase().includes('environment')
+                );
+                
+                if (selectedCamera) {
+                    console.log(`✅ Rear camera found: "${selectedCamera.label}"`);
+                } else if (videoDevices.length > 1) {
+                    console.log("🔍 No rear camera found by label, excluding front cameras...");
+                    selectedCamera = videoDevices.find(d =>
+                        !d.label.toLowerCase().includes('front') &&
+                        !d.label.toLowerCase().includes('selfie') &&
+                        !d.label.toLowerCase().includes('user') &&
+                        !d.label.toLowerCase().includes('face')
+                    );
+                    
+                    if (selectedCamera) {
+                        console.log(`✅ Non-front camera selected: "${selectedCamera.label}"`);
+                    } else {
+                        console.log("⚠️  Using last camera as fallback");
+                        selectedCamera = videoDevices[videoDevices.length - 1];
+                    }
+                } else {
+                    console.log("⚠️  Only 1 camera available, using it");
+                    selectedCamera = videoDevices[0];
+                }
             }
 
             console.log('');
             console.log('═══════════════════════════════════════════════════════════');
-            console.log('Selected camera for testing:');
-            console.log(`  Label: "${rearCamera ? rearCamera.label : 'NONE'}"`);
-            console.log(`  ID: ${rearCamera ? rearCamera.deviceId : 'NONE'}`);
+            console.log('Selected camera:');
+            console.log(`  Label: "${selectedCamera ? selectedCamera.label : 'NONE'}"`);
+            console.log(`  ID: ${selectedCamera ? selectedCamera.deviceId : 'NONE'}`);
+            console.log(`  User wants: ${preferredFacingMode === "user" ? "FRONT" : "REAR"}`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('');
+            console.log(`  Label: "${rearCamera ? selectedCamera.label : 'NONE'}"`);
+            console.log(`  ID: ${rearCamera ? selectedCamera.deviceId : 'NONE'}`);
             console.log('═══════════════════════════════════════════════════════════');
             console.log('');
 
             const strategies = [];
 
             // Strategy 1: Rear camera with exact device ID (highest priority)
-            if (rearCamera) {
+            if (selectedCamera) {
                 strategies.push({
                     name: 'Rear Camera (1080p)',
                     constraints: {
                         video: {
-                            deviceId: { exact: rearCamera.deviceId },
+                            deviceId: { exact: selectedCamera.deviceId },
                             width: { ideal: CONFIG.VIDEO_WIDTH },
                             height: { ideal: CONFIG.VIDEO_HEIGHT },
                             frameRate: { ideal: 30, max: 30 }
