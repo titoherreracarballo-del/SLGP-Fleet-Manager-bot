@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection</title>
+    <title>Video Inspection v4.0 COMPLETE FIX</title>
     <style>
         :root {
             --bg-body: #0F1115;        
@@ -1192,9 +1192,9 @@
 
         btn.style.display = 'none';
         progressBar.style.display = 'block';
-        const percentOverlay = document.getElementById("progress-percentage");
-        if (percentOverlay) percentOverlay.innerText = "0%";
         status.innerText = "Preparing upload...";
+        const percentOverlay = document.getElementById('progress-percentage');
+        if (percentOverlay) percentOverlay.innerText = '0%';
 
         const formData = new FormData();
         formData.append('video', videoBlob, 'inspection.mp4');
@@ -1208,24 +1208,65 @@
             attempts++;
             console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
             
+            // Simulated progress variables
+            let simulatedProgress = 0;
+            let progressInterval = null;
+            let realProgressReceived = false;
+            
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/upload-to-google-drive', true);
                 xhr.timeout = 300000;
 
+                // Start simulated progress (updates every 800ms)
+                console.log('⏱️ Starting simulated progress timer...');
+                progressInterval = setInterval(() => {
+                    if (!realProgressReceived && simulatedProgress < 90) {
+                        simulatedProgress += 5;
+                        progressFill.style.width = simulatedProgress + '%';
+                        const percentOverlay = document.getElementById('progress-percentage');
+                        if (percentOverlay) percentOverlay.innerText = simulatedProgress + '%';
+                        
+                        const estimatedMB = (videoBlob.size / 1024 / 1024).toFixed(1);
+                        const uploadedMB = ((simulatedProgress / 100) * videoBlob.size / 1024 / 1024).toFixed(1);
+                        status.innerText = `Uploading: ${simulatedProgress}% (${uploadedMB}/${estimatedMB}MB)`;
+                        console.log(`⏱️ Simulated progress: ${simulatedProgress}%`);
+                    }
+                }, 800);
+
+                // Real progress (if backend supports it)
                 xhr.upload.onprogress = function(e) {
+                    console.log('📊 Real progress event received!', e);
                     if (e.lengthComputable) {
+                        realProgressReceived = true;
+                        if (progressInterval) {
+                            clearInterval(progressInterval);
+                            console.log('✅ Switched to real progress');
+                        }
+                        
                         const percent = Math.round((e.loaded / e.total) * 100);
                         progressFill.style.width = percent + '%';
                         const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
                         const mbTotal = (e.total / 1024 / 1024).toFixed(1);
                         status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
-                        const percentOverlay = document.getElementById("progress-percentage");
-                        if (percentOverlay) percentOverlay.innerText = percent + "%";
+                        const percentOverlay = document.getElementById('progress-percentage');
+                        if (percentOverlay) percentOverlay.innerText = percent + '%';
+                        console.log(`📊 Real progress: ${percent}% (${mbLoaded}/${mbTotal}MB)`);
                     }
                 };
 
                 xhr.onload = function() {
+                    console.log('✅ Upload complete, xhr.status:', xhr.status);
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                    }
+                    
+                    // Set to 100% on completion
+                    progressFill.style.width = '100%';
+                    const percentOverlay = document.getElementById('progress-percentage');
+                    if (percentOverlay) percentOverlay.innerText = '100%';
+                    
                     if (xhr.status === 200) {
                         try {
                             const response = JSON.parse(xhr.responseText);
@@ -1242,9 +1283,18 @@
                     }
                 };
 
-                xhr.onerror = () => reject(new Error('Network error'));
-                xhr.ontimeout = () => reject(new Error('Upload timeout'));
+                xhr.onerror = () => {
+                    if (progressInterval) clearInterval(progressInterval);
+                    reject(new Error('Network error'));
+                };
+                
+                xhr.ontimeout = () => {
+                    if (progressInterval) clearInterval(progressInterval);
+                    reject(new Error('Upload timeout'));
+                };
 
+                console.log('📤 Sending upload request...');
+                console.log('📦 Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
                 xhr.send(formData);
             });
         }
@@ -1261,7 +1311,7 @@
                 status.innerText = "Upload Complete! ✅";
                 progressFill.style.backgroundColor = "#4ade80";
                 
-                setTimeout(() => window.location.href = '/', 2000);
+                setTimeout(() => window.location.href = '/success', 2000);
                 return;
                 
             } catch (error) {
@@ -1270,6 +1320,8 @@
                 if (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
                     status.innerText = `Retrying (${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS})...`;
                     progressFill.style.width = '0%';
+                    const percentOverlay = document.getElementById('progress-percentage');
+                    if (percentOverlay) percentOverlay.innerText = '0%';
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 } else {
                     if (wakeLock) {
@@ -1282,6 +1334,8 @@
                     btn.style.display = 'block';
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
+                    const percentOverlay = document.getElementById('progress-percentage');
+                    if (percentOverlay) percentOverlay.innerText = '0%';
                     status.innerText = "Upload failed. Ready to retry.";
                 }
             }
