@@ -2,26 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v2.2-1771120594</title>
+    <title>Video Inspection</title>
     <style>
         :root {
-        .version-indicator {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: #4ade80;
-            color: #0F1115;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 11px;
-            font-weight: bold;
-            z-index: 99999;
-            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.4);
-        }
             --bg-body: #0F1115;        
             --bg-card: #161B28;        
             --bg-input: #0b0d12;       
@@ -54,20 +38,39 @@
         }
 
         #progress-container {
-            width: 100%;
-            background-color: #374151;
-            border-radius: 10px;
-            margin-top: 15px;
-            height: 10px;
+            width: 100% !important;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
+            border-radius: 16px !important;
+            margin: 25px 0 !important;
+            height: 80px !important;
             display: none;
-            overflow: hidden;
+            overflow: visible !important;
+            border: 5px solid #22c55e !important;
+            box-shadow: 0 0 30px rgba(34, 197, 94, 0.6), inset 0 2px 4px rgba(0,0,0,0.3) !important;
+            position: relative !important;
         }
 
         #progress-fill {
-            height: 100%;
-            width: 0%;
-            background-color: #4ade80;
-            transition: width 0.2s;
+            height: 100% !important;
+            width: 0% !important;
+            background: linear-gradient(90deg, #10b981 0%, #22c55e 50%, #4ade80 100%) !important;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            box-shadow: inset 0 4px 8px rgba(255,255,255,0.3) !important;
+            border-radius: 12px !important;
+        }
+
+        .progress-percentage-overlay {
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            color: #ffffff !important;
+            font-size: 36px !important;
+            font-weight: 900 !important;
+            text-shadow: 0 3px 10px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(34, 197, 94, 0.5) !important;
+            z-index: 1000 !important;
+            letter-spacing: 3px !important;
+            font-family: 'Courier New', monospace !important;
         }
 
         .header-row {
@@ -121,6 +124,15 @@
             color: #6b7280;
             transition: all 0.3s ease;
             box-sizing: border-box;
+        }
+
+        .status-msg {
+            font-size: 18px !important;
+            font-weight: 800 !important;
+            color: #22c55e !important;
+            text-align: center !important;
+            padding: 15px !important;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5) !important;
         }
         .status-box.active { background-color: rgba(74, 222, 128, 0.1); border-color: #4ade80; color: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2); }
         .status-box.inactive { background-color: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
@@ -235,44 +247,6 @@
     </style>
 </head>
 <body>
-    <div class="version-indicator">NEW VERSION v2.2 ✅</div>
-    <script>
-    // ULTRA CACHE BUSTER
-    console.log("🔥 ULTRA CACHE BUSTER v2.2 LOADED!");
-    console.log("✅ This is the NEW version with progress bar");
-    
-    // Force unregister ALL service workers
-    if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            registrations.forEach(reg => {
-                reg.unregister();
-                console.log("🗑️ Service worker unregistered:", reg.scope);
-            });
-        });
-    }
-    
-    // Clear ALL caches
-    if ("caches" in window) {
-        caches.keys().then(names => {
-            names.forEach(name => {
-                caches.delete(name);
-                console.log("🗑️ Cache deleted:", name);
-            });
-        });
-    }
-    
-    // Show alert if old version detected
-    setTimeout(() => {
-        const hasProgressBar = document.getElementById("progress-container");
-        const hasFlashBtn = document.getElementById("flash-toggle");
-        if (!hasProgressBar || !hasFlashBtn) {
-            alert("⚠️ OLD VERSION STILL CACHED!\n\nPress F12 → Application → Service Workers → Unregister ALL\nThen Ctrl+Shift+R");
-        } else {
-            console.log("✅ Progress bar found:", hasProgressBar);
-            console.log("✅ Flash button found:", hasFlashBtn);
-        }
-    }, 1000);
-    </script>
 
 <div id="towWarningModal" class="modal">
     <div class="modal-content modal-red">
@@ -378,6 +352,7 @@
     
     <div id="progress-container">
         <div id="progress-fill"></div>
+        <div class="progress-percentage-overlay" id="progress-percentage">0%</div>
     </div>
     
     <div class="status-msg" id="status">Ready for Inspection</div>
@@ -589,6 +564,7 @@
         
         loadingOverlay.style.display = 'flex';
         statusEl.style.display = 'none';
+        flashBtn.style.display = 'none';
 
         stopBrightnessMonitoring();
         if (currentStream) {
@@ -601,162 +577,320 @@
             preview.srcObject = null;
         }
 
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Camera timeout')), CONFIG.CAMERA_TIMEOUT)
+        );
+
         try {
-            console.log('═══════════════════════════════════════════════════════════');
-            console.log('📹 ENHANCED CAMERA v2.0');
-            console.log('═══════════════════════════════════════════════════════════');
-            
-            // Request permission first
-            await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: "environment" } }
+            if (navigator.permissions) {
+                const permissionResult = await navigator.permissions.query({ name: 'camera' });
+                if (permissionResult.state === 'denied') {
+                    throw new Error('Camera permission denied. Please enable in settings.');
+                }
+            }
+
+            // Request camera permission (prefer rear camera from the start)
+            await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: { ideal: "environment" } }, 
+                audio: false 
             }).then(stream => {
                 stream.getTracks().forEach(track => track.stop());
             });
-            
-            // Enumerate cameras
+
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             
-            console.log(`✅ Found ${videoDevices.length} camera(s)`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('📹 CAMERA DIAGNOSTICS v' + Date.now());
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log(`📹 Found ${videoDevices.length} camera(s) on this device:`);
+            console.log('');
+            
             videoDevices.forEach((device, index) => {
-                console.log(`   ${index}: ${device.label}`);
+                console.log(`Camera ${index}:`);
+                console.log(`  Label: "${device.label}"`);
+                console.log(`  ID: ${device.deviceId}`);
+                console.log(`  Group: ${device.groupId}`);
+                console.log('');
             });
             
-            // Find rear camera by label
+            console.log('Analyzing camera labels for rear camera detection...');
+            console.log('');
+
+            if (videoDevices.length === 0) {
+                throw new Error('No cameras found on this device');
+            }
+
             let rearCamera = videoDevices.find(d => 
-                d.label.toLowerCase().includes('back') ||
-                d.label.toLowerCase().includes('rear') ||
+                d.label.toLowerCase().includes('back') || 
+                d.label.toLowerCase().includes('rear') || 
                 d.label.toLowerCase().includes('environment')
             );
-            
+
             if (rearCamera) {
-                console.log(`✅ Rear camera found: ${rearCamera.label}`);
+                console.log(`✅ Rear camera found by label: "${rearCamera.label}"`);
+            } else {
+                console.log('⚠️  No camera with "back", "rear", or "environment" in label');
             }
-            
-            // Try deviceId strategy first if we found rear camera
-            if (rearCamera) {
-                const resolutions = [
-                    { width: 1920, height: 1080 },
-                    { width: 1280, height: 720 }
-                ];
+
+            // Enhanced fallback: Avoid front cameras even if rear not explicitly labeled
+            if (!rearCamera && videoDevices.length > 1) {
+                console.log('🔍 Trying negative filtering (exclude front cameras)...');
+                // Try to find camera that's NOT explicitly front-facing
+                rearCamera = videoDevices.find(d => 
+                    !d.label.toLowerCase().includes('front') &&
+                    !d.label.toLowerCase().includes('selfie') &&
+                    !d.label.toLowerCase().includes('user') &&
+                    !d.label.toLowerCase().includes('face')
+                );
                 
-                for (const res of resolutions) {
-                    try {
-                        console.log(`📹 Trying ${res.width}x${res.height}...`);
-                        
-                        currentStream = await navigator.mediaDevices.getUserMedia({
-                            video: {
-                                deviceId: { exact: rearCamera.deviceId },
-                                width: { ideal: res.width },
-                                height: { ideal: res.height }
-                            },
-                            audio: true
-                        });
-                        
-                        currentVideoTrack = currentStream.getVideoTracks()[0];
-                        const settings = currentVideoTrack.getSettings();
-                        
-                        console.log(`✅ SUCCESS: ${settings.width}x${settings.height}`);
-                        
-                        preview.srcObject = currentStream;
-                        loadingOverlay.style.display = 'none';
-                        statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
-                        statusEl.className = 'ready';
-                        statusEl.style.display = 'block';
-                        
-                        setTimeout(() => {
-                            if (statusEl.className === 'ready') statusEl.style.display = 'none';
-                        }, 3000);
-                        
-                        startBrightnessMonitoring();
-                        return;
-                        
-                    } catch (e) {
-                        console.log(`❌ ${res.width}x${res.height} failed: ${e.message}`);
-                    }
+                if (rearCamera) {
+                    console.log(`✅ Found non-front camera: "${rearCamera.label}"`);
+                } else {
+                    console.log('⚠️  All cameras appear to be front-facing or unlabeled');
+                    console.log('📍 Using last camera as fallback');
+                    rearCamera = videoDevices[videoDevices.length - 1];
                 }
             }
             
-            // Fallback to facingMode strategies
-            console.log('📋 Trying facingMode strategies...');
-            
-            const strategies = [
-                { 
-                    name: 'Environment 1080p (exact)',
-                    video: { 
-                        facingMode: { exact: 'environment' }, 
-                        width: { min: 1920, ideal: 1920 }, 
-                        height: { min: 1080, ideal: 1080 } 
+            if (!rearCamera && videoDevices.length === 1) {
+                console.log('⚠️  Only ONE camera found - using it (may be front camera)');
+                rearCamera = videoDevices[0];
+            }
+
+            console.log('');
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('Selected camera for testing:');
+            console.log(`  Label: "${rearCamera ? rearCamera.label : 'NONE'}"`);
+            console.log(`  ID: ${rearCamera ? rearCamera.deviceId : 'NONE'}`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('');
+
+            const strategies = [];
+
+            // Strategy 1: Rear camera with exact device ID (highest priority)
+            if (rearCamera) {
+                strategies.push({
+                    name: 'Rear Camera (1080p)',
+                    constraints: {
+                        video: {
+                            deviceId: { exact: rearCamera.deviceId },
+                            width: { ideal: CONFIG.VIDEO_WIDTH },
+                            height: { ideal: CONFIG.VIDEO_HEIGHT },
+                            frameRate: { ideal: 30, max: 30 }
+                        },
+                        audio: true
+                    }
+                });
+            }
+
+            // Strategy 2: Environment facing mode (exact) with 1080p
+            strategies.push({
+                name: 'Environment (1080p exact)',
+                constraints: {
+                    video: {
+                        facingMode: { exact: "environment" },
+                        width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
+                        height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
+                        frameRate: { ideal: 30, max: 30 }
                     },
-                    audio: true
-                },
-                { 
-                    name: 'Environment (exact, any res)',
-                    video: { facingMode: { exact: 'environment' } },
-                    audio: true
-                },
-                { 
-                    name: 'Environment 1080p (ideal)',
-                    video: { 
-                        facingMode: { ideal: 'environment' }, 
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 } 
-                    },
-                    audio: true
-                },
-                { 
-                    name: 'Environment 720p',
-                    video: { 
-                        facingMode: { ideal: 'environment' }, 
-                        width: { ideal: 1280 }, 
-                        height: { ideal: 720 } 
-                    },
-                    audio: true
-                },
-                { 
-                    name: 'Environment (ideal)',
-                    video: { facingMode: { ideal: 'environment' } },
-                    audio: true
-                },
-                { 
-                    name: 'Any camera (last resort)',
-                    video: true,
                     audio: true
                 }
-            ];
+            });
+
+            // Strategy 3: Environment facing mode (ideal) with 1080p
+            strategies.push({
+                name: 'Environment (1080p ideal)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { min: 1920, ideal: CONFIG.VIDEO_WIDTH },
+                        height: { min: 1080, ideal: CONFIG.VIDEO_HEIGHT },
+                        frameRate: { ideal: 30, max: 30 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 4: Environment with 720p
+            strategies.push({
+                name: 'Environment (720p)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30, max: 30 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 5: Any rear-facing camera (480p fallback)
+            strategies.push({
+                name: 'Rear Fallback (480p)',
+                constraints: {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: true
+                }
+            });
+
+            // Strategy 6: Absolute last resort (any camera)
+            strategies.push({
+                name: 'Basic Fallback (any camera)',
+                constraints: { 
+                    video: true, 
+                    audio: true 
+                }
+            });
 
             for (let i = 0; i < strategies.length; i++) {
                 const strategy = strategies[i];
+                console.log(`📹 Trying: ${strategy.name} (${i + 1}/${strategies.length})`);
+                
                 try {
-                    console.log(`Trying: ${strategy.name}`);
+                    const stream = await Promise.race([
+                        navigator.mediaDevices.getUserMedia(strategy.constraints),
+                        timeoutPromise
+                    ]);
                     
-                    currentStream = await navigator.mediaDevices.getUserMedia(strategy);
-                    currentVideoTrack = currentStream.getVideoTracks()[0];
-                    const settings = currentVideoTrack.getSettings();
-                    const capabilities = currentVideoTrack.getCapabilities();
+                    const videoTrack = stream.getVideoTracks()[0];
+                    const settings = videoTrack.getSettings();
+                    const capabilities = videoTrack.getCapabilities();
                     
-                    preview.srcObject = currentStream;
+                    console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
+                    console.log(`   Facing mode: ${settings.facingMode || 'unknown'}`);
+                    console.log(`   Capabilities: ${JSON.stringify({
+                        width: capabilities.width,
+                        height: capabilities.height,
+                        facingMode: capabilities.facingMode
+                    })}`);
+
+                    // CRITICAL FIX: Multi-layer front camera rejection
+                    const isFrontCamera = (
+                        settings.facingMode === 'user' || 
+                        capabilities.facingMode === 'user' ||
+                        (capabilities.facingMode && capabilities.facingMode.includes && capabilities.facingMode.includes('user')) ||
+                        videoTrack.label.toLowerCase().includes('front') ||
+                        videoTrack.label.toLowerCase().includes('selfie') ||
+                        videoTrack.label.toLowerCase().includes('user') ||
+                        videoTrack.label.toLowerCase().includes('face')
+                    );
+                    
+                    console.log(`🔍 Front camera check:`);
+                    console.log(`   Camera label: "${videoTrack.label}"`);
+                    console.log(`   settings.facingMode: ${settings.facingMode || 'undefined'}`);
+                    console.log(`   capabilities.facingMode: ${JSON.stringify(capabilities.facingMode || 'undefined')}`);
+                    console.log(`   Label includes 'front': ${videoTrack.label.toLowerCase().includes('front')}`);
+                    console.log(`   Label includes 'selfie': ${videoTrack.label.toLowerCase().includes('selfie')}`);
+                    console.log(`   Label includes 'user': ${videoTrack.label.toLowerCase().includes('user')}`);
+                    console.log(`   Result: ${isFrontCamera ? '❌ FRONT CAMERA' : '✅ NOT FRONT CAMERA'}`);
+                    
+                    // REJECT front camera for ALL strategies except the very last one
+                    if (i < strategies.length - 1 && isFrontCamera) {
+                        console.log('⚠️  🚫 REJECTING FRONT CAMERA - Trying next strategy...');
+                        console.log('');
+                        stream.getTracks().forEach(track => track.stop());
+                        continue;
+                    }
+
+                    // CRITICAL FIX: Reject low resolution if we're not on the last strategy
+                    if (i < strategies.length - 1 && settings.width < 1280) {
+                        console.log(`⚠️  Low resolution (${settings.width}x${settings.height}), trying next strategy...`);
+                        stream.getTracks().forEach(track => track.stop());
+                        continue;
+                    }
+                    
+                    // ADDITIONAL CHECK: For first 3 strategies, prefer 1080p
+                    if (i < 3 && settings.width < 1920 && settings.height < 1080) {
+                        console.log(`⚠️  Not full 1080p (${settings.width}x${settings.height}), trying next strategy...`);
+                        stream.getTracks().forEach(track => track.stop());
+                        continue;
+                    }
+
+                    currentStream = stream;
+                    currentVideoTrack = videoTrack;
+                    preview.srcObject = stream;
+
+                    await new Promise((resolve, reject) => {
+                        const playTimeout = setTimeout(() => reject(new Error('Video play timeout')), 5000);
+                        
+                        preview.onloadedmetadata = () => {
+                            preview.play()
+                                .then(() => {
+                                    clearTimeout(playTimeout);
+                                    resolve();
+                                })
+                                .catch(reject);
+                        };
+                    });
+
+                    try {
+                        const capabilities = videoTrack.getCapabilities();
+                        const advConstraints = { advanced: [] };
+
+                        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                            advConstraints.advanced.push({ focusMode: 'continuous' });
+                        }
+                        if (capabilities.exposureMode && capabilities.exposureMode.includes('continuous')) {
+                            advConstraints.advanced.push({ exposureMode: 'continuous' });
+                        }
+                        if (capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes('continuous')) {
+                            advConstraints.advanced.push({ whiteBalanceMode: 'continuous' });
+                        }
+
+                        if (advConstraints.advanced.length > 0) {
+                            await videoTrack.applyConstraints(advConstraints);
+                        }
+
+                        if (capabilities.torch) {
+                            flashBtn.style.display = 'block';
+                        }
+                    } catch (e) {
+                        console.log('Advanced settings skipped:', e.message);
+                    }
+
                     loadingOverlay.style.display = 'none';
                     statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
                     statusEl.className = 'ready';
                     statusEl.style.display = 'block';
                     
-                    // Check if front camera
-                    const isFrontCamera = (
+                    // CRITICAL DIAGNOSTIC: Alert user if not 1080p
+                    if (settings.width < 1920 || settings.height < 1080) {
+                        console.warn(`⚠️ WARNING: Camera is ${settings.width}x${settings.height}, not full 1080p!`);
+                        console.warn(`   This may be a phone hardware limitation.`);
+                        console.warn(`   Phone capabilities:`, capabilities.width, capabilities.height);
+                    } else {
+                        console.log(`✅ SUCCESS: Full 1080p camera active!`);
+                    }
+                    
+                    // CRITICAL WARNING: Check if front camera ended up being used
+                    const finalIsFrontCamera = (
                         settings.facingMode === 'user' || 
                         capabilities.facingMode === 'user' ||
-                        currentVideoTrack.label.toLowerCase().includes('front') ||
-                        currentVideoTrack.label.toLowerCase().includes('selfie') ||
-                        currentVideoTrack.label.toLowerCase().includes('user')
+                        videoTrack.label.toLowerCase().includes('front') ||
+                        videoTrack.label.toLowerCase().includes('selfie') ||
+                        videoTrack.label.toLowerCase().includes('user')
                     );
                     
-                    if (isFrontCamera) {
-                        console.error('❌ FRONT CAMERA detected');
+                    if (finalIsFrontCamera) {
+                        console.error('❌ CRITICAL: FRONT CAMERA IS ACTIVE!');
+                        console.error('   Camera label:', videoTrack.label);
+                        console.error('   Facing mode:', settings.facingMode || capabilities.facingMode || 'unknown');
+                        console.error('   This phone may not have a rear camera, or rear camera is unavailable.');
                         statusEl.innerText = `⚠️ FRONT CAMERA (${settings.width}x${settings.height})`;
                         statusEl.className = 'error';
+                        
+                        // Show warning modal to user
                         document.getElementById('frontCameraWarningModal').style.display = 'flex';
                     } else {
-                        console.log(`✅ Rear camera confirmed`);
+                        console.log(`✅ Rear camera confirmed active`);
+                        console.log(`   Camera label: "${videoTrack.label}"`);
+                        console.log(`   Facing mode: ${settings.facingMode || capabilities.facingMode || 'environment (assumed)'}`);
                     }
                     
                     setTimeout(() => {
@@ -764,6 +898,7 @@
                     }, 3000);
 
                     startBrightnessMonitoring();
+
                     return;
                     
                 } catch (err) {
@@ -773,7 +908,7 @@
             }
             
         } catch (error) {
-            console.error('❌ Camera failed:', error);
+            console.error('❌ Camera initialization failed:', error);
             loadingOverlay.style.display = 'none';
             statusEl.innerText = 'Camera Failed';
             statusEl.className = 'error';
@@ -790,27 +925,71 @@
         }
     }
 
-
     function resetCamera() {
-        console.log('🔄 Resetting camera...');
-        const preview = document.getElementById('preview');
-        const playback = document.getElementById('playback');
+        console.log("🔄 === RESET CAMERA CLICKED ===");
+        
+        // Stop recording if active
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+            console.log("Stopping active recording...");
+            mediaRecorder.stop();
+        }
         
         stopBrightnessMonitoring();
         
-        preview.style.display = 'block';
-        playback.style.display = 'none';
-        playback.src = '';
+        // Stop ALL media streams
+        if (currentStream) {
+            console.log("Stopping currentStream tracks...");
+            const tracks = currentStream.getTracks();
+            tracks.forEach(track => {
+                console.log(`  Stopping ${track.kind}: ${track.label}`);
+                track.stop();
+            });
+            currentStream = null;
+        }
         
-        document.getElementById('btn-record').style.display = 'flex';
-        document.getElementById('btn-stop').style.display = 'none';
-        document.getElementById('btn-upload').style.display = 'none';
-        document.getElementById('status').innerText = "Restarting...";
+        if (currentVideoTrack) {
+            console.log("Stopping currentVideoTrack...");
+            try {
+                currentVideoTrack.stop();
+            } catch (e) {
+                console.log("Error stopping track:", e);
+            }
+            currentVideoTrack = null;
+        }
+        
+        const preview = document.getElementById("preview");
+        if (preview && preview.srcObject) {
+            console.log("Stopping preview.srcObject tracks...");
+            const tracks = preview.srcObject.getTracks();
+            tracks.forEach(track => {
+                console.log(`  Stopping preview ${track.kind}: ${track.label}`);
+                track.stop();
+            });
+            preview.srcObject = null;
+        }
+        
+        // Reset UI
+        const playback = document.getElementById("playback");
+        if (preview) preview.style.display = "block";
+        if (playback) {
+            playback.style.display = "none";
+            playback.src = "";
+        }
+        
+        document.getElementById("btn-record").style.display = "flex";
+        document.getElementById("btn-stop").style.display = "none";
+        document.getElementById("btn-upload").style.display = "none";
+        document.getElementById("status").innerText = "Restarting camera...";
         
         flashEnabled = false;
         updateFlashUI(false);
         
-        startCamera();
+        // Wait 1.5 seconds to ensure camera is fully released
+        console.log("Waiting 1.5s before restarting...");
+        setTimeout(() => {
+            console.log("Starting camera after reset...");
+            startCamera();
+        }, 1500);
     }
 
     function checkVin() {
@@ -1013,6 +1192,8 @@
 
         btn.style.display = 'none';
         progressBar.style.display = 'block';
+        const percentOverlay = document.getElementById("progress-percentage");
+        if (percentOverlay) percentOverlay.innerText = "0%";
         status.innerText = "Preparing upload...";
 
         const formData = new FormData();
@@ -1039,6 +1220,8 @@
                         const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
                         const mbTotal = (e.total / 1024 / 1024).toFixed(1);
                         status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
+                        const percentOverlay = document.getElementById("progress-percentage");
+                        if (percentOverlay) percentOverlay.innerText = percent + "%";
                     }
                 };
 
