@@ -682,7 +682,7 @@
             
             // Set timeout for getUserMedia
             const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Camera timeout after 10 seconds')), 10000)
+                setTimeout(() => reject(new Error('Camera timeout after 20 seconds')), 20000)
             );
             
             const streamPromise = navigator.mediaDevices.getUserMedia(constraints);
@@ -700,18 +700,40 @@
             
             preview.srcObject = currentStream;
             
-            // Wait for video to be ready
-            await new Promise((resolve, reject) => {
-                const loadTimeout = setTimeout(() => reject(new Error('Video load timeout')), 5000);
-                preview.onloadedmetadata = () => {
-                    preview.play()
-                        .then(() => {
-                            clearTimeout(loadTimeout);
-                            resolve();
-                        })
-                        .catch(reject);
-                };
-            });
+            // Wait for video to be ready (lenient timeout)
+            try {
+                await new Promise((resolve, reject) => {
+                    const loadTimeout = setTimeout(() => {
+                        console.warn('Video load timeout - continuing anyway');
+                        resolve(); // Don't reject, just continue
+                    }, 15000);
+                    
+                    preview.onloadedmetadata = () => {
+                        console.log('Video metadata loaded');
+                        preview.play()
+                            .then(() => {
+                                console.log('Video playing');
+                                clearTimeout(loadTimeout);
+                                resolve();
+                            })
+                            .catch(err => {
+                                console.error('Video play error:', err);
+                                // Try without waiting for play to complete
+                                clearTimeout(loadTimeout);
+                                resolve();
+                            });
+                    };
+                    
+                    // Also try playing immediately in case metadata already loaded
+                    if (preview.readyState >= 2) {
+                        console.log('Video already ready, playing immediately');
+                        preview.play().catch(console.error);
+                    }
+                });
+            } catch (e) {
+                console.warn('Video load promise failed:', e);
+                // Continue anyway - stream is already set
+            }
             
             // Enable flash if available
             try {
