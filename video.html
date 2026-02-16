@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.2 FLIP BUTTON FIXED</title>
+    <title>Video Inspection v4.3 FINAL FIX</title>
     <style>
         :root {
             --bg-body: #0F1115;        
@@ -403,7 +403,7 @@
     // CONFIGURATION - HIGH QUALITY VIDEO SETTINGS
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 10000000,  // 10 Mbps - HIGH QUALITY (was 2.5 Mbps)
+        VIDEO_BITRATE: 10000000,  // 10 Mbps - HIGH QUALITY
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -600,7 +600,6 @@
         
         const label = document.getElementById('current-camera-label');
         
-        // Toggle preference
         if (preferredFacingMode === "environment") {
             preferredFacingMode = "user";
             label.innerText = "FRONT";
@@ -617,7 +616,6 @@
         
         console.log(`✅ preferredFacingMode set to: "${preferredFacingMode}"`);
         
-        // Stop current camera
         stopBrightnessMonitoring();
         
         if (currentStream) {
@@ -636,7 +634,6 @@
             preview.srcObject = null;
         }
         
-        // Wait 500ms for camera to fully release, then restart
         console.log("Waiting 500ms before restarting camera...");
         setTimeout(() => {
             console.log("Restarting camera with new preference...");
@@ -677,7 +674,6 @@
                 }
             }
 
-            // Request camera permission (prefer rear camera from the start)
             await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: { ideal: preferredFacingMode } }, 
                 audio: false 
@@ -709,13 +705,9 @@
                 throw new Error('No cameras found on this device');
             }
 
-            // ============================================
-            // FIND CAMERA BASED ON USER PREFERENCE
-            // ============================================
             let selectedCamera = null;
             
             if (preferredFacingMode === "user") {
-                // User wants FRONT camera
                 console.log("👤 User preference: FRONT camera");
                 selectedCamera = videoDevices.find(d =>
                     d.label.toLowerCase().includes('front') ||
@@ -731,7 +723,6 @@
                     selectedCamera = videoDevices[0];
                 }
             } else {
-                // User wants REAR camera (default)
                 console.log("📹 User preference: REAR camera");
                 selectedCamera = videoDevices.find(d =>
                     d.label.toLowerCase().includes('back') ||
@@ -770,17 +761,12 @@
             console.log(`  User wants: ${preferredFacingMode === "user" ? "FRONT" : "REAR"}`);
             console.log('═══════════════════════════════════════════════════════════');
             console.log('');
-            console.log(`  Label: "${rearCamera ? selectedCamera.label : 'NONE'}"`);
-            console.log(`  ID: ${rearCamera ? selectedCamera.deviceId : 'NONE'}`);
-            console.log('═══════════════════════════════════════════════════════════');
-            console.log('');
 
             const strategies = [];
 
-            // Strategy 1: Rear camera with exact device ID (highest priority)
             if (selectedCamera) {
                 strategies.push({
-                    name: 'Rear Camera (1080p)',
+                    name: 'Selected Camera (1080p)',
                     constraints: {
                         video: {
                             deviceId: { exact: selectedCamera.deviceId },
@@ -793,9 +779,8 @@
                 });
             }
 
-            // Strategy 2: Environment facing mode (exact) with 1080p
             strategies.push({
-                name: 'Environment (1080p exact)',
+                name: 'FacingMode (1080p exact)',
                 constraints: {
                     video: {
                         facingMode: { exact: preferredFacingMode },
@@ -807,9 +792,8 @@
                 }
             });
 
-            // Strategy 3: Environment facing mode (ideal) with 1080p
             strategies.push({
-                name: 'Environment (1080p ideal)',
+                name: 'FacingMode (1080p ideal)',
                 constraints: {
                     video: {
                         facingMode: { ideal: preferredFacingMode },
@@ -821,9 +805,8 @@
                 }
             });
 
-            // Strategy 4: Environment with 720p
             strategies.push({
-                name: 'Environment (720p)',
+                name: 'FacingMode (720p)',
                 constraints: {
                     video: {
                         facingMode: { ideal: preferredFacingMode },
@@ -835,9 +818,8 @@
                 }
             });
 
-            // Strategy 5: Any rear-facing camera (480p fallback)
             strategies.push({
-                name: 'Rear Fallback (480p)',
+                name: 'FacingMode (480p)',
                 constraints: {
                     video: {
                         facingMode: { ideal: preferredFacingMode },
@@ -848,9 +830,8 @@
                 }
             });
 
-            // Strategy 6: Absolute last resort (any camera)
             strategies.push({
-                name: 'Basic Fallback (any camera)',
+                name: 'Basic Fallback',
                 constraints: { 
                     video: true, 
                     audio: true 
@@ -873,13 +854,7 @@
                     
                     console.log(`✅ Camera active: ${settings.width}x${settings.height} @ ${settings.frameRate}fps`);
                     console.log(`   Facing mode: ${settings.facingMode || 'unknown'}`);
-                    console.log(`   Capabilities: ${JSON.stringify({
-                        width: capabilities.width,
-                        height: capabilities.height,
-                        facingMode: capabilities.facingMode
-                    })}`);
 
-                    // CRITICAL FIX: Multi-layer front camera rejection
                     const isFrontCamera = (
                         settings.facingMode === 'user' || 
                         capabilities.facingMode === 'user' ||
@@ -890,16 +865,8 @@
                         videoTrack.label.toLowerCase().includes('face')
                     );
                     
-                    console.log(`🔍 Front camera check:`);
-                    console.log(`   Camera label: "${videoTrack.label}"`);
-                    console.log(`   settings.facingMode: ${settings.facingMode || 'undefined'}`);
-                    console.log(`   capabilities.facingMode: ${JSON.stringify(capabilities.facingMode || 'undefined')}`);
-                    console.log(`   Label includes 'front': ${videoTrack.label.toLowerCase().includes('front')}`);
-                    console.log(`   Label includes 'selfie': ${videoTrack.label.toLowerCase().includes('selfie')}`);
-                    console.log(`   Label includes 'user': ${videoTrack.label.toLowerCase().includes('user')}`);
-                    console.log(`   Result: ${isFrontCamera ? '❌ FRONT CAMERA' : '✅ NOT FRONT CAMERA'}`);
+                    console.log(`🔍 Front camera check: ${isFrontCamera ? '❌ FRONT CAMERA' : '✅ NOT FRONT CAMERA'}`);
                     
-                    // REJECT front camera for ALL strategies except the very last one
                     if (i < strategies.length - 1 && isFrontCamera) {
                         console.log('⚠️  🚫 REJECTING FRONT CAMERA - Trying next strategy...');
                         console.log('');
@@ -907,14 +874,12 @@
                         continue;
                     }
 
-                    // CRITICAL FIX: Reject low resolution if we're not on the last strategy
                     if (i < strategies.length - 1 && settings.width < 1280) {
                         console.log(`⚠️  Low resolution (${settings.width}x${settings.height}), trying next strategy...`);
                         stream.getTracks().forEach(track => track.stop());
                         continue;
                     }
                     
-                    // ADDITIONAL CHECK: For first 3 strategies, prefer 1080p
                     if (i < 3 && settings.width < 1920 && settings.height < 1080) {
                         console.log(`⚠️  Not full 1080p (${settings.width}x${settings.height}), trying next strategy...`);
                         stream.getTracks().forEach(track => track.stop());
@@ -968,16 +933,12 @@
                     statusEl.className = 'ready';
                     statusEl.style.display = 'block';
                     
-                    // CRITICAL DIAGNOSTIC: Alert user if not 1080p
                     if (settings.width < 1920 || settings.height < 1080) {
                         console.warn(`⚠️ WARNING: Camera is ${settings.width}x${settings.height}, not full 1080p!`);
-                        console.warn(`   This may be a phone hardware limitation.`);
-                        console.warn(`   Phone capabilities:`, capabilities.width, capabilities.height);
                     } else {
                         console.log(`✅ SUCCESS: Full 1080p camera active!`);
                     }
                     
-                    // CRITICAL WARNING: Check if front camera ended up being used
                     const finalIsFrontCamera = (
                         settings.facingMode === 'user' || 
                         capabilities.facingMode === 'user' ||
@@ -988,18 +949,11 @@
                     
                     if (finalIsFrontCamera) {
                         console.error('❌ CRITICAL: FRONT CAMERA IS ACTIVE!');
-                        console.error('   Camera label:', videoTrack.label);
-                        console.error('   Facing mode:', settings.facingMode || capabilities.facingMode || 'unknown');
-                        console.error('   This phone may not have a rear camera, or rear camera is unavailable.');
                         statusEl.innerText = `⚠️ FRONT CAMERA (${settings.width}x${settings.height})`;
                         statusEl.className = 'error';
-                        
-                        // Show warning modal to user
                         document.getElementById('frontCameraWarningModal').style.display = 'flex';
                     } else {
                         console.log(`✅ Rear camera confirmed active`);
-                        console.log(`   Camera label: "${videoTrack.label}"`);
-                        console.log(`   Facing mode: ${settings.facingMode || capabilities.facingMode || 'environment (assumed)'}`);
                     }
                     
                     setTimeout(() => {
@@ -1007,7 +961,6 @@
                     }, 3000);
 
                     startBrightnessMonitoring();
-
                     return;
                     
                 } catch (err) {
@@ -1025,9 +978,20 @@
             
             let errorMsg = 'Camera Error: ' + error.message;
             if (error.message.includes('denied')) {
-                errorMsg += '\n\n✅ Fix:\n1. Open Settings\n2. Find this website\n3. Enable Camera permission\n4. Refresh page';
+                errorMsg += '
+
+✅ Fix:
+1. Open Settings
+2. Find this website
+3. Enable Camera permission
+4. Refresh page';
             } else if (error.message.includes('timeout') || error.message.includes('not found')) {
-                errorMsg += '\n\n✅ Fix:\n1. Close other camera apps\n2. Try Reset Camera button\n3. Restart your phone if needed';
+                errorMsg += '
+
+✅ Fix:
+1. Close other camera apps
+2. Try Reset Camera button
+3. Restart your phone if needed';
             }
             
             alert(errorMsg);
@@ -1037,7 +1001,6 @@
     function resetCamera() {
         console.log("🔄 === RESET CAMERA CLICKED ===");
         
-        // Stop recording if active
         if (mediaRecorder && mediaRecorder.state === "recording") {
             console.log("Stopping active recording...");
             mediaRecorder.stop();
@@ -1045,7 +1008,6 @@
         
         stopBrightnessMonitoring();
         
-        // Stop ALL media streams
         if (currentStream) {
             console.log("Stopping currentStream tracks...");
             const tracks = currentStream.getTracks();
@@ -1077,7 +1039,6 @@
             preview.srcObject = null;
         }
         
-        // Reset UI
         const playback = document.getElementById("playback");
         if (preview) preview.style.display = "block";
         if (playback) {
@@ -1093,7 +1054,6 @@
         flashEnabled = false;
         updateFlashUI(false);
         
-        // Wait 1.5 seconds to ensure camera is fully released
         console.log("Waiting 1.5s before restarting...");
         setTimeout(() => {
             console.log("Starting camera after reset...");
@@ -1194,7 +1154,6 @@
 
             requestWakeLock();
 
-            // Codec selection with H.265 first for best compression at high bitrate
             const codecOptions = [
                 { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
                 { mimeType: 'video/webm; codecs="av01.0.05M.08,opus"', name: 'AV1' },
@@ -1317,7 +1276,6 @@
             attempts++;
             console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
             
-            // Simulated progress variables
             let simulatedProgress = 0;
             let progressInterval = null;
             let realProgressReceived = false;
@@ -1327,7 +1285,6 @@
                 xhr.open('POST', '/upload-to-google-drive', true);
                 xhr.timeout = 300000;
 
-                // Start simulated progress (updates every 800ms)
                 console.log('⏱️ Starting simulated progress timer...');
                 progressInterval = setInterval(() => {
                     if (!realProgressReceived && simulatedProgress < 90) {
@@ -1343,7 +1300,6 @@
                     }
                 }, 800);
 
-                // Real progress (if backend supports it)
                 xhr.upload.onprogress = function(e) {
                     console.log('📊 Real progress event received!', e);
                     if (e.lengthComputable) {
@@ -1371,7 +1327,6 @@
                         progressInterval = null;
                     }
                     
-                    // Set to 100% on completion
                     progressFill.style.width = '100%';
                     const percentOverlay = document.getElementById('progress-percentage');
                     if (percentOverlay) percentOverlay.innerText = '100%';
@@ -1438,7 +1393,10 @@
                         wakeLock = null;
                     }
                     
-                    alert(`Upload failed after ${CONFIG.MAX_RETRY_ATTEMPTS} attempts:\n${error.message}\n\nPlease check your connection and try again.`);
+                    alert(`Upload failed after ${CONFIG.MAX_RETRY_ATTEMPTS} attempts:
+${error.message}
+
+Please check your connection and try again.`);
                     
                     btn.style.display = 'block';
                     progressBar.style.display = 'none';
@@ -1465,22 +1423,16 @@
     });
 </script>
 
-<!-- ============================================ -->
-<!-- SERVICE WORKER & AUTO-UPDATE                -->
-<!-- ============================================ -->
 <script>
-    // Register Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', async () => {
             try {
                 const registration = await navigator.serviceWorker.register('/sw.js');
                 console.log('✅ Service Worker registered');
                 
-                // Auto-update check
                 let localVersion = null;
                 let isRecording = false;
                 
-                // Track recording state
                 const originalStartRecording = window.startRecording;
                 window.startRecording = function() {
                     isRecording = true;
@@ -1494,7 +1446,6 @@
                 };
                 
                 async function checkForUpdates() {
-                    // Don't interrupt active recording
                     if (isRecording) {
                         console.log('⏸️  Skipping update check - recording in progress');
                         return;
