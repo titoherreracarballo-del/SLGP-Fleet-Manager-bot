@@ -939,6 +939,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log('📥 Generated access links:');
         console.log(`   View Link: ${viewLink}`);
         
+        // ============================================
+        // 🔧 FIXED: VIDEO NOTIFICATION EMAIL
+        // Changed from sending to self (EMAIL_USER) to proper recipients
+        // ============================================
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -947,7 +951,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
-                to: process.env.EMAIL_USER,
+                // FIXED: Send to fleet manager instead of self
+                to: ['slgpfleetmanager@gmail.com'],
                 subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
@@ -992,9 +997,22 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     </div>
                 `
             });
-            console.log('✅ Email notification sent with instant access links');
+            console.log('✅ Email notification sent to slgpfleetmanager@gmail.com');
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
+            // Log email failure but don't break the upload
+            await appendLog(ERROR_LOG, {
+                type: 'server_error',
+                severity: 'warning',
+                message: 'Video notification email failed',
+                stack: emailError.stack,
+                source: 'upload-to-google-drive-email',
+                details: {
+                    driver: driverName,
+                    vin: vin,
+                    inspectionType: inspectionType
+                }
+            });
         }
         
         if (fs.existsSync(videoPath)) {
@@ -1542,7 +1560,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v2.0 - INSTANT GATE + DEBUG SYSTEM      ║
+║  v2.1 - FIXED VIDEO NOTIFICATIONS        ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ║  Version: ${BUILD_INFO.version}
@@ -1555,11 +1573,13 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Auto-refresh system active
 🐛 Debug system active
+📧 VIDEO NOTIFICATIONS FIXED - Now sending to slgpfleetmanager@gmail.com
 
 ✅ Gate checks: INSTANT response (< 1 second)
 ✅ Arrival checks: INSTANT response (< 1 second)  
 ✅ PDFs generated in background
 ✅ Video upload: Direct streaming with H.265/HEVC
+✅ Video notifications: Sent to correct recipient
 
 🐛 Debug Dashboard: https://your-domain.com/debug-dashboard?key=slgp-debug-2026
    ⚠️  CHANGE THE PASSWORD IN CODE!
