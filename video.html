@@ -1065,12 +1065,27 @@
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/upload-to-google-drive', true);
-                xhr.timeout = 300000;
+                xhr.timeout = 120000; // 2 minutes
 
                 console.log('⏱️ Starting simulated progress timer...');
+                let progressStuckCount = 0;
                 progressInterval = setInterval(() => {
-                    if (!realProgressReceived && simulatedProgress < 90) {
-                        simulatedProgress += 5;
+                    if (!realProgressReceived) {
+                        if (simulatedProgress < 95) {
+                            simulatedProgress += 5;
+                            progressStuckCount = 0;
+                        } else if (simulatedProgress < 98) {
+                            // Slow down near the end
+                            simulatedProgress += 1;
+                            progressStuckCount++;
+                            
+                            // If stuck at 95%+ for too long (10 seconds), jump to 100%
+                            if (progressStuckCount > 12) {
+                                console.warn('Upload taking too long, forcing 100%');
+                                simulatedProgress = 100;
+                            }
+                        }
+                        
                         progressFill.style.width = simulatedProgress + '%';
                         const percentOverlay = document.getElementById('progress-percentage');
                         if (percentOverlay) percentOverlay.innerText = simulatedProgress + '%';
