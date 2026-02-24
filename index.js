@@ -654,22 +654,39 @@ app.post('/submit-report', async (req, res) => {
                 });
                 folderId = folder.data.id;
                 if (data.photos && data.photos.length) {
+                    console.log(`📸 Uploading ${data.photos.length} photos to Google Drive...`);
                     for (let i = 0; i < data.photos.length; i++) {
-                        const buffer = Buffer.from(data.photos[i].data, 'base64');
-                        const bs = new stream.PassThrough();
-                        bs.end(buffer);
-                        await driveClient.files.create({
-                            resource: {
-                                name: `Photo_${i+1}.jpg`,
-                                parents: [folderId]
-                            },
-                            media: {
-                                mimeType: 'image/jpeg',
-                                body: bs
-                            },
-                            supportsAllDrives: true
-                        });
+                        try {
+                            const buffer = Buffer.from(data.photos[i].data, 'base64');
+                            const bs = new stream.PassThrough();
+                            bs.end(buffer);
+                            const photoResult = await driveClient.files.create({
+                                resource: {
+                                    name: `Photo_${i+1}.jpg`,
+                                    parents: [folderId]
+                                },
+                                media: {
+                                    mimeType: 'image/jpeg',
+                                    body: bs
+                                },
+                                fields: 'id, name, size',
+                                supportsAllDrives: true
+                            });
+                            console.log(`✅ Photo ${i+1}/${data.photos.length} uploaded: ${photoResult.data.name} (ID: ${photoResult.data.id})`);
+                        } catch (photoError) {
+                            console.error(`❌ Failed to upload Photo ${i+1}:`, photoError.message);
+                            await appendLog(ERROR_LOG, {
+                                type: 'server_error',
+                                severity: 'error',
+                                message: `Photo ${i+1} upload failed for accident report`,
+                                stack: photoError.stack,
+                                source: 'submit-report-photo-upload'
+                            });
+                        }
                     }
+                    console.log(`✅ All ${data.photos.length} photos uploaded successfully to folder: ${folderId}`);
+                } else {
+                    console.warn('⚠️  No photos attached to accident report');
                 }
             } catch (driveError) {
                 console.error("Drive upload failed:", driveError.message);
@@ -745,8 +762,19 @@ app.post('/submit-report', async (req, res) => {
             y -= 10;
             
             if (data.photos && data.photos.length > 0) {
-                page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
-                    { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                page.drawText('PHOTO EVIDENCE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                page.drawText(`Total Photos: ${data.photos.length}`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                y -= 15;
+                for (let i = 0; i < data.photos.length; i++) {
+                    if (y < 50) {
+                        page = doc.addPage([600, 800]);
+                        y = 780;
+                    }
+                    page.drawText(`  • Photo ${i+1}.jpg - Uploaded to Google Drive`, { x: 40, y, size: 9, font: fontReg, color: rgb(0,0,0) });
+                    y -= 15;
+                }
+                page.drawText('Access all photos via Google Drive link in email', { x: 30, y, size: 9, font: fontReg, color: rgb(0.3,0.3,0.3) });
                 y -= 25;
             }
             
@@ -782,11 +810,63 @@ app.post('/submit-report', async (req, res) => {
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
             const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
+            const photoCount = data.photos ? data.photos.length : 0;
+            const photoText = photoCount > 0 ? `${photoCount} photos uploaded` : 'No photos';
+            
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
-                subject: `URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
-                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF.\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                subject: `🚨 URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">🚨 URGENT: ACCIDENT REPORT</h1>
+                            <p style="color: #fee2e2; margin: 10px 0 0 0; font-size: 14px;">Immediate attention required</p>
+                        </div>
+                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Incident Details</h2>
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${data.driverName}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN Last 4:</td><td style="padding: 12px; color: #1f2937;">${data.vinLast4}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Incident Type:</td><td style="padding: 12px; color: #1f2937;">${data.incidentType || 'N/A'}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Police Report #:</td><td style="padding: 12px; color: #1f2937;">${data.policeReport || 'N/A'}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">LMET Case #:</td><td style="padding: 12px; color: #1f2937;">${data.lmetCase || 'N/A'}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Filed:</td><td style="padding: 12px; color: #1f2937;">${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}</td></tr>
+                            </table>
+                            
+                            <div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
+                                <h3 style="color: #DC2626; margin: 0 0 12px 0; font-size: 16px;">📸 PHOTO EVIDENCE</h3>
+                                <p style="color: #991b1b; margin: 0; font-size: 14px; line-height: 1.6;">
+                                    <strong>${photoText}</strong> to Google Drive folder<br>
+                                    ${photoCount > 0 ? 'Click below to view all photos and documentation' : 'No photos were uploaded with this report'}
+                                </p>
+                            </div>
+                            
+                            <div style="text-align: center; margin: 25px 0;">
+                                <a href="https://drive.google.com/drive/folders/${folderId}" style="display: inline-block; background: #DC2626; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px; box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);">
+                                    📁 OPEN GOOGLE DRIVE FOLDER
+                                </a>
+                            </div>
+                            
+                            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
+                                    <strong>⚠️ ACTION REQUIRED:</strong><br>
+                                    1. Review attached PDF report immediately<br>
+                                    2. Access Google Drive folder for all photos<br>
+                                    3. Contact driver if additional information needed<br>
+                                    4. Follow up on LMET case and police report
+                                </p>
+                            </div>
+                            
+                            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                                <p style="margin: 0; color: #6b7280; font-size: 12px;">
+                                    <strong>Location:</strong> ${data.locationData ? (data.locationData.street + ', ' + data.locationData.city + ', ' + data.locationData.state) : 'N/A'}<br>
+                                    <strong>Weather:</strong> ${data.weather || 'N/A'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `,
                 attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
             });
             fs.unlinkSync(pdfPath);
@@ -826,8 +906,19 @@ app.post('/submit-report', async (req, res) => {
             }
             
             if (data.photos && data.photos.length > 0) {
-                page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
-                    { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                page.drawText('PHOTO EVIDENCE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                page.drawText(`Total Photos: ${data.photos.length}`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                y -= 15;
+                for (let i = 0; i < data.photos.length; i++) {
+                    if (y < 50) {
+                        page = doc.addPage([600, 800]);
+                        y = 780;
+                    }
+                    page.drawText(`  • Photo ${i+1}.jpg - Uploaded to Google Drive`, { x: 40, y, size: 9, font: fontReg, color: rgb(0,0,0) });
+                    y -= 15;
+                }
+                page.drawText('Access all photos via Google Drive link in email', { x: 30, y, size: 9, font: fontReg, color: rgb(0.3,0.3,0.3) });
                 y -= 25;
             }
             
