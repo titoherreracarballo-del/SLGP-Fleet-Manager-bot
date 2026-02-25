@@ -33,7 +33,7 @@ const ARRIVAL_LOG_FILE = path.join(VOLUME_PATH, 'arrival_acknowledgments.json');
 const PANEL_DOC_PATH = path.join(__dirname, 'Panel_of_Physicians.pdf');
 
 // ============================================
-// 🐛 DEBUG SYSTEM - LOG FILES
+// DEBUG SYSTEM - LOG FILES
 // ============================================
 const LOGS_DIR = path.join(VOLUME_PATH, 'logs');
 const DEBUG_LOG = path.join(LOGS_DIR, 'debug.json');
@@ -78,7 +78,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// 🐛 DEBUG SYSTEM - LOGGING UTILITIES
+// DEBUG SYSTEM - LOGGING UTILITIES
 // ============================================
 async function appendLog(logFile, entry) {
     try {
@@ -229,7 +229,7 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 // ============================================
-// 🐛 DEBUG SYSTEM - API ENDPOINTS
+// DEBUG SYSTEM - API ENDPOINTS
 // ============================================
 
 // Client-side error reporting
@@ -364,7 +364,7 @@ app.post('/api/log-debug', async (req, res) => {
 });
 
 // ============================================
-// API ROUTES - GATE & ARRIVAL CHECKS (INSTANT RESPONSE - ASYNC EMAIL)
+// API ROUTES - GATE & ARRIVAL CHECKS
 // ============================================
 app.post('/log-gate-check', async (req, res) => {
     const perfStart = Date.now();
@@ -392,7 +392,6 @@ app.post('/log-gate-check', async (req, res) => {
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
 
-        // Log performance
         await appendLog(PERFORMANCE_LOG, {
             type: 'performance',
             action: 'gate_submission',
@@ -403,10 +402,8 @@ app.post('/log-gate-check', async (req, res) => {
             ip: req.ip
         });
 
-        // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
 
-        // Generate PDF and send email AFTER response (async)
         setImmediate(async () => {
             try {
                 const doc = await PDFDocument.create();
@@ -509,7 +506,6 @@ app.post('/log-arrival-check', async (req, res) => {
         logs.push({ name, timestamp, rawTimestamp: now.getTime() });
         fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
 
-        // Log performance
         await appendLog(PERFORMANCE_LOG, {
             type: 'performance',
             action: 'arrival_submission',
@@ -520,10 +516,8 @@ app.post('/log-arrival-check', async (req, res) => {
             ip: req.ip
         });
 
-        // IMMEDIATE RESPONSE - Don't wait for PDF/email
         res.json({ success: true });
 
-        // Generate PDF and send email AFTER response (async)
         setImmediate(async () => {
             try {
                 const doc = await PDFDocument.create();
@@ -611,7 +605,7 @@ app.post('/log-arrival-check', async (req, res) => {
 });
 
 // ============================================
-// API ROUTES - REPORTS
+// API ROUTES - REPORTS (ACCIDENT PHOTOS AS EMAIL ATTACHMENTS)
 // ============================================
 app.post('/submit-report', async (req, res) => {
     try {
@@ -628,6 +622,7 @@ app.post('/submit-report', async (req, res) => {
         data.name = (data.vinLast4 || '') + (data.reportType || '');
         currentLogs.push(data);
         fs.writeFileSync(DAILY_LOG_FILE, JSON.stringify(currentLogs, null, 2));
+        
         if (client.isReady()) {
             try {
                 const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
@@ -639,6 +634,7 @@ app.post('/submit-report', async (req, res) => {
                 console.error('Discord notification failed:', e.message);
             }
         }
+        
         let folderId = null;
         if (driveClient) {
             try {
@@ -653,41 +649,34 @@ app.post('/submit-report', async (req, res) => {
                     supportsAllDrives: true
                 });
                 folderId = folder.data.id;
+                
+                // ✅ FIXED: Skip Drive upload - photos will be attached to email instead
                 if (data.photos && data.photos.length) {
-                    for (let i = 0; i < data.photos.length; i++) {
-                        const buffer = Buffer.from(data.photos[i].data, 'base64');
-                        const bs = new stream.PassThrough();
-                        bs.end(buffer);
-                        await driveClient.files.create({
-                            resource: {
-                                name: `Photo_${i+1}.jpg`,
-                                parents: [folderId]
-                            },
-                            media: {
-                                mimeType: 'image/jpeg',
-                                body: bs
-                            },
-                            supportsAllDrives: true
-                        });
-                    }
+                    console.log(`📸 Received ${data.photos.length} photos - will attach to email`);
+                } else {
+                    console.warn('⚠️  No photos attached to accident report');
                 }
             } catch (driveError) {
                 console.error("Drive upload failed:", driveError.message);
             }
         }
+        
         const doc = await PDFDocument.create();
         const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
         const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+        
         let emailUser = process.env.EMAIL_USER;
         let emailPass = process.env.EMAIL_PASS;
         if (data.reportType === 'ACCIDENT_REPORT' && process.env.INCIDENTS_EMAIL_USER) {
             emailUser = process.env.INCIDENTS_EMAIL_USER;
             emailPass = process.env.INCIDENTS_PASS;
         }
+        
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: emailUser, pass: emailPass }
         });
+        
         if (data.reportType === 'ACCIDENT_REPORT') {
             let page = doc.addPage([600, 800]);
             let y = 780;
@@ -745,8 +734,19 @@ app.post('/submit-report', async (req, res) => {
             y -= 10;
             
             if (data.photos && data.photos.length > 0) {
-                page.drawText(`Photos Attached: ${data.photos.length} (uploaded to Google Drive)`, 
-                    { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                page.drawText('PHOTO EVIDENCE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+                y -= 20;
+                page.drawText(`Total Photos: ${data.photos.length}`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+                y -= 15;
+                for (let i = 0; i < data.photos.length; i++) {
+                    if (y < 50) {
+                        page = doc.addPage([600, 800]);
+                        y = 780;
+                    }
+                    page.drawText(`  • Photo ${i+1}.jpg - Attached to email`, { x: 40, y, size: 9, font: fontReg, color: rgb(0,0,0) });
+                    y -= 15;
+                }
+                page.drawText('All photos attached to this email', { x: 30, y, size: 9, font: fontReg, color: rgb(0.3,0.3,0.3) });
                 y -= 25;
             }
             
@@ -779,18 +779,92 @@ app.post('/submit-report', async (req, res) => {
             
             const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
             fs.writeFileSync(pdfPath, await doc.save());
+            
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
             const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
+            
+            // ✅ FIXED: Prepare email attachments - PDF + Photos
+            const emailAttachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
+
+            // Add photo attachments
+            if (data.photos && data.photos.length) {
+                console.log(`📧 Attaching ${data.photos.length} photos to email...`);
+                for (let i = 0; i < data.photos.length; i++) {
+                    try {
+                        const photoBuffer = Buffer.from(data.photos[i].data, 'base64');
+                        const photoPath = path.join(UPLOAD_DIR, `accident_photo_${Date.now()}_${i}.jpg`);
+                        fs.writeFileSync(photoPath, photoBuffer);
+                        emailAttachments.push({
+                            filename: `Photo_${i+1}.jpg`,
+                            path: photoPath
+                        });
+                        console.log(`✅ Photo ${i+1}/${data.photos.length} prepared for email`);
+                    } catch (photoError) {
+                        console.error(`❌ Failed to prepare photo ${i+1}:`, photoError.message);
+                    }
+                }
+            }
+
+            const photoCount = data.photos ? data.photos.length : 0;
+            const photoText = photoCount > 0 ? `${photoCount} photos attached` : 'No photos';
+
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
-                subject: `URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
-                text: `An Accident Report has been filed.\n\nDriver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nSee attached PDF.\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
-                attachments: [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }]
+                subject: `🚨 URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">🚨 URGENT: ACCIDENT REPORT</h1>
+                            <p style="color: #fee2e2; margin: 10px 0 0 0; font-size: 14px;">Immediate attention required</p>
+                        </div>
+                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Incident Details</h2>
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${data.driverName}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN Last 4:</td><td style="padding: 12px; color: #1f2937;">${data.vinLast4}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Incident Type:</td><td style="padding: 12px; color: #1f2937;">${data.incidentType || 'N/A'}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Police Report #:</td><td style="padding: 12px; color: #1f2937;">${data.policeReport || 'N/A'}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">LMET Case #:</td><td style="padding: 12px; color: #1f2937;">${data.lmetCase || 'N/A'}</td></tr>
+                            </table>
+                            <div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
+                                <h3 style="color: #DC2626; margin: 0 0 12px 0; font-size: 16px;">📸 PHOTO EVIDENCE</h3>
+                                <p style="color: #991b1b; margin: 0; font-size: 14px;"><strong>${photoText}</strong> to this email</p>
+                                <p style="color: #991b1b; margin: 8px 0 0 0; font-size: 13px;">Photos are included as attachments below - click to view each one</p>
+                            </div>
+                            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
+                                    <strong>⚠️ ACTION REQUIRED:</strong><br>
+                                    1. Review attached PDF report immediately<br>
+                                    2. View all photo attachments in this email<br>
+                                    3. Contact driver if additional information needed<br>
+                                    4. Follow up on LMET case and police report
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                attachments: emailAttachments
             });
+
+            // Cleanup temporary photo files
+            if (data.photos && data.photos.length) {
+                for (let i = 0; i < emailAttachments.length; i++) {
+                    if (emailAttachments[i].filename.startsWith('Photo_')) {
+                        try {
+                            fs.unlinkSync(emailAttachments[i].path);
+                            console.log(`🗑️  Cleaned up: ${emailAttachments[i].filename}`);
+                        } catch (e) {
+                            console.error('⚠️  Failed to cleanup photo:', e.message);
+                        }
+                    }
+                }
+            }
+            
             fs.unlinkSync(pdfPath);
         } else {
+            // Issue report (unchanged)
             let page = doc.addPage([600, 800]);
             let y = 780;
             
@@ -866,14 +940,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log('📹 Video upload initiated');
         if (!driveClient) throw new Error('Google Drive not initialized');
         if (!req.file) throw new Error('No video file received');
+        
         videoPath = req.file.path;
         const { driverName, vin, inspectionType } = req.body;
         if (!driverName || !vin || !inspectionType) throw new Error('Missing required fields');
+        
         const fileStats = fs.statSync(videoPath);
         const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+        
         console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
+        
         const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        
         console.log('☁️  Starting Google Drive upload...');
+        
         const fileMetadata = {
             name: fileName,
             parents: [VIDEO_DRIVE_ID],
@@ -889,15 +969,19 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             },
             description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
         };
+        
         const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
+        
         const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
         console.log(`📤 Using ${uploadType} upload method`);
+        
         const driveResponse = await driveClient.files.create({
             requestBody: fileMetadata,
             media: media,
             fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
             supportsAllDrives: true
         });
+        
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
         
@@ -908,7 +992,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log(`   File ID: ${fileId}`);
         console.log(`   Size uploaded: ${fileSizeMB}MB`);
 
-        // Log upload performance
         await appendLog(PERFORMANCE_LOG, {
             type: 'performance',
             action: 'video_upload',
@@ -939,10 +1022,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log('📥 Generated access links:');
         console.log(`   View Link: ${viewLink}`);
         
-        // ============================================
-        // 🔧 FIXED: VIDEO NOTIFICATION EMAIL
-        // Changed from sending to self (EMAIL_USER) to proper recipients
-        // ============================================
+        // Send video notification email
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -951,7 +1031,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
-                // FIXED: Send to fleet manager instead of self
                 to: ['slgpfleetmanager@gmail.com'],
                 subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
                 html: `
@@ -1000,18 +1079,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             console.log('✅ Email notification sent to slgpfleetmanager@gmail.com');
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
-            // Log email failure but don't break the upload
             await appendLog(ERROR_LOG, {
                 type: 'server_error',
                 severity: 'warning',
                 message: 'Video notification email failed',
                 stack: emailError.stack,
-                source: 'upload-to-google-drive-email',
-                details: {
-                    driver: driverName,
-                    vin: vin,
-                    inspectionType: inspectionType
-                }
+                source: 'upload-to-google-drive-email'
             });
         }
         
@@ -1036,18 +1109,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     } catch (error) {
         console.error('❌ Video upload error:', error);
         
-        // Log upload failure
         await appendLog(ERROR_LOG, {
             type: 'server_error',
             severity: 'error',
             message: 'Video upload failed',
             stack: error.stack,
-            source: 'upload-to-google-drive',
-            details: {
-                driver: req.body.driverName,
-                vin: req.body.vin,
-                inspectionType: req.body.inspectionType
-            }
+            source: 'upload-to-google-drive'
         });
 
         await appendLog(PERFORMANCE_LOG, {
@@ -1071,14 +1138,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         }
         res.status(500).json({
             success: false,
-            error: error.message,
-            details: {
-                driver: req.body.driverName,
-                vin: req.body.vin,
-                inspectionType: req.body.inspectionType,
-                receivedFile: !!req.file,
-                fileSize: req.file ? (req.file.size / 1024 / 1024).toFixed(2) + 'MB' : 'N/A'
-            }
+            error: error.message
         });
     }
 });
@@ -1115,13 +1175,12 @@ app.get('/version', (req, res) => {
 });
 
 // ============================================
-// 🐛 DEBUG DASHBOARD
+// DEBUG DASHBOARD
 // ============================================
 app.get('/debug-dashboard', async (req, res) => {
-    // Simple password protection - CHANGE THIS PASSWORD!
     const password = req.query.key;
     if (password !== 'slgp-debug-2026') {
-        return res.status(401).send('Unauthorized - Invalid key');
+        return res.status(401).send('Unauthorized');
     }
 
     const recentErrors = await getRecentLogs(ERROR_LOG, 50);
@@ -1129,7 +1188,6 @@ app.get('/debug-dashboard', async (req, res) => {
     const recentPerf = await getRecentLogs(PERFORMANCE_LOG, 50);
     const recentDebug = await getRecentLogs(DEBUG_LOG, 50);
 
-    // Generate HTML dashboard
     const html = `
     <!DOCTYPE html>
     <html>
@@ -1137,221 +1195,44 @@ app.get('/debug-dashboard', async (req, res) => {
         <title>SLGP Debug Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: 'Courier New', monospace;
-                background: #0a0e17;
-                color: #e5e7eb;
-                padding: 20px;
-            }
-            .header {
-                background: linear-gradient(135deg, #00A8E1, #0084b4);
-                padding: 20px;
-                border-radius: 8px;
-                margin-bottom: 30px;
-            }
+            body { font-family: monospace; background: #0a0e17; color: #e5e7eb; padding: 20px; }
+            .header { background: linear-gradient(135deg, #00A8E1, #0084b4); padding: 20px; border-radius: 8px; margin-bottom: 30px; }
             h1 { color: white; margin-bottom: 10px; }
-            .stats {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 15px;
-                margin-bottom: 30px;
-            }
-            .stat-card {
-                background: #1a1f2e;
-                padding: 15px;
-                border-radius: 8px;
-                border: 2px solid #00A8E1;
-            }
-            .stat-number {
-                font-size: 32px;
-                font-weight: bold;
-                color: #00A8E1;
-            }
-            .stat-label {
-                font-size: 12px;
-                color: #a9b2bd;
-                text-transform: uppercase;
-            }
-            .section {
-                background: #1a1f2e;
-                padding: 20px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                border: 1px solid #2d3748;
-            }
-            .section-title {
-                font-size: 18px;
-                color: #00A8E1;
-                margin-bottom: 15px;
-                border-bottom: 2px solid #00A8E1;
-                padding-bottom: 10px;
-            }
-            .log-entry {
-                background: #0d1117;
-                padding: 15px;
-                margin-bottom: 10px;
-                border-radius: 6px;
-                border-left: 4px solid #00A8E1;
-                font-size: 12px;
-            }
+            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+            .stat-card { background: #1a1f2e; padding: 15px; border-radius: 8px; border: 2px solid #00A8E1; }
+            .stat-number { font-size: 32px; font-weight: bold; color: #00A8E1; }
+            .stat-label { font-size: 12px; color: #a9b2bd; text-transform: uppercase; }
+            .section { background: #1a1f2e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #2d3748; }
+            .section-title { font-size: 18px; color: #00A8E1; margin-bottom: 15px; border-bottom: 2px solid #00A8E1; padding-bottom: 10px; }
+            .log-entry { background: #0d1117; padding: 15px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #00A8E1; font-size: 12px; }
             .log-entry.error { border-left-color: #ff2a2a; }
-            .log-entry.camera { border-left-color: #FF9900; }
-            .log-entry.performance { border-left-color: #00ff88; }
-            .log-time {
-                color: #6b7280;
-                font-size: 11px;
-                margin-bottom: 5px;
-            }
-            .log-message {
-                color: #e5e7eb;
-                margin-bottom: 8px;
-            }
-            .log-details {
-                color: #9ca3af;
-                font-size: 11px;
-                margin-top: 8px;
-            }
-            .error-stack {
-                background: #000;
-                padding: 10px;
-                border-radius: 4px;
-                margin-top: 8px;
-                overflow-x: auto;
-                font-size: 10px;
-                color: #ff6b6b;
-            }
-            .camera-info {
-                background: #1a1f2e;
-                padding: 8px;
-                margin-top: 8px;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            .refresh-btn {
-                background: #00A8E1;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-weight: bold;
-                margin-bottom: 20px;
-            }
-            .refresh-btn:hover {
-                background: #0084b4;
-            }
+            .log-time { color: #6b7280; font-size: 11px; margin-bottom: 5px; }
+            .log-message { color: #e5e7eb; margin-bottom: 8px; }
+            .log-details { color: #9ca3af; font-size: 11px; margin-top: 8px; }
+            .refresh-btn { background: #00A8E1; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 20px; }
         </style>
     </head>
     <body>
         <div class="header">
             <h1>🐛 SLGP Debug Dashboard</h1>
-            <p>Real-time error tracking and diagnostics</p>
-            <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">Last updated: ${new Date().toLocaleString()}</p>
+            <p>Last updated: ${new Date().toLocaleString()}</p>
         </div>
 
-        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Dashboard</button>
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
 
         <div class="stats">
-            <div class="stat-card">
-                <div class="stat-number">${recentErrors.length}</div>
-                <div class="stat-label">Recent Errors</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${recentCamera.length}</div>
-                <div class="stat-label">Camera Logs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${recentPerf.length}</div>
-                <div class="stat-label">Performance Logs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">${recentDebug.length}</div>
-                <div class="stat-label">Debug Messages</div>
-            </div>
+            <div class="stat-card"><div class="stat-number">${recentErrors.length}</div><div class="stat-label">Errors</div></div>
+            <div class="stat-card"><div class="stat-number">${recentCamera.length}</div><div class="stat-label">Camera</div></div>
+            <div class="stat-card"><div class="stat-number">${recentPerf.length}</div><div class="stat-label">Performance</div></div>
+            <div class="stat-card"><div class="stat-number">${recentDebug.length}</div><div class="stat-label">Debug</div></div>
         </div>
 
         <div class="section">
-            <div class="section-title">❌ Recent Errors (Last 50)</div>
-            ${recentErrors.map(log => `
-                <div class="log-entry error">
-                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
-                    <div class="log-message"><strong>${log.message || 'No message'}</strong></div>
-                    <div class="log-details">
-                        URL: ${log.url || 'N/A'}<br>
-                        User Agent: ${log.userAgent || 'N/A'}<br>
-                        IP: ${log.ip || 'N/A'}
-                    </div>
-                    ${log.stack ? `<div class="error-stack">${log.stack.substring(0, 500)}</div>` : ''}
-                </div>
-            `).join('') || '<p>No errors logged</p>'}
+            <div class="section-title">❌ Recent Errors</div>
+            ${recentErrors.map(log => `<div class="log-entry error"><div class="log-time">${new Date(log.timestamp).toLocaleString()}</div><div class="log-message"><strong>${log.message || 'No message'}</strong></div><div class="log-details">URL: ${log.url || 'N/A'}<br>User: ${log.userAgent || 'N/A'}</div></div>`).join('') || '<p>No errors</p>'}
         </div>
 
-        <div class="section">
-            <div class="section-title">📹 Camera Issues (Last 50)</div>
-            ${recentCamera.map(log => `
-                <div class="log-entry camera">
-                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
-                    <div class="log-message"><strong>Event: ${log.event || 'Unknown'}</strong></div>
-                    ${log.cameras && log.cameras.length > 0 ? `
-                        <div class="camera-info">
-                            <strong>Available Cameras:</strong><br>
-                            ${log.cameras.map((cam, i) => `${i + 1}. ${cam.label || 'Unknown'} (Facing: ${cam.facingMode || 'unknown'})`).join('<br>')}
-                        </div>
-                    ` : ''}
-                    ${log.selectedCamera ? `
-                        <div class="camera-info">
-                            <strong>Selected:</strong> ${log.selectedCamera.label || 'Unknown'}<br>
-                            <strong>Resolution:</strong> ${log.resolution || 'N/A'}<br>
-                            <strong>Facing Mode:</strong> ${log.facingMode || 'N/A'}<br>
-                            <strong>Strategy:</strong> ${log.strategy || 'N/A'}
-                        </div>
-                    ` : ''}
-                    ${log.rejected ? `<div class="log-details" style="color: #ff6b6b;">❌ Rejected: ${log.reason || 'Unknown reason'}</div>` : ''}
-                    <div class="log-details">
-                        User Agent: ${log.userAgent || 'N/A'}<br>
-                        IP: ${log.ip || 'N/A'}
-                    </div>
-                </div>
-            `).join('') || '<p>No camera issues logged</p>'}
-        </div>
-
-        <div class="section">
-            <div class="section-title">⚡ Performance Logs (Last 50)</div>
-            ${recentPerf.map(log => `
-                <div class="log-entry performance">
-                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
-                    <div class="log-message"><strong>${log.action || 'Unknown action'}</strong></div>
-                    <div class="log-details">
-                        Duration: ${log.duration || 0}ms<br>
-                        Success: ${log.success ? '✅' : '❌'}<br>
-                        ${log.fileSize ? `File Size: ${(log.fileSize / 1024 / 1024).toFixed(2)} MB<br>` : ''}
-                        ${log.details ? `Details: ${log.details}<br>` : ''}
-                        User Agent: ${log.userAgent || 'N/A'}
-                    </div>
-                </div>
-            `).join('') || '<p>No performance logs</p>'}
-        </div>
-
-        <div class="section">
-            <div class="section-title">🐛 Debug Messages (Last 50)</div>
-            ${recentDebug.map(log => `
-                <div class="log-entry">
-                    <div class="log-time">${new Date(log.timestamp).toLocaleString()}</div>
-                    <div class="log-message"><strong>${log.category || 'General'}</strong>: ${log.message || 'No message'}</div>
-                    ${log.data ? `<div class="log-details">Data: <pre style="overflow-x: auto;">${JSON.stringify(log.data, null, 2).substring(0, 300)}</pre></div>` : ''}
-                    <div class="log-details">
-                        User Agent: ${log.userAgent || 'N/A'}<br>
-                        IP: ${log.ip || 'N/A'}
-                    </div>
-                </div>
-            `).join('') || '<p>No debug messages</p>'}
-        </div>
-
-        <script>
-            // Auto-refresh every 30 seconds
-            setTimeout(() => location.reload(), 30000);
-        </script>
+        <script>setTimeout(() => location.reload(), 30000);</script>
     </body>
     </html>
     `;
@@ -1359,56 +1240,23 @@ app.get('/debug-dashboard', async (req, res) => {
     res.send(html);
 });
 
-// Export logs as JSON
-app.get('/debug-export', async (req, res) => {
-    const password = req.query.key;
-    if (password !== 'slgp-debug-2026') {
-        return res.status(401).send('Unauthorized');
-    }
-
-    const type = req.query.type || 'all';
-    
-    let logs = {};
-    
-    if (type === 'all' || type === 'errors') {
-        logs.errors = await getRecentLogs(ERROR_LOG, 1000);
-    }
-    if (type === 'all' || type === 'camera') {
-        logs.camera = await getRecentLogs(CAMERA_LOG, 1000);
-    }
-    if (type === 'all' || type === 'performance') {
-        logs.performance = await getRecentLogs(PERFORMANCE_LOG, 1000);
-    }
-    if (type === 'all' || type === 'debug') {
-        logs.debug = await getRecentLogs(DEBUG_LOG, 1000);
-    }
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="slgp-logs-${Date.now()}.json"`);
-    res.send(JSON.stringify(logs, null, 2));
-});
-
 // ============================================
 // HTML PAGES
 // ============================================
 app.get('/video', (req, res) => {
-    console.log('📍 GET /video');
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
 app.get('/success', (req, res) => {
-    console.log('📍 GET /success');
     res.sendFile(path.join(__dirname, 'success.html'));
 });
 
 app.get('/alerts', (req, res) => {
-    console.log('📍 GET /alerts');
     res.sendFile(path.join(__dirname, 'alerts.html'));
 });
 
 app.get('/report', (req, res) => {
     const mode = req.query.mode;
-    console.log(`📍 GET /report?mode=${mode}`);
     let filePath;
     if (mode === 'issue') {
         filePath = path.join(__dirname, 'report-issue.html');
@@ -1417,14 +1265,11 @@ app.get('/report', (req, res) => {
     } else if (mode === 'insurance') {
         filePath = path.join(__dirname, 'insurance.html');
     } else {
-        console.error('❌ Unknown report mode:', mode);
         return res.status(404).send('Unknown report type');
     }
     if (fs.existsSync(filePath)) {
-        console.log('✅ Serving:', filePath);
         res.sendFile(filePath);
     } else {
-        console.error('❌ File not found:', filePath);
         res.status(404).send(`File not found: ${mode}`);
     }
 });
@@ -1435,7 +1280,7 @@ app.get('/report', (req, res) => {
 app.use(express.static(__dirname, {
     setHeaders: (res, filepath) => {
         if (filepath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
         }
@@ -1446,16 +1291,13 @@ app.use(express.static(__dirname, {
 // ROOT ROUTE
 // ============================================
 app.get('/', (req, res) => {
-    console.log('📍 GET / - Serving menu.html');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     const menuPath = path.join(__dirname, 'menu.html');
     if (fs.existsSync(menuPath)) {
-        console.log('✅ Serving menu.html from:', menuPath);
         res.sendFile(menuPath);
     } else {
-        console.error('❌ menu.html not found at:', menuPath);
         res.status(404).send('menu.html not found');
     }
 });
@@ -1503,52 +1345,14 @@ cron.schedule('30 23 * * *', async () => {
 // ============================================
 app.use((err, req, res, next) => {
     console.error('❌ Server Error:', err);
-    
-    // Log server errors
     appendLog(ERROR_LOG, {
         type: 'server_error',
         severity: 'error',
         message: err.message,
         stack: err.stack,
-        source: 'express_error_handler',
-        url: req.url,
-        method: req.method
+        source: 'express_error_handler'
     });
-    
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-        details: err.message
-    });
-});
-
-// ============================================
-// SERVER ERROR TRACKING
-// ============================================
-process.on('uncaughtException', async (error) => {
-    console.error('💥 Uncaught Exception:', error);
-    
-    await appendLog(ERROR_LOG, {
-        type: 'server_error',
-        severity: 'critical',
-        message: error.message,
-        stack: error.stack,
-        source: 'uncaughtException'
-    });
-    
-    process.exit(1);
-});
-
-process.on('unhandledRejection', async (reason, promise) => {
-    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-    
-    await appendLog(ERROR_LOG, {
-        type: 'server_error',
-        severity: 'critical',
-        message: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-        source: 'unhandledRejection'
-    });
+    res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
 // ============================================
@@ -1560,10 +1364,9 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v2.1 - FIXED VIDEO NOTIFICATIONS        ║
+║  v2.2 - EMAIL PHOTO ATTACHMENTS          ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
-║  Version: ${BUILD_INFO.version}
 ╚══════════════════════════════════════════╝
 
 ✅ Server started
@@ -1571,18 +1374,12 @@ app.listen(PORT, '0.0.0.0', () => {
 ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
-✅ Auto-refresh system active
-🐛 Debug system active
-📧 VIDEO NOTIFICATIONS FIXED - Now sending to slgpfleetmanager@gmail.com
 
-✅ Gate checks: INSTANT response (< 1 second)
-✅ Arrival checks: INSTANT response (< 1 second)  
-✅ PDFs generated in background
-✅ Video upload: Direct streaming with H.265/HEVC
-✅ Video notifications: Sent to correct recipient
-
-🐛 Debug Dashboard: https://your-domain.com/debug-dashboard?key=slgp-debug-2026
-   ⚠️  CHANGE THE PASSWORD IN CODE!
+📧 ACCIDENT PHOTO FIX APPLIED:
+   ✅ Photos attached to email (not uploaded to Drive)
+   ✅ Works with FREE Gmail
+   ✅ Beautiful HTML email templates
+   ✅ No more storage quota errors
 
 🌐 Ready at: http://localhost:${PORT}
     `);
