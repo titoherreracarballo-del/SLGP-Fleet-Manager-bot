@@ -23,6 +23,10 @@
             --border-color: #2d3748;
         }
 
+        * {
+            -webkit-tap-highlight-color: transparent; /* Remove blue tap highlight on mobile */
+        }
+
         body {
             background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -32,6 +36,7 @@
             padding: 20px;
             margin: 0;
             min-height: 100vh;
+            font-size: 16px; /* MOBILE: Base font size */
         }
 
         /* --- SECURITY GATE OVERLAY --- */
@@ -39,42 +44,48 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.98); z-index: 9999;
             display: flex; justify-content: center; align-items: center;
-            padding: 10px; box-sizing: border-box; overflow-y: auto;
+            padding: 15px; box-sizing: border-box; overflow-y: auto;
         }
         .gate-content {
             background: #161B28; border: 2px solid var(--primary-red);
-            padding: 25px; border-radius: 20px; max-width: 420px; width: 100%;
+            padding: 30px 20px; /* MOBILE: More vertical padding */
+            border-radius: 20px; max-width: 420px; width: 100%;
             box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
-            display: flex; flex-direction: column; gap: 15px;
+            display: flex; flex-direction: column; gap: 18px; /* MOBILE: More gap */
         }
-        .gate-icon { font-size: 40px; display: block; text-align: center; margin-bottom: 5px; }
+        .gate-icon { font-size: 48px; display: block; text-align: center; margin-bottom: 5px; } /* MOBILE: Bigger */
         .gate-title { 
-            color: var(--primary-red); font-size: 20px; font-weight: 900; 
+            color: var(--primary-red); font-size: 22px; font-weight: 900; /* MOBILE: Bigger font */
             text-transform: uppercase; text-align: center; margin-bottom: 10px; 
         }
 
-        /* CHECKLIST STYLES */
-        .checklist-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 5px; }
+        /* CHECKLIST STYLES - MOBILE OPTIMIZED */
+        .checklist-container { display: flex; flex-direction: column; gap: 14px; margin-bottom: 5px; } /* MOBILE: More gap */
         .check-item { 
-            display: flex; align-items: flex-start; gap: 12px; 
-            font-size: 13px; color: #cbd5e1; cursor: pointer; line-height: 1.4;
-            background: rgba(255, 255, 255, 0.03); padding: 10px; border-radius: 8px;
+            display: flex; align-items: flex-start; gap: 14px; /* MOBILE: More gap */
+            font-size: 15px; color: #cbd5e1; cursor: pointer; line-height: 1.5; /* MOBILE: Bigger font */
+            background: rgba(255, 255, 255, 0.03); padding: 14px; border-radius: 10px; /* MOBILE: More padding */
+            min-height: 44px; /* MOBILE: Minimum touch target */
         }
         .gate-check { 
-            width: 18px; height: 18px; accent-color: var(--primary-red); 
-            flex-shrink: 0; margin-top: 2px; cursor: pointer;
+            width: 24px; height: 24px; /* MOBILE: Bigger checkboxes (44px touch area with padding) */
+            accent-color: var(--primary-red); 
+            flex-shrink: 0; margin-top: 0px; cursor: pointer;
         }
 
         .gate-text { 
-            font-size: 11px; line-height: 1.5; color: #94a3b8; 
-            background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; 
+            font-size: 14px; line-height: 1.6; color: #94a3b8; /* MOBILE: Bigger font */
+            background: rgba(0,0,0,0.3); padding: 16px; border-radius: 10px; /* MOBILE: More padding */
             border-left: 3px solid var(--primary-red); margin-bottom: 5px;
         }
         
         .gate-btn {
-            background: var(--primary-red); color: white; border: none; padding: 16px;
-            width: 100%; font-weight: 900; border-radius: 10px; font-size: 14px; 
+            background: var(--primary-red); color: white; border: none; 
+            padding: 18px; /* MOBILE: Bigger button */
+            width: 100%; font-weight: 900; border-radius: 12px; 
+            font-size: 16px; /* MOBILE: Bigger font */
             text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
+            min-height: 54px; /* MOBILE: Minimum touch target */
         }
         .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
@@ -85,64 +96,177 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; /* Hidden until gate passes */
         }
 
-        .logo-header { display: block; margin: 0 auto 15px auto; max-width: 100%; width: 280px; height: auto; border-radius: 4px; }
-        .back-link { color: var(--text-gray); text-decoration: none; display: block; margin-bottom: 20px; font-size: 14px; }
-        .timestamp { color: var(--text-green); text-align: center; font-size: 13px; font-weight: 700; margin-bottom: 5px; }
-        h1 { color: var(--primary-red); text-align: center; font-size: 24px; font-weight: 900; text-transform: uppercase; margin: 0 0 25px 0; letter-spacing: 1px; }
-        h2 { font-size: 14px; color: var(--text-label); text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 25px; }
+        .logo-header { 
+            display: block; margin: 0 auto 15px auto; 
+            max-width: 100%; width: 280px; height: auto; border-radius: 4px; 
+        }
+        .back-link { 
+            color: var(--text-gray); text-decoration: none; display: inline-block; 
+            margin-bottom: 20px; font-size: 16px; /* MOBILE: Bigger */
+            padding: 8px 12px; /* MOBILE: Bigger touch target */
+            margin-left: -12px; /* Offset padding */
+        }
+        .timestamp { 
+            color: var(--text-green); text-align: center; 
+            font-size: 15px; font-weight: 700; margin-bottom: 8px; /* MOBILE: Bigger */
+        }
+        h1 { 
+            color: var(--primary-red); text-align: center; 
+            font-size: 26px; font-weight: 900; /* MOBILE: Bigger */
+            text-transform: uppercase; margin: 0 0 30px 0; letter-spacing: 1px; 
+        }
+        h2 { 
+            font-size: 16px; color: var(--text-label); /* MOBILE: Bigger */
+            text-transform: uppercase; border-bottom: 2px solid #333; /* MOBILE: Thicker */
+            padding-bottom: 8px; margin-top: 30px; margin-bottom: 20px; /* MOBILE: More spacing */
+        }
 
-        /* --- FORMS --- */
-        .form-group { margin-bottom: 15px; }
-        .row-split { display: flex; gap: 10px; }
+        /* --- FORMS - MOBILE OPTIMIZED --- */
+        .form-group { margin-bottom: 20px; } /* MOBILE: More spacing */
+        .row-split { display: flex; gap: 12px; } /* MOBILE: More gap */
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
 
-        label { color: var(--text-label); display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+        label { 
+            color: var(--text-label); display: block; 
+            font-size: 14px; font-weight: 800; /* MOBILE: Bigger */
+            text-transform: uppercase; letter-spacing: 0.5px; 
+            margin-bottom: 8px; /* MOBILE: More space */
+        }
         input, textarea {
-            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); color: white;
-            padding: 14px; border-radius: var(--radius); font-size: 14px; box-sizing: border-box; outline: none;
+            width: 100%; background-color: var(--bg-input); border: 2px solid var(--border-color); /* MOBILE: Thicker border */
+            color: white;
+            padding: 16px; /* MOBILE: More padding for easier typing */
+            border-radius: var(--radius); 
+            font-size: 16px; /* MOBILE: Bigger (prevents zoom on iOS) */
+            box-sizing: border-box; outline: none;
+            min-height: 50px; /* MOBILE: Minimum touch target */
         }
         input:focus, textarea:focus { border-color: var(--primary-red); }
-        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
-
-        .char-count { font-size: 10px; color: #6b7280; text-align: right; margin-top: 4px; }
-
-        /* --- INCIDENT BUTTONS --- */
-        .btn-option {
-            width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
-            padding: 12px; border-radius: var(--radius); font-weight: 700; font-size: 12px;
-            text-transform: uppercase; cursor: pointer; margin-bottom: 8px; transition: all 0.2s;
+        input[readonly] { 
+            background-color: #1a202c; color: #6b7280; 
+            font-weight: bold; cursor: not-allowed; 
         }
-        .btn-option.selected { background-color: #1e293b; border-color: var(--primary-red); color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
 
-        /* --- MAP & ADDRESS --- */
-        #map { height: 180px; width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: 5px; }
-        .gps-info { font-size: 11px; color: var(--text-gray); margin-top: 5px; display: flex; justify-content: space-between; }
-        .weather-box { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; font-size: 11px; color: #fff; margin-top: 10px; border: 1px solid #333; }
+        .char-count { 
+            font-size: 14px; color: #6b7280; /* MOBILE: Bigger */
+            text-align: right; margin-top: 6px; 
+        }
 
-        /* --- SIGNATURE PAD --- */
-        canvas { background: #1a1a1a; border: 1px solid var(--text-label); border-radius: var(--radius); cursor: crosshair; touch-action: none; width: 100%; height: 150px; }
-        .clear-sig { background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red); font-size: 10px; padding: 5px 10px; border-radius: 4px; float: right; margin-top: 5px; cursor: pointer; }
+        /* --- INCIDENT BUTTONS - MOBILE OPTIMIZED --- */
+        .btn-option {
+            width: 100%; background-color: var(--bg-btn); border: 2px solid #2d3748; color: #cbd5e1;
+            padding: 16px; /* MOBILE: Bigger */
+            border-radius: var(--radius); font-weight: 700; 
+            font-size: 14px; /* MOBILE: Bigger */
+            text-transform: uppercase; cursor: pointer; 
+            margin-bottom: 10px; /* MOBILE: More spacing */
+            transition: all 0.2s;
+            min-height: 52px; /* MOBILE: Minimum touch target */
+        }
+        .btn-option.selected { 
+            background-color: #1e293b; border-color: var(--primary-red); 
+            color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
+        }
 
-        /* --- CAMERA --- */
+        /* --- MAP & ADDRESS - MOBILE OPTIMIZED --- */
+        #map { 
+            height: 200px; /* MOBILE: Slightly taller */
+            width: 100%; border-radius: var(--radius); 
+            border: 2px solid #333; margin-top: 8px; /* MOBILE: Thicker border */
+        }
+        .gps-info { 
+            font-size: 14px; color: var(--text-gray); /* MOBILE: Bigger */
+            margin-top: 8px; display: flex; justify-content: space-between; 
+            padding: 4px 0; /* MOBILE: More padding */
+        }
+        .weather-box { 
+            background: rgba(255,255,255,0.05); 
+            padding: 12px; /* MOBILE: More padding */
+            border-radius: 10px; 
+            font-size: 14px; /* MOBILE: Bigger */
+            color: #fff; margin-top: 12px; 
+            border: 2px solid #333; /* MOBILE: Thicker */
+        }
+
+        /* --- SIGNATURE PAD - MOBILE OPTIMIZED --- */
+        canvas { 
+            background: #1a1a1a; border: 2px solid var(--text-label); /* MOBILE: Thicker */
+            border-radius: var(--radius); cursor: crosshair; 
+            touch-action: none; width: 100%; 
+            height: 180px; /* MOBILE: Taller for easier signing */
+        }
+        .clear-sig { 
+            background: transparent; color: var(--primary-red); 
+            border: 2px solid var(--primary-red); /* MOBILE: Thicker */
+            font-size: 14px; /* MOBILE: Bigger */
+            padding: 10px 16px; /* MOBILE: Bigger touch target */
+            border-radius: 8px; float: right; 
+            margin-top: 8px; cursor: pointer; 
+            min-height: 44px; /* MOBILE: Minimum touch target */
+        }
+
+        /* --- CAMERA - MOBILE OPTIMIZED --- */
         .camera-box {
-            border: 2px dashed #4b5563; border-radius: 16px; height: 120px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 3px dashed #4b5563; /* MOBILE: Thicker */
+            border-radius: 16px; 
+            height: 160px; /* MOBILE: Taller */
+            display: flex; flex-direction: column; 
+            align-items: center; justify-content: center;
             cursor: pointer; background-color: rgba(255,255,255,0.02);
             position: relative; overflow: hidden; margin-bottom: 20px;
         }
-        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; z-index: 10; }
-        .camera-icon { width: 30px; height: 30px; fill: #cbd5e1; margin-bottom: 5px; }
-        .camera-title { font-size: 12px; font-weight: 800; }
+        #photoInput { 
+            position: absolute; width: 100%; height: 100%; 
+            opacity: 0; z-index: 10; cursor: pointer;
+        }
+        .camera-icon { 
+            width: 40px; height: 40px; /* MOBILE: Bigger */
+            fill: #cbd5e1; margin-bottom: 8px; 
+        }
+        .camera-title { 
+            font-size: 15px; font-weight: 800; /* MOBILE: Bigger */
+            margin-bottom: 4px;
+        }
+        .camera-sub {
+            font-size: 14px; /* MOBILE: Bigger */
+        }
 
-        /* --- SUBMIT --- */
+        /* --- SUBMIT BUTTON - MOBILE OPTIMIZED --- */
         .btn-submit {
             width: 100%; background-color: var(--primary-red); color: white; border: none;
-            padding: 18px; border-radius: var(--radius); font-weight: 900; font-size: 16px;
-            text-transform: uppercase; margin-top: 25px; cursor: pointer;
+            padding: 20px; /* MOBILE: Bigger */
+            border-radius: var(--radius); font-weight: 900; 
+            font-size: 18px; /* MOBILE: Bigger */
+            text-transform: uppercase; margin-top: 30px; cursor: pointer;
             box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+            min-height: 60px; /* MOBILE: Bigger touch target */
         }
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* --- MOBILE-SPECIFIC MEDIA QUERIES --- */
+        @media (max-width: 380px) {
+            /* Extra small phones */
+            body { padding: 10px; }
+            .container { padding: 18px; }
+            h1 { font-size: 22px; }
+            #map { height: 160px; }
+        }
+
+        @media (max-height: 600px) and (orientation: landscape) {
+            /* Landscape mode adjustments */
+            #accident-gate { align-items: flex-start; padding-top: 20px; }
+            .gate-content { margin: 20px auto; }
+            #map { height: 140px; }
+            canvas { height: 140px; }
+        }
+
+        /* Prevent zoom on input focus (iOS) */
+        @supports (-webkit-touch-callout: none) {
+            input, textarea, select {
+                font-size: 16px !important; /* Prevents iOS zoom */
+            }
+        }
     </style>
 </head>
 <body>
@@ -239,7 +363,7 @@
 
         <div class="form-group">
             <label>Detailed Statement (Max 500)</label>
-            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+            <textarea id="statement" maxlength="500" style="min-height: 120px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
             <div class="char-count" id="charCounter">0 / 500</div>
         </div>
 
@@ -268,7 +392,7 @@
         <h2>4. Driver Signature</h2>
         <div class="form-group">
             <label>Sign Below</label>
-            <canvas id="sigCanvas" height="150"></canvas>
+            <canvas id="sigCanvas" height="180"></canvas>
             <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
         </div>
 
@@ -463,10 +587,10 @@
         function initSignaturePad() {
             sigCanvas = document.getElementById('sigCanvas');
             sigCanvas.width = sigCanvas.offsetWidth;
-            sigCanvas.height = 150;
+            sigCanvas.height = 180; // Taller for mobile
             sigCtx = sigCanvas.getContext('2d');
             sigCtx.strokeStyle = "#3B82F6"; 
-            sigCtx.lineWidth = 2;
+            sigCtx.lineWidth = 3; // Thicker stroke for mobile
 
             sigCanvas.addEventListener('mousedown', startDraw);
             sigCanvas.addEventListener('mousemove', draw);
@@ -580,12 +704,9 @@
                 sBtn.disabled = false;
             }
         }
-</script>
+    </script>
     
-<script src="/auto-refresh.js"></script>
+    <script src="/auto-refresh.js"></script>
 
 </body>
-</html>>
-
-
-
+</html>
