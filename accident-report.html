@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     
     <style>
-        /* --- THEME SETTINGS --- */
+        /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
             --bg-body: #0F1115;
             --bg-card: #161B28;
@@ -19,12 +19,30 @@
             --text-white: #ffffff;
             --text-gray: #94a3b8;
             --text-green: #4ade80;
-            --radius: 12px;
+            --radius: clamp(8px, 2vw, 12px);
             --border-color: #2d3748;
+            
+            /* FLUID SPACING - Auto-scales with screen size */
+            --space-xs: clamp(4px, 1vw, 6px);
+            --space-sm: clamp(6px, 1.5vw, 10px);
+            --space-md: clamp(10px, 2.5vw, 15px);
+            --space-lg: clamp(15px, 3.5vw, 20px);
+            --space-xl: clamp(20px, 4.5vw, 30px);
+            
+            /* FLUID FONTS - Auto-scales with screen size */
+            --font-xs: clamp(11px, 2.5vw, 13px);
+            --font-sm: clamp(12px, 3vw, 14px);
+            --font-base: clamp(14px, 3.5vw, 16px);
+            --font-md: clamp(15px, 3.8vw, 18px);
+            --font-lg: clamp(18px, 4.5vw, 22px);
+            --font-xl: clamp(22px, 5.5vw, 26px);
+            
+            /* MIN TOUCH TARGET */
+            --min-touch: 44px;
         }
 
         * {
-            -webkit-tap-highlight-color: transparent; /* Remove blue tap highlight on mobile */
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -33,10 +51,10 @@
             color: white;
             display: flex;
             justify-content: center;
-            padding: 20px;
+            padding: clamp(10px, 4vw, 20px);
             margin: 0;
             min-height: 100vh;
-            font-size: 16px; /* MOBILE: Base font size */
+            font-size: var(--font-base);
         }
 
         /* --- SECURITY GATE OVERLAY --- */
@@ -44,103 +62,120 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.98); z-index: 9999;
             display: flex; justify-content: center; align-items: center;
-            padding: 15px; box-sizing: border-box; overflow-y: auto;
+            padding: var(--space-md); box-sizing: border-box; overflow-y: auto;
         }
         .gate-content {
             background: #161B28; border: 2px solid var(--primary-red);
-            padding: 30px 20px; /* MOBILE: More vertical padding */
-            border-radius: 20px; max-width: 420px; width: 100%;
+            padding: var(--space-xl) var(--space-lg);
+            border-radius: clamp(16px, 4vw, 20px); 
+            max-width: 420px; width: 100%;
             box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
-            display: flex; flex-direction: column; gap: 18px; /* MOBILE: More gap */
+            display: flex; flex-direction: column; gap: var(--space-md);
         }
-        .gate-icon { font-size: 48px; display: block; text-align: center; margin-bottom: 5px; } /* MOBILE: Bigger */
+        .gate-icon { 
+            font-size: clamp(36px, 10vw, 44px); 
+            display: block; text-align: center; margin-bottom: var(--space-xs); 
+        }
         .gate-title { 
-            color: var(--primary-red); font-size: 22px; font-weight: 900; /* MOBILE: Bigger font */
-            text-transform: uppercase; text-align: center; margin-bottom: 10px; 
+            color: var(--primary-red); 
+            font-size: var(--font-lg); 
+            font-weight: 900; 
+            text-transform: uppercase; text-align: center; margin-bottom: var(--space-sm); 
         }
 
-        /* CHECKLIST STYLES - MOBILE OPTIMIZED */
-        .checklist-container { display: flex; flex-direction: column; gap: 14px; margin-bottom: 5px; } /* MOBILE: More gap */
+        /* CHECKLIST - AUTO-SCALING */
+        .checklist-container { 
+            display: flex; flex-direction: column; gap: var(--space-sm); margin-bottom: var(--space-xs); 
+        }
         .check-item { 
-            display: flex; align-items: flex-start; gap: 14px; /* MOBILE: More gap */
-            font-size: 15px; color: #cbd5e1; cursor: pointer; line-height: 1.5; /* MOBILE: Bigger font */
-            background: rgba(255, 255, 255, 0.03); padding: 14px; border-radius: 10px; /* MOBILE: More padding */
-            min-height: 44px; /* MOBILE: Minimum touch target */
+            display: flex; align-items: flex-start; gap: var(--space-sm);
+            font-size: var(--font-sm); color: #cbd5e1; cursor: pointer; line-height: 1.4;
+            background: rgba(255, 255, 255, 0.03); 
+            padding: var(--space-sm); 
+            border-radius: var(--radius);
+            min-height: var(--min-touch);
         }
         .gate-check { 
-            width: 24px; height: 24px; /* MOBILE: Bigger checkboxes (44px touch area with padding) */
+            width: clamp(20px, 5vw, 24px); 
+            height: clamp(20px, 5vw, 24px);
             accent-color: var(--primary-red); 
-            flex-shrink: 0; margin-top: 0px; cursor: pointer;
+            flex-shrink: 0; margin-top: 2px; cursor: pointer;
         }
 
         .gate-text { 
-            font-size: 14px; line-height: 1.6; color: #94a3b8; /* MOBILE: Bigger font */
-            background: rgba(0,0,0,0.3); padding: 16px; border-radius: 10px; /* MOBILE: More padding */
-            border-left: 3px solid var(--primary-red); margin-bottom: 5px;
+            font-size: var(--font-xs); line-height: 1.6; color: #94a3b8;
+            background: rgba(0,0,0,0.3); padding: var(--space-md); 
+            border-radius: var(--radius);
+            border-left: 3px solid var(--primary-red); margin-bottom: var(--space-xs);
         }
         
         .gate-btn {
-            background: var(--primary-red); color: white; border: none; 
-            padding: 18px; /* MOBILE: Bigger button */
-            width: 100%; font-weight: 900; border-radius: 12px; 
-            font-size: 16px; /* MOBILE: Bigger font */
+            background: var(--primary-red); color: white; border: none;
+            padding: var(--space-md);
+            width: 100%; font-weight: 900; border-radius: var(--radius);
+            font-size: var(--font-base);
             text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
-            min-height: 54px; /* MOBILE: Minimum touch target */
+            min-height: var(--min-touch);
         }
         .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
         /* --- MAIN CONTAINER --- */
         .container {
             width: 100%; max-width: 450px; background-color: var(--bg-card);
-            border-radius: 24px; padding: 24px; border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none; /* Hidden until gate passes */
+            border-radius: clamp(18px, 5vw, 24px); 
+            padding: clamp(18px, 5vw, 24px); 
+            border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: none;
         }
 
         .logo-header { 
-            display: block; margin: 0 auto 15px auto; 
-            max-width: 100%; width: 280px; height: auto; border-radius: 4px; 
+            display: block; margin: 0 auto var(--space-md) auto; 
+            max-width: 100%; width: clamp(220px, 60vw, 280px); height: auto; border-radius: 4px; 
         }
         .back-link { 
             color: var(--text-gray); text-decoration: none; display: inline-block; 
-            margin-bottom: 20px; font-size: 16px; /* MOBILE: Bigger */
-            padding: 8px 12px; /* MOBILE: Bigger touch target */
-            margin-left: -12px; /* Offset padding */
+            margin-bottom: var(--space-lg); font-size: var(--font-base);
+            padding: var(--space-xs) var(--space-sm);
+            margin-left: calc(var(--space-sm) * -1);
         }
         .timestamp { 
             color: var(--text-green); text-align: center; 
-            font-size: 15px; font-weight: 700; margin-bottom: 8px; /* MOBILE: Bigger */
+            font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); 
         }
         h1 { 
             color: var(--primary-red); text-align: center; 
-            font-size: 26px; font-weight: 900; /* MOBILE: Bigger */
-            text-transform: uppercase; margin: 0 0 30px 0; letter-spacing: 1px; 
+            font-size: var(--font-xl); font-weight: 900;
+            text-transform: uppercase; margin: 0 0 var(--space-xl) 0; letter-spacing: 1px; 
         }
         h2 { 
-            font-size: 16px; color: var(--text-label); /* MOBILE: Bigger */
-            text-transform: uppercase; border-bottom: 2px solid #333; /* MOBILE: Thicker */
-            padding-bottom: 8px; margin-top: 30px; margin-bottom: 20px; /* MOBILE: More spacing */
+            font-size: var(--font-md); color: var(--text-label);
+            text-transform: uppercase; border-bottom: 2px solid #333;
+            padding-bottom: var(--space-xs); 
+            margin-top: var(--space-xl); 
+            margin-bottom: var(--space-md); 
         }
 
-        /* --- FORMS - MOBILE OPTIMIZED --- */
-        .form-group { margin-bottom: 20px; } /* MOBILE: More spacing */
-        .row-split { display: flex; gap: 12px; } /* MOBILE: More gap */
+        /* --- FORMS - FLUID SIZING --- */
+        .form-group { margin-bottom: var(--space-lg); }
+        .row-split { display: flex; gap: var(--space-sm); }
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
 
         label { 
             color: var(--text-label); display: block; 
-            font-size: 14px; font-weight: 800; /* MOBILE: Bigger */
+            font-size: var(--font-xs); font-weight: 800;
             text-transform: uppercase; letter-spacing: 0.5px; 
-            margin-bottom: 8px; /* MOBILE: More space */
+            margin-bottom: var(--space-xs); 
         }
         input, textarea {
-            width: 100%; background-color: var(--bg-input); border: 2px solid var(--border-color); /* MOBILE: Thicker border */
+            width: 100%; background-color: var(--bg-input); 
+            border: 1px solid var(--border-color);
             color: white;
-            padding: 16px; /* MOBILE: More padding for easier typing */
+            padding: var(--space-md);
             border-radius: var(--radius); 
-            font-size: 16px; /* MOBILE: Bigger (prevents zoom on iOS) */
+            font-size: 16px; /* Fixed 16px prevents iOS zoom */
             box-sizing: border-box; outline: none;
-            min-height: 50px; /* MOBILE: Minimum touch target */
+            min-height: var(--min-touch);
         }
         input:focus, textarea:focus { border-color: var(--primary-red); }
         input[readonly] { 
@@ -149,122 +184,128 @@
         }
 
         .char-count { 
-            font-size: 14px; color: #6b7280; /* MOBILE: Bigger */
-            text-align: right; margin-top: 6px; 
+            font-size: var(--font-xs); color: #6b7280;
+            text-align: right; margin-top: var(--space-xs); 
         }
 
-        /* --- INCIDENT BUTTONS - MOBILE OPTIMIZED --- */
+        /* --- INCIDENT BUTTONS --- */
         .btn-option {
-            width: 100%; background-color: var(--bg-btn); border: 2px solid #2d3748; color: #cbd5e1;
-            padding: 16px; /* MOBILE: Bigger */
+            width: 100%; background-color: var(--bg-btn); 
+            border: 1px solid #2d3748; color: #cbd5e1;
+            padding: var(--space-md);
             border-radius: var(--radius); font-weight: 700; 
-            font-size: 14px; /* MOBILE: Bigger */
+            font-size: var(--font-sm);
             text-transform: uppercase; cursor: pointer; 
-            margin-bottom: 10px; /* MOBILE: More spacing */
+            margin-bottom: var(--space-sm);
             transition: all 0.2s;
-            min-height: 52px; /* MOBILE: Minimum touch target */
+            min-height: var(--min-touch);
         }
         .btn-option.selected { 
             background-color: #1e293b; border-color: var(--primary-red); 
             color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
         }
 
-        /* --- MAP & ADDRESS - MOBILE OPTIMIZED --- */
+        /* --- MAP & ADDRESS --- */
         #map { 
-            height: 200px; /* MOBILE: Slightly taller */
+            height: clamp(160px, 40vw, 200px);
             width: 100%; border-radius: var(--radius); 
-            border: 2px solid #333; margin-top: 8px; /* MOBILE: Thicker border */
+            border: 1px solid #333; margin-top: var(--space-xs); 
         }
         .gps-info { 
-            font-size: 14px; color: var(--text-gray); /* MOBILE: Bigger */
-            margin-top: 8px; display: flex; justify-content: space-between; 
-            padding: 4px 0; /* MOBILE: More padding */
+            font-size: var(--font-xs); color: var(--text-gray);
+            margin-top: var(--space-xs); 
+            display: flex; justify-content: space-between; 
         }
         .weather-box { 
             background: rgba(255,255,255,0.05); 
-            padding: 12px; /* MOBILE: More padding */
-            border-radius: 10px; 
-            font-size: 14px; /* MOBILE: Bigger */
-            color: #fff; margin-top: 12px; 
-            border: 2px solid #333; /* MOBILE: Thicker */
+            padding: var(--space-sm);
+            border-radius: var(--radius);
+            font-size: var(--font-xs);
+            color: #fff; margin-top: var(--space-sm); 
+            border: 1px solid #333;
         }
 
-        /* --- SIGNATURE PAD - MOBILE OPTIMIZED --- */
+        /* --- SIGNATURE PAD --- */
         canvas { 
-            background: #1a1a1a; border: 2px solid var(--text-label); /* MOBILE: Thicker */
+            background: #1a1a1a; border: 1px solid var(--text-label);
             border-radius: var(--radius); cursor: crosshair; 
             touch-action: none; width: 100%; 
-            height: 180px; /* MOBILE: Taller for easier signing */
+            height: clamp(140px, 35vw, 160px);
         }
         .clear-sig { 
             background: transparent; color: var(--primary-red); 
-            border: 2px solid var(--primary-red); /* MOBILE: Thicker */
-            font-size: 14px; /* MOBILE: Bigger */
-            padding: 10px 16px; /* MOBILE: Bigger touch target */
-            border-radius: 8px; float: right; 
-            margin-top: 8px; cursor: pointer; 
-            min-height: 44px; /* MOBILE: Minimum touch target */
+            border: 1px solid var(--primary-red);
+            font-size: var(--font-xs);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius); float: right; 
+            margin-top: var(--space-xs); cursor: pointer; 
+            min-height: var(--min-touch);
         }
 
-        /* --- CAMERA - MOBILE OPTIMIZED --- */
+        /* --- CAMERA --- */
         .camera-box {
-            border: 3px dashed #4b5563; /* MOBILE: Thicker */
-            border-radius: 16px; 
-            height: 160px; /* MOBILE: Taller */
+            border: 2px dashed #4b5563;
+            border-radius: var(--radius); 
+            height: clamp(120px, 30vw, 140px);
             display: flex; flex-direction: column; 
             align-items: center; justify-content: center;
             cursor: pointer; background-color: rgba(255,255,255,0.02);
-            position: relative; overflow: hidden; margin-bottom: 20px;
+            position: relative; overflow: hidden; margin-bottom: var(--space-lg);
         }
         #photoInput { 
             position: absolute; width: 100%; height: 100%; 
             opacity: 0; z-index: 10; cursor: pointer;
         }
         .camera-icon { 
-            width: 40px; height: 40px; /* MOBILE: Bigger */
-            fill: #cbd5e1; margin-bottom: 8px; 
+            width: clamp(28px, 8vw, 35px); 
+            height: clamp(28px, 8vw, 35px);
+            fill: #cbd5e1; margin-bottom: var(--space-xs); 
         }
         .camera-title { 
-            font-size: 15px; font-weight: 800; /* MOBILE: Bigger */
-            margin-bottom: 4px;
+            font-size: var(--font-sm); font-weight: 800;
+            margin-bottom: var(--space-xs);
         }
         .camera-sub {
-            font-size: 14px; /* MOBILE: Bigger */
+            font-size: var(--font-xs);
         }
 
-        /* --- SUBMIT BUTTON - MOBILE OPTIMIZED --- */
+        /* --- SUBMIT BUTTON --- */
         .btn-submit {
             width: 100%; background-color: var(--primary-red); color: white; border: none;
-            padding: 20px; /* MOBILE: Bigger */
+            padding: var(--space-lg);
             border-radius: var(--radius); font-weight: 900; 
-            font-size: 18px; /* MOBILE: Bigger */
-            text-transform: uppercase; margin-top: 30px; cursor: pointer;
+            font-size: var(--font-md);
+            text-transform: uppercase; margin-top: var(--space-xl); cursor: pointer;
             box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
-            min-height: 60px; /* MOBILE: Bigger touch target */
+            min-height: clamp(50px, 12vw, 56px);
         }
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* --- MOBILE-SPECIFIC MEDIA QUERIES --- */
-        @media (max-width: 380px) {
-            /* Extra small phones */
-            body { padding: 10px; }
-            .container { padding: 18px; }
-            h1 { font-size: 22px; }
-            #map { height: 160px; }
+        /* --- RESPONSIVE BREAKPOINTS --- */
+        @media (max-width: 340px) {
+            body { padding: 8px; }
+            .container { padding: 12px; }
+        }
+
+        @media (min-width: 768px) {
+            :root {
+                --font-xs: 13px;
+                --font-sm: 14px;
+                --font-base: 16px;
+                --font-md: 18px;
+                --font-lg: 22px;
+                --font-xl: 26px;
+            }
         }
 
         @media (max-height: 600px) and (orientation: landscape) {
-            /* Landscape mode adjustments */
-            #accident-gate { align-items: flex-start; padding-top: 20px; }
-            .gate-content { margin: 20px auto; }
-            #map { height: 140px; }
-            canvas { height: 140px; }
+            #accident-gate { align-items: flex-start; padding-top: 10px; }
+            .gate-content { margin: 10px auto; }
         }
 
-        /* Prevent zoom on input focus (iOS) */
         @supports (-webkit-touch-callout: none) {
             input, textarea, select {
-                font-size: 16px !important; /* Prevents iOS zoom */
+                font-size: 16px !important;
             }
         }
     </style>
@@ -363,7 +404,7 @@
 
         <div class="form-group">
             <label>Detailed Statement (Max 500)</label>
-            <textarea id="statement" maxlength="500" style="min-height: 120px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
             <div class="char-count" id="charCounter">0 / 500</div>
         </div>
 
@@ -392,7 +433,7 @@
         <h2>4. Driver Signature</h2>
         <div class="form-group">
             <label>Sign Below</label>
-            <canvas id="sigCanvas" height="180"></canvas>
+            <canvas id="sigCanvas"></canvas>
             <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
         </div>
 
@@ -439,7 +480,7 @@
             if (document.getElementById('gateBtn').disabled) return;
             document.getElementById('accident-gate').style.display = 'none';
             document.getElementById('main-form').style.display = 'block';
-            initMap(); // Start GPS only after gate
+            initMap();
             initSignaturePad();
         }
 
@@ -497,7 +538,7 @@
                     img.src = event.target.result;
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 1024; // Max width for compression
+                        const MAX_WIDTH = 1024;
                         const MAX_HEIGHT = 1024;
                         let width = img.width;
                         let height = img.height;
@@ -517,7 +558,6 @@
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-                        // Convert to JPEG at 70% quality
                         resolve({ 
                             name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", 
                             data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] 
@@ -587,10 +627,12 @@
         function initSignaturePad() {
             sigCanvas = document.getElementById('sigCanvas');
             sigCanvas.width = sigCanvas.offsetWidth;
-            sigCanvas.height = 180; // Taller for mobile
+            const computedHeight = window.getComputedStyle(sigCanvas).height;
+            sigCanvas.height = parseInt(computedHeight);
+            
             sigCtx = sigCanvas.getContext('2d');
             sigCtx.strokeStyle = "#3B82F6"; 
-            sigCtx.lineWidth = 3; // Thicker stroke for mobile
+            sigCtx.lineWidth = 2;
 
             sigCanvas.addEventListener('mousedown', startDraw);
             sigCanvas.addEventListener('mousemove', draw);
