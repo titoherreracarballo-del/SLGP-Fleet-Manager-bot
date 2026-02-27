@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Notes & Updates</title>
+    <style>
+        /* --- FLUID RESPONSIVE DESIGN --- */
+        :root {
+            --bg-body: #0F1115;
+            --bg-card: #161B28;
+            --bg-section: #1a1f2e;
+            --primary-blue: #2563EB;
+            --text-label: #3B82F6;
+            --text-white: #ffffff;
+            --text-gray: #94a3b8;
+            --text-green: #4ade80;
+            --text-orange: #FF9900;
+            --text-red: #EF4444;
+            --border-color: #2d3748;
+            
+            /* FLUID SPACING */
+            --space-xs: clamp(4px, 1vw, 6px);
+            --space-sm: clamp(6px, 1.5vw, 10px);
+            --space-md: clamp(10px, 2.5vw, 15px);
+            --space-lg: clamp(15px, 3.5vw, 20px);
+            --space-xl: clamp(20px, 4.5vw, 30px);
+            
+            /* FLUID FONTS */
+            --font-xs: clamp(10px, 2.2vw, 12px);
+            --font-sm: clamp(11px, 2.6vw, 13px);
+            --font-base: clamp(13px, 3.2vw, 15px);
+            --font-md: clamp(14px, 3.5vw, 16px);
+            --font-lg: clamp(16px, 4vw, 18px);
+            --font-xl: clamp(20px, 5vw, 24px);
+            --font-xxl: clamp(24px, 6vw, 28px);
+            
+            /* FLUID RADIUS */
+            --radius: clamp(8px, 2vw, 12px);
+            
+            /* MIN TOUCH TARGET */
+            --min-touch: 44px;
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: clamp(10px, 4vw, 20px);
+            margin: 0;
+            min-height: 100vh;
+            font-size: var(--font-base);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: var(--bg-card);
+            border-radius: clamp(18px, 5vw, 24px);
+            padding: clamp(18px, 5vw, 24px);
+            border: 1px solid #1f2937;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+
+        .back-link {
+            color: var(--text-gray);
+            text-decoration: none;
+            font-size: var(--font-base);
+            margin-bottom: var(--space-lg);
+            display: inline-block;
+            padding: var(--space-xs) var(--space-sm);
+            margin-left: calc(var(--space-sm) * -1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+
+        h1 {
+            color: var(--text-label);
+            font-size: var(--font-xxl);
+            font-weight: 900;
+            text-transform: uppercase;
+            margin: 0 0 var(--space-xs) 0;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .version {
+            color: var(--text-green);
+            font-size: var(--font-sm);
+            font-weight: 700;
+        }
+
+        .build-section {
+            background: var(--bg-section);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+
+        .build-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-sm);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .build-date {
+            color: var(--text-label);
+            font-size: var(--font-md);
+            font-weight: 900;
+        }
+
+        .build-version {
+            background: var(--primary-blue);
+            color: white;
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: clamp(6px, 1.5vw, 8px);
+            font-size: var(--font-xs);
+            font-weight: 700;
+        }
+
+        .category {
+            margin-top: var(--space-md);
+        }
+
+        .category-title {
+            color: var(--text-green);
+            font-size: var(--font-sm);
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: var(--space-xs);
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+        }
+
+        .category-title.new { color: var(--text-green); }
+        .category-title.fix { color: var(--text-orange); }
+        .category-title.optimize { color: var(--text-label); }
+        .category-title.remove { color: var(--text-red); }
+
+        .change-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .change-item {
+            color: var(--text-gray);
+            font-size: var(--font-sm);
+            line-height: 1.6;
+            padding-left: var(--space-md);
+            position: relative;
+            margin-bottom: var(--space-xs);
+        }
+
+        .change-item::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--text-label);
+            font-weight: 900;
+        }
+
+        .highlight {
+            color: var(--text-white);
+            font-weight: 700;
+        }
+
+        .code {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: var(--font-xs);
+            color: var(--text-green);
+        }
+
+        /* --- RESPONSIVE BREAKPOINTS --- */
+        @media (max-width: 340px) {
+            body { padding: 8px; }
+            .container { padding: 12px; }
+        }
+
+        @media (min-width: 768px) {
+            :root {
+                --font-xs: 12px;
+                --font-sm: 13px;
+                --font-base: 15px;
+                --font-md: 16px;
+                --font-lg: 18px;
+                --font-xl: 24px;
+                --font-xxl: 28px;
+            }
+        }
+
+        /* iOS-specific fix */
+        @supports (-webkit-touch-callout: none) {
+            input, textarea, select {
+                font-size: 16px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <a href="/" class="back-link">← Back to Menu</a>
+    
+    <div class="header">
+        <h1>Build Notes</h1>
+        <div class="version">Current Version: 4.5.0</div>
+    </div>
+
+    <!-- BUILD v4.5.0 - February 27, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 27, 2026</div>
+            <div class="build-version">v4.5.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ NEW FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Build Notes Page:</span> Added comprehensive changelog to track all system updates</li>
+                <li class="change-item"><span class="highlight">Video Requirement:</span> Report Issue now requires video documentation instead of photos</li>
+                <li class="change-item"><span class="highlight">Mandatory Notes:</span> Detailed description now required for all issue reports</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Auto-Scaling Design:</span> All forms now use fluid responsive CSS with <span class="code">clamp()</span> functions</li>
+                <li class="change-item"><span class="highlight">Mobile UX:</span> Touch targets meet 44px minimum (Apple/Google guidelines)</li>
+                <li class="change-item"><span class="highlight">Adaptive Typography:</span> Fonts scale 10-28px based on screen size</li>
+                <li class="change-item"><span class="highlight">Adaptive Spacing:</span> Padding/margins scale 4-30px automatically</li>
+                <li class="change-item"><span class="highlight">iOS Zoom Prevention:</span> Input fields fixed at 16px to prevent zoom</li>
+                <li class="change-item"><span class="highlight">Proportional Scaling:</span> All elements scale smoothly across device sizes</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 DATABASE UPDATES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Rivian VINs Corrected:</span> Removed incorrect VINs (2866, 2860, 2863, 2859, 2857)</li>
+                <li class="change-item"><span class="highlight">New Rivians Added:</span> 8125, 8084, 7918, 7898</li>
+                <li class="change-item"><span class="highlight">Tow Policy Update:</span> All Rivian vehicles set to NO tow assistance</li>
+                <li class="change-item"><span class="highlight">Total Rivian Fleet:</span> 14 vehicles verified and active</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">accident-report.html</span> - Auto-scaling applied, VIN database updated</li>
+                <li class="change-item"><span class="code">index.html</span> - Auto-scaling applied, build notes link added</li>
+                <li class="change-item"><span class="code">report-issue.html</span> - Auto-scaling applied, video requirement, notes mandatory</li>
+                <li class="change-item"><span class="code">video-inspection.html</span> - Auto-scaling applied, VIN database updated</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.3.0 - February 25, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 25, 2026</div>
+            <div class="build-version">v4.3.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 BUG FIXES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Google Drive Upload:</span> Fixed quota error by sharing folder with service account</li>
+                <li class="change-item"><span class="highlight">Service Account:</span> mesh-bot-uploader@slgp-mesh-server.iam.gserviceaccount.com configured</li>
+                <li class="change-item"><span class="highlight">Photo Upload:</span> Accident reports now successfully upload to Google Drive</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Photo Compression:</span> Images auto-compressed to 1024x1024 at 70% quality</li>
+                <li class="change-item"><span class="highlight">Upload Speed:</span> Smaller file sizes = faster uploads on mobile networks</li>
+                <li class="change-item"><span class="highlight">Storage Efficiency:</span> Reduced Google Drive storage usage</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.2.0 - February 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 2026</div>
+            <div class="build-version">v4.2.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Security Gates:</span> Mandatory checklists before departure/arrival</li>
+                <li class="change-item"><span class="highlight">Time-Based Routing:</span> Automatic Pre/Post-trip selection based on time</li>
+                <li class="change-item"><span class="highlight">Tow Warnings:</span> Modal alerts for vehicles without tow coverage</li>
+                <li class="change-item"><span class="highlight">VIN Database:</span> Auto-detect vehicle type and tow status</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🎨 UI/UX</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Dark Theme:</span> Professional dark mode across all pages</li>
+                <li class="change-item"><span class="highlight">Touch Optimization:</span> Larger buttons and inputs for mobile</li>
+                <li class="change-item"><span class="highlight">Visual Feedback:</span> Color-coded status indicators</li>
+                <li class="change-item"><span class="highlight">Progressive Forms:</span> Step-by-step validation</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.0.0 - January 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">January 2026</div>
+            <div class="build-version">v4.0.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ CORE FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Accident Report System:</span> Photo documentation, GPS, signature capture</li>
+                <li class="change-item"><span class="highlight">Video Inspection:</span> High-quality video recording (1080p @ 10Mbps)</li>
+                <li class="change-item"><span class="highlight">Issue Reporting:</span> Categorized issue tracking with GPS</li>
+                <li class="change-item"><span class="highlight">Insurance Cards:</span> Digital access to fleet insurance</li>
+                <li class="change-item"><span class="highlight">Push Notifications:</span> Service worker for instant alerts</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">⚡ PERFORMANCE</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Auto-Updates:</span> Version checking every 30 seconds</li>
+                <li class="change-item"><span class="highlight">Wake Lock:</span> Prevent screen sleep during recording</li>
+                <li class="change-item"><span class="highlight">Retry Logic:</span> Auto-retry failed uploads (3 attempts)</li>
+                <li class="change-item"><span class="highlight">Flash Detection:</span> Auto-enable flash in low light</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="text-align: center; color: var(--text-gray); font-size: var(--font-xs); margin-top: var(--space-xl); padding-top: var(--space-lg); border-top: 1px solid var(--border-color);">
+        <p>SLGP Fleet Management System</p>
+        <p style="margin-top: var(--space-xs);">Built with ❤️ for safe & efficient operations</p>
+    </div>
+</div>
+
+</body>
+</html>
