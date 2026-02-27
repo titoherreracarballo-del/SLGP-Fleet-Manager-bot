@@ -338,13 +338,7 @@
 
         /* --- HIDDEN NOTES --- */
         #otherNotesContainer { 
-            display: none; 
             margin-top: var(--space-lg); 
-            animation: fadeIn 0.3s ease-in-out; 
-        }
-        @keyframes fadeIn { 
-            from { opacity: 0; transform: translateY(-10px); } 
-            to { opacity: 1; transform: translateY(0); } 
         }
 
         /* --- SUBMIT --- */
@@ -489,21 +483,21 @@
         <div id="map"></div>
     </div>
 
-    <div class="form-group" id="otherNotesContainer">
-        <label>Additional Notes (Required for "Other")</label>
-        <textarea id="notes" rows="3" placeholder="Describe the specific issue..."></textarea>
+    <div class="form-group" id="otherNotesContainer" style="margin-top: 25px;">
+        <label>Detailed Description (REQUIRED)</label>
+        <textarea id="notes" rows="3" placeholder="Describe the specific issue in detail..." required></textarea>
     </div>
 
     <div class="form-group" style="margin-top: 25px;">
-        <label>LIVE CAMERA (NO UPLOADS)</label>
+        <label>LIVE CAMERA (VIDEO REQUIRED)</label>
         <div class="camera-box">
-            <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
+            <input type="file" id="photoInput" accept="video/*" capture="environment">
             <video id="photo-preview-video" playsinline autoplay muted></video> 
             <svg class="camera-icon" viewBox="0 0 24 24">
                 <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
             </svg>
-            <div class="camera-title">TAP TO START CAMERA</div>
-            <div class="camera-sub">AUTO-FLASH ENABLED</div>
+            <div class="camera-title">TAP TO RECORD VIDEO</div>
+            <div class="camera-sub">VIDEO DOCUMENTATION REQUIRED</div>
         </div>
     </div>
 
@@ -576,7 +570,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.list-btn').forEach(btn => {
         btn.addEventListener('click', function() { 
             this.classList.toggle('selected');
-            checkForOther();
         });
     });
 
@@ -596,7 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
     photoInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
         if(files.length > 0) {
-            document.querySelector('.camera-title').innerText = `${files.length} PHOTOS CAPTURED`;
+            const videoCount = files.length;
+            document.querySelector('.camera-title').innerText = videoCount === 1 ? `VIDEO CAPTURED` : `${videoCount} VIDEOS CAPTURED`;
             document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
             document.querySelector('.camera-sub').style.color = "#4ade80"; 
             document.querySelector('.camera-icon').style.fill = '#4ade80';
@@ -655,7 +649,6 @@ function setTab(id) {
 
     document.getElementById(id).classList.add('active');
     activeTab = id;
-    checkForOther();
 
     if(id === 'mph') {
         setTimeout(() => { map.invalidateSize(); }, 100);
@@ -679,13 +672,6 @@ function setTab(id) {
             });
         }
     }
-}
-
-function checkForOther() {
-    const notesDiv = document.getElementById('otherNotesContainer');
-    const anyOtherSelected = Array.from(document.querySelectorAll('.list-btn.selected'))
-                                      .some(btn => btn.innerText.includes("Other"));
-    notesDiv.style.display = anyOtherSelected ? 'block' : 'none';
 }
 
 async function submitForm() {
@@ -714,8 +700,11 @@ async function submitForm() {
     if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
     if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
     
-    const anyOther = selectedTags.some(t => t.includes("Other"));
-    if(anyOther && !notes) { alert("Please describe the issue in Additional Notes."); return; }
+    // REQUIRED: Notes must be filled
+    if(!notes || notes.trim().length === 0) { alert("Detailed Description is required. Please describe the issue."); return; }
+    
+    // REQUIRED: At least 1 video must be uploaded
+    if(photos.length === 0) { alert("Video documentation is required. Please record a video of the issue."); return; }
 
     isSubmitting = true;
     const btn = document.querySelector('.submit-btn');
