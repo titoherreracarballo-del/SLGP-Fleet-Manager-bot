@@ -17,8 +17,10 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
+const VERSION_STRING = '4.6.0';
 const BUILD_INFO = {
     version: APP_VERSION,
+    versionString: VERSION_STRING,
     buildDate: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'production',
     nodeVersion: process.version
@@ -650,7 +652,6 @@ app.post('/submit-report', async (req, res) => {
                 });
                 folderId = folder.data.id;
                 
-                // ✅ FIXED: Skip Drive upload - photos will be attached to email instead
                 if (data.photos && data.photos.length) {
                     console.log(`📸 Received ${data.photos.length} photos - will attach to email`);
                 } else {
@@ -784,10 +785,8 @@ app.post('/submit-report', async (req, res) => {
             const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
             
-            // ✅ FIXED: Prepare email attachments - PDF + Photos
             const emailAttachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
 
-            // Add photo attachments
             if (data.photos && data.photos.length) {
                 console.log(`📧 Attaching ${data.photos.length} photos to email...`);
                 for (let i = 0; i < data.photos.length; i++) {
@@ -848,7 +847,6 @@ app.post('/submit-report', async (req, res) => {
                 attachments: emailAttachments
             });
 
-            // Cleanup temporary photo files
             if (data.photos && data.photos.length) {
                 for (let i = 0; i < emailAttachments.length; i++) {
                     if (emailAttachments[i].filename.startsWith('Photo_')) {
@@ -864,7 +862,6 @@ app.post('/submit-report', async (req, res) => {
             
             fs.unlinkSync(pdfPath);
         } else {
-            // Issue report (unchanged)
             let page = doc.addPage([600, 800]);
             let y = 780;
             
@@ -1022,7 +1019,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.log('📥 Generated access links:');
         console.log(`   View Link: ${viewLink}`);
         
-        // Send video notification email
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -1247,6 +1243,10 @@ app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
+app.get('/weather', (req, res) => {
+    res.sendFile(path.join(__dirname, 'weather.html'));
+});
+
 app.get('/success', (req, res) => {
     res.sendFile(path.join(__dirname, 'success.html'));
 });
@@ -1368,7 +1368,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.5.0 - BUILD NOTES ADDED              ║
+║  v4.6.0 - WEATHER & TRAFFIC              ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1379,14 +1379,18 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
-📝 NEW FEATURES v4.5.0:
-   ✅ Build Notes page at /build-notes
-   ✅ Video requirement for issue reports
-   ✅ Mandatory notes field for all issues
-   ✅ Auto-scaling responsive design
-   ✅ Rivian VIN database corrected
+📝 NEW FEATURES v4.6.0:
+   ✅ Today's Forecast & Road Conditions
+   ✅ Real-time weather with hourly updates
+   ✅ Sunset time for flash detection
+   ✅ Live traffic map for Atlanta metro
+   ✅ Weather-based road alerts
+   ✅ Peak hour warnings
+   ✅ Blue gradient UI redesign
+   ✅ Dark theme with SF Pro fonts
 
 🌐 Ready at: http://localhost:${PORT}
+⛅ Weather & Traffic: http://localhost:${PORT}/weather
 📋 Build Notes: http://localhost:${PORT}/build-notes
     `);
 });
