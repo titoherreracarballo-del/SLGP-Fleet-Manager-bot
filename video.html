@@ -594,7 +594,7 @@
 
 <div class="container">
     <div class="header-row">
-        <a href="/" class="back-link">← Back to Menu</a>
+        <a href="/menu" class="back-link">← Back to Menu</a>
         <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
     </div>
     
@@ -669,7 +669,7 @@
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
         CAMERA_TIMEOUT: 15000,
-        BRIGHTNESS_THRESHOLD: 40,
+        BRIGHTNESS_THRESHOLD: 70,  // Auto-flash threshold (higher = more sensitive, triggers in more lighting conditions)
         BRIGHTNESS_CHECK_INTERVAL: 2000
     };
 
@@ -783,10 +783,18 @@
             const avgBrightness = totalBrightness / (canvas.width * canvas.height);
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             
+            // AUTO-ADJUST FLASH BASED ON BRIGHTNESS
+            // Turn flash ON if too dark (below threshold)
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 Auto-enabling flash (dark scene detected)');
+                console.log('🔦 AUTO-FLASH ON (dark scene detected)');
                 setFlash(true);
                 updateFlashUI(true);
+            }
+            // Turn flash OFF if bright enough (above threshold + hysteresis)
+            else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
+                console.log('💡 AUTO-FLASH OFF (bright enough)');
+                setFlash(false);
+                updateFlashUI(false);
             }
             
         } catch (e) {
@@ -796,10 +804,11 @@
 
     function startBrightnessMonitoring() {
         stopBrightnessMonitoring();
+        // Check immediately, then every 2 seconds
         setTimeout(() => {
             detectBrightness();
             brightnessCheckInterval = setInterval(detectBrightness, CONFIG.BRIGHTNESS_CHECK_INTERVAL);
-        }, 3000);
+        }, 500); // Start after 500ms to let camera stabilize
     }
 
     function stopBrightnessMonitoring() {
@@ -928,12 +937,12 @@
         try {
             console.log('📹 Requesting camera with simple constraints...');
             
-            // SIMPLE: Just request environment (rear) camera with ideal resolution
+            // MINIMUM 1080p - camera can use higher resolution if available (4K, etc)
             const constraints = {
                 video: {
                     facingMode: { ideal: preferredFacingMode },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
+                    width: { min: 1920 },   // MINIMUM width - can go higher
+                    height: { min: 1080 }   // MINIMUM height - can go higher
                 },
                 audio: true
             };
