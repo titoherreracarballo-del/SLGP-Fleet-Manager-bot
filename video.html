@@ -106,10 +106,30 @@
             margin-bottom: var(--space-lg);
         }
         .back-link { 
-            color: #94a3b8; 
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            color: #ffffff; 
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
             text-decoration: none; 
-            font-size: var(--font-base);
-            padding: var(--space-xs) var(--space-sm);
+            font-size: var(--font-md);
+            font-weight: 700;
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            transition: all 0.2s ease;
+            margin-bottom: var(--space-lg);
+        }
+        .back-link:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.5);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .back-link:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
         }
         
         .reset-btn {
