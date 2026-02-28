@@ -1298,11 +1298,11 @@ app.get('/', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    const indexPath = path.join(__dirname, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
+    const menuPath = path.join(__dirname, 'menu.html');
+    if (fs.existsSync(menuPath)) {
+        res.sendFile(menuPath);
     } else {
-        res.status(404).send('index.html not found');
+        res.status(404).send('menu.html not found');
     }
 });
 
