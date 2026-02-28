@@ -338,7 +338,7 @@
     </div>
 
     <div class="container" id="main-form">
-        <a href="/" class="back-link">← Back to Menu</a>
+        <a href="/menu" class="back-link">← Back to Menu</a>
         <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
         <div class="timestamp" id="ts">Loading Time...</div>
         <h1>Accident Report</h1>
@@ -740,7 +740,7 @@
                 
                 if(res.ok) {
                     alert("Accident Report Filed Successfully.");
-                    window.location.href = "/";
+                    window.location.href = "/menu";
                 } else {
                     throw new Error("Server rejected report");
                 }
