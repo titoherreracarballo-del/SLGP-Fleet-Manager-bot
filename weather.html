@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Today's Forecast - SLGP Fleet</title>
+    <style>
+        :root {
+            --bg-body: #0A6CF1;
+            --bg-card: #1C1C1E;
+            --bg-section: #2C2C2E;
+            --primary-blue: #1976D2;
+            --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --text-white: #ffffff;
+            --text-primary: #FFFFFF;
+            --text-gray: #8E8E93;
+            --border-color: rgba(255, 255, 255, 0.1);
+            
+            --space-xs: clamp(4px, 1vw, 6px);
+            --space-sm: clamp(6px, 1.5vw, 10px);
+            --space-md: clamp(10px, 2.5vw, 15px);
+            --space-lg: clamp(15px, 3.5vw, 20px);
+            --space-xl: clamp(20px, 4.5vw, 30px);
+            
+            --font-xs: clamp(10px, 2.2vw, 12px);
+            --font-sm: clamp(12px, 2.8vw, 14px);
+            --font-base: clamp(14px, 3.2vw, 16px);
+            --font-md: clamp(16px, 3.6vw, 18px);
+            --font-lg: clamp(18px, 4.2vw, 20px);
+            --font-xl: clamp(22px, 5vw, 26px);
+            --font-xxl: clamp(32px, 8vw, 48px);
+            
+            --radius: clamp(12px, 3vw, 16px);
+            --min-touch: 44px;
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: clamp(10px, 4vw, 20px);
+            margin: 0;
+            min-height: 100vh;
+            font-size: var(--font-base);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: var(--bg-card);
+            border-radius: clamp(18px, 5vw, 24px);
+            padding: clamp(18px, 5vw, 24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-sm);
+            color: #ffffff;
+            background: var(--primary-gradient);
+            text-decoration: none;
+            font-size: var(--font-md);
+            font-weight: 700;
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius);
+            border: none;
+            box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
+            transition: all 0.2s ease;
+            margin-bottom: var(--space-lg);
+        }
+        .back-link:hover {
+            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
+            box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
+            transform: translateY(-2px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: var(--space-xl);
+        }
+
+        h1 {
+            font-size: var(--font-xl);
+            font-weight: 800;
+            margin-bottom: var(--space-xs);
+            color: #42A5F5;
+        }
+
+        .last-updated {
+            font-size: var(--font-xs);
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: var(--space-xl);
+            font-size: var(--font-md);
+            color: var(--text-gray);
+        }
+
+        .current-weather {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            text-align: center;
+        }
+
+        .temp-display {
+            font-size: var(--font-xxl);
+            font-weight: 800;
+            margin: var(--space-md) 0;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .condition {
+            font-size: var(--font-lg);
+            margin-bottom: var(--space-sm);
+            text-transform: capitalize;
+        }
+
+        .feels-like {
+            font-size: var(--font-sm);
+            color: var(--text-gray);
+        }
+
+        .weather-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+
+        .detail-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: var(--space-md);
+            border-radius: var(--radius);
+            text-align: center;
+        }
+
+        .detail-label {
+            font-size: var(--font-xs);
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: var(--space-xs);
+        }
+
+        .detail-value {
+            font-size: var(--font-md);
+            font-weight: 700;
+        }
+
+        .section-title {
+            font-size: var(--font-md);
+            font-weight: 700;
+            margin: var(--space-lg) 0 var(--space-md) 0;
+            color: #42A5F5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hourly-forecast {
+            display: flex;
+            gap: var(--space-sm);
+            overflow-x: auto;
+            padding-bottom: var(--space-sm);
+            margin-bottom: var(--space-md);
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .hourly-item {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            min-width: 80px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .hourly-time {
+            font-size: var(--font-xs);
+            color: var(--text-gray);
+            margin-bottom: var(--space-xs);
+        }
+
+        .hourly-icon {
+            font-size: 24px;
+            margin: var(--space-xs) 0;
+        }
+
+        .hourly-temp {
+            font-size: var(--font-md);
+            font-weight: 700;
+        }
+
+        .hourly-pop {
+            font-size: var(--font-xs);
+            color: #42A5F5;
+            margin-top: var(--space-xs);
+        }
+
+        .alert-banner {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #F87171;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .warning-banner {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #FBBF24;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.95; }
+        }
+
+        .alert-title {
+            font-size: var(--font-md);
+            font-weight: 800;
+            margin-bottom: var(--space-xs);
+            text-transform: uppercase;
+        }
+
+        .alert-description {
+            font-size: var(--font-sm);
+            line-height: 1.5;
+        }
+
+        .sunset-info {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            text-align: center;
+            margin: var(--space-md) 0;
+        }
+
+        .sunset-label {
+            font-size: var(--font-sm);
+            margin-bottom: var(--space-xs);
+            opacity: 0.9;
+        }
+
+        .sunset-time {
+            font-size: var(--font-xl);
+            font-weight: 800;
+        }
+
+        .map-container {
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin: var(--space-md) 0;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            height: 300px;
+        }
+
+        #traffic-map {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .legend {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+
+        .legend-title {
+            font-size: var(--font-sm);
+            font-weight: 700;
+            margin-bottom: var(--space-sm);
+            color: #42A5F5;
+            text-transform: uppercase;
+        }
+
+        .legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-md);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            font-size: var(--font-xs);
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        .info-section {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+        }
+
+        .info-list {
+            list-style: none;
+        }
+
+        .info-item {
+            padding: var(--space-sm) 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: var(--font-sm);
+            line-height: 1.6;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #EF4444;
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            color: #FCA5A5;
+            text-align: center;
+            margin: var(--space-md) 0;
+        }
+
+        .refresh-notice {
+            text-align: center;
+            font-size: var(--font-xs);
+            color: var(--text-gray);
+            margin-top: var(--space-md);
+            padding: var(--space-sm);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Menu</a>
+        
+        <div class="header">
+            <h1>⛅ Today's Forecast</h1>
+            <div class="last-updated" id="last-updated">Loading...</div>
+        </div>
+
+        <div id="weather-content" class="loading">
+            <div>Loading weather & road conditions...</div>
+        </div>
+    </div>
+
+    <script>
+        const ATLANTA_LAT = 33.7490;
+        const ATLANTA_LON = -84.3880;
+        const UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour
+        
+        async function fetchWeather() {
+            try {
+                // Using Open-Meteo API (free, no key needed)
+                const weatherURL = `https://api.open-meteo.com/v1/forecast?latitude=${ATLANTA_LAT}&longitude=${ATLANTA_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=1`;
+                
+                const weatherRes = await fetch(weatherURL);
+                const weatherData = await weatherRes.json();
+                
+                // Fetch sunset time
+                const sunsetURL = `https://api.sunrise-sunset.org/json?lat=${ATLANTA_LAT}&lng=${ATLANTA_LON}&formatted=0`;
+                const sunsetRes = await fetch(sunsetURL);
+                const sunsetData = await sunsetRes.json();
+                
+                displayWeather(weatherData, sunsetData);
+                
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+                document.getElementById('weather-content').innerHTML = `
+                    <div class="error-message">
+                        ⚠️ Unable to load weather data. Please try again later.
+                    </div>
+                `;
+            }
+        }
+
+        function getWeatherIcon(code) {
+            const icons = {
+                0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+                45: '🌫️', 48: '🌫️',
+                51: '🌦️', 53: '🌦️', 55: '🌦️',
+                61: '🌧️', 63: '🌧️', 65: '🌧️',
+                71: '🌨️', 73: '🌨️', 75: '🌨️',
+                80: '🌦️', 81: '🌦️', 82: '🌧️',
+                95: '⛈️', 96: '⛈️', 99: '⛈️'
+            };
+            return icons[code] || '🌡️';
+        }
+
+        function getWeatherDescription(code) {
+            const descriptions = {
+                0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+                45: 'Foggy', 48: 'Foggy',
+                51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+                61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+                71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
+                80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
+                95: 'Thunderstorm', 96: 'Thunderstorm with Hail', 99: 'Severe Thunderstorm'
+            };
+            return descriptions[code] || 'Unknown';
+        }
+
+        function displayWeather(weather, sunset) {
+            const current = weather.current;
+            const hourly = weather.hourly;
+            const now = new Date();
+            const hour = now.getHours();
+            
+            // Build alerts
+            let alertsHTML = '';
+            
+            // Severe weather alerts
+            if (current.weather_code >= 95) {
+                alertsHTML += `
+                    <div class="alert-banner">
+                        <div class="alert-title">⛈️ SEVERE WEATHER ALERT</div>
+                        <div class="alert-description">Thunderstorms expected. Exercise extreme caution while driving. Contact dispatch immediately if conditions deteriorate.</div>
+                    </div>
+                `;
+            } else if (current.weather_code >= 71 && current.weather_code <= 75) {
+                alertsHTML += `
+                    <div class="alert-banner">
+                        <div class="alert-title">❄️ WINTER WEATHER ALERT</div>
+                        <div class="alert-description">Snow conditions expected. Roads may be impassable. Drive safely and allow extra time for deliveries.</div>
+                    </div>
+                `;
+            } else if (current.weather_code >= 61 && current.weather_code <= 65) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌧️ WET ROAD CONDITIONS</div>
+                        <div class="alert-description">Rain expected today. Roads may be slippery. Increase following distance and reduce speed.</div>
+                    </div>
+                `;
+            }
+            
+            // Peak hour warning
+            if ((hour >= 7 && hour <= 9) || (hour >= 16 && hour <= 19)) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">⏰ PEAK HOURS ALERT</div>
+                        <div class="alert-description">Heavy traffic expected on major routes. Allow extra delivery time and use alternate routes when possible.</div>
+                    </div>
+                `;
+            }
+            
+            // Build hourly forecast (next 12 hours)
+            let hourlyHTML = '';
+            const currentHour = now.getHours();
+            
+            for (let i = 0; i < 12; i++) {
+                const hourIndex = currentHour + i;
+                if (hourIndex >= hourly.time.length) break;
+                
+                const time = new Date(hourly.time[hourIndex]);
+                const temp = Math.round(hourly.temperature_2m[hourIndex]);
+                const pop = hourly.precipitation_probability[hourIndex];
+                const code = hourly.weather_code[hourIndex];
+                
+                hourlyHTML += `
+                    <div class="hourly-item">
+                        <div class="hourly-time">${time.getHours() === currentHour ? 'Now' : time.toLocaleTimeString('en-US', {hour: 'numeric'})}</div>
+                        <div class="hourly-icon">${getWeatherIcon(code)}</div>
+                        <div class="hourly-temp">${temp}°</div>
+                        ${pop > 0 ? `<div class="hourly-pop">💧 ${pop}%</div>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Format sunset time
+            const sunsetTime = new Date(sunset.results.sunset);
+            const sunsetFormatted = sunsetTime.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+            
+            document.getElementById('weather-content').innerHTML = `
+                ${alertsHTML}
+                
+                <div class="current-weather">
+                    <div style="font-size: 48px;">${getWeatherIcon(current.weather_code)}</div>
+                    <div class="temp-display">${Math.round(current.temperature_2m)}°F</div>
+                    <div class="condition">${getWeatherDescription(current.weather_code)}</div>
+                    <div class="feels-like">Feels like ${Math.round(current.apparent_temperature)}°F</div>
+                    
+                    <div class="weather-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Humidity</div>
+                            <div class="detail-value">${current.relative_humidity_2m}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Wind</div>
+                            <div class="detail-value">${Math.round(current.wind_speed_10m)} mph</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Precipitation</div>
+                            <div class="detail-value">${current.precipitation}"</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Location</div>
+                            <div class="detail-value">Atlanta, GA</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-title">📅 Hourly Forecast</div>
+                <div class="hourly-forecast">
+                    ${hourlyHTML}
+                </div>
+                
+                <div class="sunset-info">
+                    <div class="sunset-label">🌅 Sunset Today</div>
+                    <div class="sunset-time">${sunsetFormatted}</div>
+                </div>
+                
+                <div class="section-title">🚦 Road Conditions</div>
+                
+                <div class="map-container">
+                    <iframe 
+                        id="traffic-map"
+                        src="https://www.google.com/maps/embed/v1/view?key=&center=33.7490,-84.3880&zoom=10&maptype=roadmap"
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+                
+                <div class="legend">
+                    <div class="legend-title">Traffic Conditions</div>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #34A853;"></div>
+                            <span>Light Traffic</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #FBBC04;"></div>
+                            <span>Moderate</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #EA4335;"></div>
+                            <span>Heavy</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #9E4747;"></div>
+                            <span>Severe</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="info-section">
+                    <div class="section-title" style="margin-top: 0;">⚠️ Safety Reminders</div>
+                    <ul class="info-list">
+                        <li class="info-item">🚧 Always check GPS for real-time route updates</li>
+                        <li class="info-item">⏰ Allow extra time during peak hours (7-9 AM, 4-7 PM)</li>
+                        <li class="info-item">🌧️ Reduce speed in wet conditions</li>
+                        <li class="info-item">📱 Report road hazards via Report Issue feature</li>
+                        <li class="info-item">🚨 Call dispatch for severe road closures</li>
+                    </ul>
+                </div>
+                
+                <div class="refresh-notice">
+                    💡 Weather & traffic auto-refresh every hour • Last updated: ${new Date().toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'})}
+                </div>
+            `;
+            
+            document.getElementById('last-updated').textContent = `Atlanta Metro Delivery Area`;
+        }
+
+        // Initial load
+        fetchWeather();
+        
+        // Auto-refresh every hour
+        setInterval(fetchWeather, UPDATE_INTERVAL);
+    </script>
+</body>
+</html>
