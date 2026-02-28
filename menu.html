@@ -10,21 +10,23 @@
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
         :root {
-            /* MODERN DARK THEME */
-            --bg-main: #0B0F19;
-            --bg-card: #1A1F2E;
-            --bg-card-hover: #242938;
-            --accent-blue: #3B82F6;
-            --accent-glow: rgba(59, 130, 246, 0.15);
-            --accent-orange: #FF9900;
-            --accent-red: #EF4444;
-            --accent-green: #10B981;
-            --accent-purple: #A855F7;
-            --text-primary: #FFFFFF;
-            --text-secondary: #94A3B8;
-            --border-subtle: rgba(255, 255, 255, 0.06);
-            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
-            --shadow-card-hover: 0 12px 48px rgba(59, 130, 246, 0.2);
+            /* MODERN BLUE GRADIENT THEME */
+            --bg-main: #0A6CF1;
+            --bg-card: #FFFFFF;
+            --bg-card-hover: #F8F9FA;
+            --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --primary-blue: #1976D2;
+            --primary-blue-light: #64B5F6;
+            --accent-glow: rgba(255, 255, 255, 0.25);
+            --accent-green: #4CAF50;
+            --accent-red: #F44336;
+            --accent-yellow: #FFC107;
+            --text-primary: #212121;
+            --text-secondary: #757575;
+            --text-on-blue: #FFFFFF;
+            --border-subtle: rgba(0, 0, 0, 0.08);
+            --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.12);
+            --shadow-card-hover: 0 12px 32px rgba(0, 0, 0, 0.18);
             
             /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
@@ -33,13 +35,13 @@
             --space-lg: clamp(16px, 4vw, 24px);
             --space-xl: clamp(24px, 6vw, 32px);
             
-            /* FLUID FONTS */
+            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
-            --font-md: clamp(15px, 3.6vw, 17px);
-            --font-lg: clamp(17px, 4.2vw, 19px);
-            --font-xl: clamp(20px, 5vw, 24px);
+            --font-md: clamp(16px, 3.6vw, 18px);
+            --font-lg: clamp(18px, 4.2vw, 20px);
+            --font-xl: clamp(22px, 5vw, 26px);
             
             /* MODERN RADIUS */
             --radius-sm: clamp(12px, 3vw, 16px);
@@ -59,8 +61,8 @@
 
         body {
             background: var(--bg-main);
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text-on-blue);
             min-height: 100vh;
             padding: var(--space-lg);
             display: flex;
@@ -68,6 +70,8 @@
             align-items: flex-start;
             font-size: var(--font-base);
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         /* ========================================== */
@@ -92,15 +96,10 @@
             width: 100%;
             max-width: 440px;
             padding: var(--space-xl);
-            border: 2px solid var(--accent-orange);
+            border: none;
             border-radius: var(--radius-xl);
             background: var(--bg-card);
-            box-shadow: 0 0 60px rgba(255, 153, 0, 0.3);
-        }
-
-        #security-gate-arrival .gate-content {
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 60px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
         }
 
         .disclaimer-header {
@@ -109,34 +108,34 @@
             align-items: center;
             text-align: center;
             margin-bottom: var(--space-lg);
-            color: var(--accent-orange);
+            color: var(--primary-blue);
         }
 
         #security-gate-arrival .disclaimer-header {
-            color: var(--accent-blue);
+            color: var(--accent-green);
         }
 
         .exclamation-symbol {
             font-size: clamp(40px, 12vw, 50px);
-            font-weight: 900;
+            font-weight: 800;
             margin-bottom: var(--space-sm);
-            text-shadow: 0 0 20px currentColor;
         }
 
         .disclaimer-header h2 {
             margin: 0;
             font-size: var(--font-lg);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            font-weight: 700;
         }
 
         .main-disclaimer {
             font-size: var(--font-sm);
             color: var(--text-primary);
-            font-weight: 700;
+            font-weight: 600;
             margin-bottom: var(--space-lg);
             text-align: center;
-            line-height: 1.5;
+            line-height: 1.6;
         }
 
         .checklist-container {
@@ -153,41 +152,42 @@
             font-size: var(--font-sm);
             color: var(--text-primary);
             cursor: pointer;
-            padding: var(--space-xs);
+            padding: var(--space-sm);
             border-radius: var(--radius-sm);
             transition: background 0.2s ease;
         }
 
         .check-item:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(25, 118, 210, 0.08);
         }
 
         .check-item input[type="checkbox"] {
-            width: clamp(18px, 4.5vw, 20px);
-            height: clamp(18px, 4.5vw, 20px);
-            accent-color: var(--accent-orange);
+            width: clamp(20px, 4.5vw, 22px);
+            height: clamp(20px, 4.5vw, 22px);
+            accent-color: var(--primary-blue);
             flex-shrink: 0;
             margin-top: 2px;
             cursor: pointer;
         }
 
         #security-gate-arrival .check-item input[type="checkbox"] {
-            accent-color: var(--accent-blue);
+            accent-color: var(--accent-green);
         }
 
         .policy-warning {
             font-size: var(--font-xs);
             color: var(--text-secondary);
-            line-height: 1.6;
+            line-height: 1.7;
             padding: var(--space-md);
-            background: rgba(0, 0, 0, 0.3);
+            background: rgba(25, 118, 210, 0.06);
             border-radius: var(--radius-md);
-            border-left: 4px solid var(--accent-orange);
+            border-left: 4px solid var(--primary-blue);
             margin-bottom: var(--space-lg);
         }
 
         #security-gate-arrival .policy-warning {
-            border-left-color: var(--accent-blue);
+            border-left-color: var(--accent-green);
+            background: rgba(76, 175, 80, 0.06);
         }
 
         .ack-container {
@@ -196,79 +196,83 @@
 
         .ack-label {
             font-size: var(--font-sm);
-            color: var(--accent-orange);
+            color: var(--primary-blue);
             font-weight: 700;
             text-transform: uppercase;
             margin-bottom: var(--space-xs);
             display: block;
+            letter-spacing: 0.5px;
         }
 
         #security-gate-arrival .ack-label {
-            color: var(--accent-blue);
+            color: var(--accent-green);
         }
 
         .ack-input {
             width: 100%;
             padding: var(--space-md);
-            background: rgba(0, 0, 0, 0.4);
-            border: 2px solid rgba(255, 255, 255, 0.1);
+            background: #F5F5F5;
+            border: 2px solid var(--border-subtle);
             border-radius: var(--radius-md);
-            color: white;
+            color: var(--text-primary);
             font-size: 16px;
             min-height: var(--min-touch);
             transition: all 0.3s ease;
+            font-family: inherit;
         }
 
         .ack-input:focus {
             outline: none;
-            border-color: var(--accent-orange);
-            box-shadow: 0 0 20px rgba(255, 153, 0, 0.2);
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 4px rgba(25, 118, 210, 0.15);
+            background: white;
         }
 
         #security-gate-arrival .ack-input:focus {
-            border-color: var(--accent-blue);
-            box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+            border-color: var(--accent-green);
+            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.15);
         }
 
         .gate-btn {
             width: 100%;
             margin-top: var(--space-lg);
             padding: var(--space-lg);
-            background: var(--accent-orange);
-            color: var(--bg-main);
+            background: var(--primary-gradient);
+            color: white;
             border: none;
             border-radius: var(--radius-md);
-            font-weight: 900;
+            font-weight: 700;
             font-size: var(--font-md);
             text-transform: uppercase;
             cursor: not-allowed;
-            opacity: 0.3;
+            opacity: 0.5;
             transition: all 0.3s ease;
             min-height: var(--min-touch);
             letter-spacing: 0.5px;
+            font-family: inherit;
         }
 
         #security-gate-arrival .gate-btn {
-            background: var(--accent-blue);
+            background: linear-gradient(135deg, var(--accent-green) 0%, #66BB6A 100%);
         }
 
         .gate-btn.active {
             cursor: pointer;
             opacity: 1;
-            box-shadow: 0 8px 24px rgba(255, 153, 0, 0.4);
+            box-shadow: 0 8px 20px rgba(30, 136, 229, 0.4);
         }
 
         #security-gate-arrival .gate-btn.active {
-            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.4);
         }
 
         .gate-btn.active:hover {
             transform: translateY(-2px);
-            box-shadow: 0 12px 32px rgba(255, 153, 0, 0.5);
+            box-shadow: 0 12px 28px rgba(30, 136, 229, 0.5);
         }
 
         #security-gate-arrival .gate-btn.active:hover {
-            box-shadow: 0 12px 32px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 12px 28px rgba(76, 175, 80, 0.5);
         }
 
         /* ========================================== */
@@ -295,33 +299,22 @@
             justify-content: space-between;
             align-items: center;
             font-size: var(--font-xs);
-            color: var(--text-secondary);
+            color: rgba(255, 255, 255, 0.85);
             text-transform: uppercase;
             letter-spacing: 1.5px;
-            font-weight: 600;
+            font-weight: 700;
             margin-bottom: var(--space-lg);
         }
 
         .logo-card {
             background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
+            border: none;
             border-radius: var(--radius-xl);
             padding: var(--space-lg);
             box-shadow: var(--shadow-card);
             overflow: hidden;
             position: relative;
             margin-bottom: var(--space-xl);
-        }
-
-        .logo-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
-            opacity: 0.5;
         }
 
         .logo-card img {
@@ -335,10 +328,11 @@
             width: 100%;
             padding: var(--space-md);
             margin-bottom: var(--space-lg);
-            background: rgba(59, 130, 246, 0.1);
-            border: 2px solid var(--accent-blue);
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: var(--radius-lg);
-            color: var(--accent-blue);
+            color: white;
             font-weight: 700;
             font-size: var(--font-sm);
             cursor: pointer;
@@ -346,24 +340,25 @@
             min-height: var(--min-touch);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-family: inherit;
         }
 
         .notify-btn:hover {
-            background: rgba(59, 130, 246, 0.15);
+            background: rgba(255, 255, 255, 0.25);
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px var(--accent-glow);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
         }
 
         .notify-active {
+            background: rgba(244, 67, 54, 0.2) !important;
             border-color: var(--accent-red) !important;
-            color: var(--accent-red) !important;
-            background: rgba(239, 68, 68, 0.1) !important;
+            color: white !important;
         }
 
         .notify-inactive {
+            background: rgba(76, 175, 80, 0.2) !important;
             border-color: var(--accent-green) !important;
-            color: var(--accent-green) !important;
-            background: rgba(16, 185, 129, 0.1) !important;
+            color: white !important;
         }
 
         /* MENU CARDS */
@@ -375,7 +370,7 @@
 
         .menu-card {
             background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
+            border: none;
             border-radius: var(--radius-lg);
             overflow: hidden;
             text-decoration: none;
@@ -386,55 +381,20 @@
             cursor: pointer;
         }
 
-        .menu-card::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: var(--radius-lg);
-            padding: 1px;
-            background: linear-gradient(135deg, transparent, currentColor, transparent);
-            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            -webkit-mask-composite: xor;
-            mask-composite: exclude;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
         .menu-card:hover {
             transform: translateY(-4px) scale(1.01);
             box-shadow: var(--shadow-card-hover);
-            background: var(--bg-card-hover);
-        }
-
-        .menu-card:hover::before {
-            opacity: 0.6;
         }
 
         .menu-card:active {
             transform: translateY(-2px) scale(0.99);
         }
 
-        /* Accent colors for different cards */
-        .card-blue { color: var(--accent-blue); }
-        .card-blue:hover { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 12px 48px rgba(59, 130, 246, 0.2); }
-        
-        .card-orange { color: var(--accent-orange); }
-        .card-orange:hover { border-color: rgba(255, 153, 0, 0.3); box-shadow: 0 12px 48px rgba(255, 153, 0, 0.2); }
-        
-        .card-red { color: var(--accent-red); }
-        .card-red:hover { border-color: rgba(239, 68, 68, 0.3); box-shadow: 0 12px 48px rgba(239, 68, 68, 0.2); }
-        
-        .card-green { color: var(--accent-green); }
-        .card-green:hover { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 12px 48px rgba(16, 185, 129, 0.2); }
-        
-        .card-purple { color: var(--accent-purple); }
-        .card-purple:hover { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 12px 48px rgba(168, 85, 247, 0.2); }
-
         .card-image {
             width: 100%;
             height: clamp(120px, 32vw, 140px);
             overflow: hidden;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
             position: relative;
         }
 
@@ -461,7 +421,7 @@
 
         /* Build Notes card special image */
         .build-notes-image {
-            background: linear-gradient(135deg, #5B21B6 0%, #6D28D9 100%);
+            background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -470,7 +430,7 @@
         .card-icon {
             width: clamp(48px, 12vw, 64px);
             height: clamp(48px, 12vw, 64px);
-            fill: var(--accent-purple);
+            fill: var(--accent-yellow);
             opacity: 0.9;
             z-index: 1;
         }
@@ -488,13 +448,8 @@
             font-size: var(--font-md);
             font-weight: 700;
             color: var(--text-primary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.25px;
             transition: color 0.3s ease;
-        }
-
-        .menu-card:hover .card-label {
-            color: currentColor;
         }
 
         .card-arrow {
@@ -510,16 +465,16 @@
         .card-arrow svg {
             width: 100%;
             height: 100%;
-            fill: currentColor;
+            fill: var(--primary-blue);
         }
 
         /* FOOTER */
         .footer {
             margin-top: var(--space-xl);
             padding-top: var(--space-lg);
-            border-top: 1px solid var(--border-subtle);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
             text-align: center;
-            color: var(--text-secondary);
+            color: rgba(255, 255, 255, 0.8);
             font-size: var(--font-xs);
         }
 
@@ -534,9 +489,9 @@
                 --font-xs: 12px;
                 --font-sm: 14px;
                 --font-base: 16px;
-                --font-md: 17px;
-                --font-lg: 19px;
-                --font-xl: 24px;
+                --font-md: 18px;
+                --font-lg: 20px;
+                --font-xl: 26px;
             }
         }
 
@@ -559,7 +514,7 @@
     <div id="security-gate" class="gate-overlay">
         <div class="gate-content">
             <div class="disclaimer-header">
-                <span class="exclamation-symbol">!</span>
+                <span class="exclamation-symbol">⚠️</span>
                 <h2>Departure Requirements</h2>
             </div>
             <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
@@ -596,7 +551,7 @@
     <div id="security-gate-arrival" class="gate-overlay">
         <div class="gate-content">
             <div class="disclaimer-header">
-                <span class="exclamation-symbol">!</span>
+                <span class="exclamation-symbol">⚠️</span>
                 <h2>Arrival Requirements</h2>
             </div>
             <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
@@ -653,7 +608,7 @@
 
         <div class="menu-grid">
             <!-- Fleet Inspection -->
-            <div class="menu-card card-blue" onclick="openSecurityGate()">
+            <div class="menu-card" onclick="openSecurityGate()">
                 <div class="card-image">
                     <img src="fleet.jpg" alt="Fleet Inspection">
                 </div>
@@ -668,7 +623,7 @@
             </div>
 
             <!-- Report Issue -->
-            <a href="/report?mode=issue" class="menu-card card-orange">
+            <a href="/report?mode=issue" class="menu-card">
                 <div class="card-image">
                     <img src="issue.jpg" alt="Report Issue">
                 </div>
@@ -683,7 +638,7 @@
             </a>
 
             <!-- Accident Report -->
-            <a href="/report?mode=accident" class="menu-card card-red">
+            <a href="/report?mode=accident" class="menu-card">
                 <div class="card-image">
                     <img src="accident.jpg" alt="Accident Report">
                 </div>
@@ -698,7 +653,7 @@
             </a>
 
             <!-- Insurance Cards -->
-            <a href="/report?mode=insurance" class="menu-card card-green">
+            <a href="/report?mode=insurance" class="menu-card">
                 <div class="card-image">
                     <img src="insurance.jpg" alt="Insurance Cards">
                 </div>
@@ -713,7 +668,7 @@
             </a>
 
             <!-- Build Notes -->
-            <a href="/build-notes" class="menu-card card-purple">
+            <a href="/build-notes" class="menu-card">
                 <div class="card-image build-notes-image">
                     <svg class="card-icon" viewBox="0 0 24 24">
                         <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
@@ -736,7 +691,7 @@
     </div>
 
     <script>
-        const GATE_COOLDOWN_MS = 5 * 60 * 1000; // 5 Minutes
+        const GATE_COOLDOWN_MS = 5 * 60 * 1000;
 
         function openSecurityGate() {
             const now = new Date();
@@ -746,7 +701,6 @@
             const lastDep = localStorage.getItem('lastDepartureGate');
             const lastArr = localStorage.getItem('lastArrivalGate');
 
-            // Departure: 10:00 AM (600) to 6:00 PM (1080)
             if (mins >= 600 && mins < 1080) {
                 if (lastDep && (currentTime - lastDep < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
                 
@@ -757,7 +711,6 @@
                 document.getElementById('security-gate').style.display = 'flex';
                 document.getElementById('main-ui').style.display = 'none';
             } 
-            // Arrival: 6:15 PM (1095) to 9:00 AM (540)
             else if (mins >= 1095 || mins < 540) {
                 if (lastArr && (currentTime - lastArr < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
                 
@@ -907,11 +860,11 @@
                             top: 20px;
                             left: 50%;
                             transform: translateX(-50%);
-                            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-                            color: white;
+                            background: rgba(255, 255, 255, 0.95);
+                            color: #0A6CF1;
                             padding: 15px 25px;
-                            border-radius: 12px;
-                            box-shadow: 0 4px 20px rgba(59,130,246,0.4);
+                            border-radius: 16px;
+                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
                             z-index: 10000;
                             font-weight: bold;
                             text-align: center;
