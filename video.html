@@ -7,13 +7,16 @@
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
-            --bg-body: #0F1115;        
-            --bg-card: #161B28;        
-            --bg-input: #0b0d12;       
-            --primary-blue: #2563EB;    
-            --text-label: #3B82F6;      
+            --bg-body: #0A6CF1;        
+            --bg-card: #FFFFFF;        
+            --bg-input: #F5F5F5;       
+            --primary-blue: #1976D2;
+            --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --text-label: #1976D2;      
             --text-white: #ffffff;
-            --border-color: #2d3748;
+            --text-primary: #212121;
+            --text-on-blue: #FFFFFF;
+            --border-color: rgba(0, 0, 0, 0.08);
             
             /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
@@ -22,16 +25,16 @@
             --space-lg: clamp(15px, 3.5vw, 20px);
             --space-xl: clamp(20px, 4.5vw, 30px);
             
-            /* FLUID FONTS */
+            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
-            --font-sm: clamp(11px, 2.6vw, 13px);
-            --font-base: clamp(13px, 3.2vw, 15px);
-            --font-md: clamp(14px, 3.5vw, 16px);
-            --font-lg: clamp(16px, 4vw, 18px);
-            --font-xl: clamp(20px, 5vw, 24px);
+            --font-sm: clamp(12px, 2.8vw, 14px);
+            --font-base: clamp(14px, 3.2vw, 16px);
+            --font-md: clamp(16px, 3.6vw, 18px);
+            --font-lg: clamp(18px, 4.2vw, 20px);
+            --font-xl: clamp(22px, 5vw, 26px);
             
             /* FLUID RADIUS */
-            --radius: clamp(8px, 2vw, 12px);
+            --radius: clamp(12px, 3vw, 16px);
             
             /* MIN TOUCH TARGET */
             --min-touch: 44px;
@@ -43,7 +46,7 @@
 
         body {
             background-color: var(--bg-body);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             color: white;
             display: flex;
             justify-content: center;
@@ -51,6 +54,8 @@
             margin: 0;
             min-height: 100vh;
             font-size: var(--font-base);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         .container {
@@ -59,8 +64,8 @@
             background-color: var(--bg-card);
             border-radius: clamp(18px, 5vw, 24px);
             padding: clamp(18px, 5vw, 24px);
-            border: 1px solid #1f2937;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
         }
 
         #progress-container {
@@ -110,26 +115,25 @@
             align-items: center;
             gap: var(--space-sm);
             color: #ffffff; 
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            background: var(--primary-gradient);
             text-decoration: none; 
             font-size: var(--font-md);
             font-weight: 700;
             padding: var(--space-md) var(--space-lg);
             border-radius: var(--radius);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            border: none;
+            box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
             transition: all 0.2s ease;
             margin-bottom: var(--space-lg);
         }
         .back-link:hover {
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.5);
+            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
+            box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
             transform: translateY(-2px);
-            border-color: rgba(255, 255, 255, 0.3);
         }
         .back-link:active {
             transform: translateY(0);
-            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
         }
         
         .reset-btn {
@@ -617,6 +621,8 @@
         <a href="/" class="back-link">← Back to Menu</a>
         <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
     </div>
+    
+    <div style="text-align: center; color: #94A3B8; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.5.0</div>
     
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
