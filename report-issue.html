@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Report Issue</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
@@ -320,22 +319,6 @@
             z-index: 6; 
         }
 
-        /* --- MAP --- */
-        #map { 
-            height: clamp(160px, 40vw, 180px); 
-            width: 100%; 
-            border-radius: var(--radius); 
-            margin-top: var(--space-sm); 
-            border: 1px solid #374151; 
-        }
-        #gpsStatus { 
-            font-size: var(--font-xs); 
-            color: #4ade80; 
-            margin-top: var(--space-xs); 
-            text-align: right; 
-            display: none; 
-        }
-
         /* --- HIDDEN NOTES --- */
         #otherNotesContainer { 
             margin-top: var(--space-lg); 
@@ -392,7 +375,7 @@
 <body>
 
 <div class="container">
-    <a href="/" class="back-link">← Back to Menu</a>
+    <a href="/menu" class="back-link">← Back to Menu</a>
     
     <img src="./Final-01.jpg" alt="Strategic Logistics Logo" class="logo-header">
     <div class="timestamp" id="ts">Loading...</div>
@@ -428,7 +411,6 @@
         <button class="tab-btn active" id="tab-high">High Priority</button>
         <button class="tab-btn" id="tab-edv">EDV / Electric</button>
         <button class="tab-btn" id="tab-low">Low Priority</button>
-        <button class="tab-btn" id="tab-mph">MPH Error</button>
     </div>
 
     <div id="high" class="section active">
@@ -472,17 +454,6 @@
         </div>
     </div>
 
-    <div id="mph" class="section">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label>Road / Location Details</label>
-            <span id="gpsStatus">◎ GPS LOCKED</span>
-        </div>
-        <input type="text" id="street" placeholder="Auto-Detecting Street..." style="margin-bottom:10px;">
-        <input type="text" id="city" placeholder="Auto-Detecting City..." style="margin-bottom:10px;">
-        <input type="text" id="state" placeholder="Auto-Detecting State...">
-        <div id="map"></div>
-    </div>
-
     <div class="form-group" id="otherNotesContainer" style="margin-top: 25px;">
         <label>Detailed Description (REQUIRED)</label>
         <textarea id="notes" rows="3" placeholder="Describe the specific issue in detail..." required></textarea>
@@ -504,7 +475,6 @@
     <button class="submit-btn" onclick="submitForm()">Submit Report</button>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // --- FULL VIN DATABASE ---
 const vinDatabase = {
@@ -555,7 +525,6 @@ const vinDatabase = {
 // --- GLOBAL VARIABLES ---
 let activeTab = 'high';
 let photos = [];
-let map;
 let isSubmitting = false;
 
 // --- INITIALIZATION ---
@@ -565,16 +534,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tab-high').addEventListener('click', () => setTab('high'));
     document.getElementById('tab-edv').addEventListener('click', () => setTab('edv'));
     document.getElementById('tab-low').addEventListener('click', () => setTab('low'));
-    document.getElementById('tab-mph').addEventListener('click', () => setTab('mph'));
 
     document.querySelectorAll('.list-btn').forEach(btn => {
         btn.addEventListener('click', function() { 
             this.classList.toggle('selected');
         });
     });
-
-    map = L.map('map').setView([39.82, -98.58], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const photoInput = document.getElementById('photoInput');
     
@@ -613,6 +578,11 @@ function checkVin() {
     const towBox = document.getElementById('towStatus');
     const warningBox = document.getElementById('towWarning');
 
+    // Get tab elements
+    const tabHigh = document.getElementById('tab-high');
+    const tabEdv = document.getElementById('tab-edv');
+    const tabLow = document.getElementById('tab-low');
+
     typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
     towBox.classList.remove('tow-yes', 'tow-no');
     warningBox.style.display = 'none'; 
@@ -622,20 +592,60 @@ function checkVin() {
         if (vin.startsWith("W")) { 
             typeBox.value = "Mercedes (Diesel)"; typeBox.classList.add('diesel-mode');
             towBox.value = "Tow Assistance Active"; towBox.classList.add('tow-yes');
-            setTab('high'); return; 
+            // Show only High/Low for non-EDV
+            tabHigh.style.display = 'block';
+            tabLow.style.display = 'block';
+            tabEdv.style.display = 'none';
+            setTab('high');
+            return; 
         }
         if (found) {
             typeBox.value = found.type; 
-            if (found.fuel === 'diesel') { typeBox.classList.add('diesel-mode'); setTab('high'); } 
-            else if (found.fuel === 'electric') { typeBox.classList.add('electric-mode'); setTab('edv'); } 
-            else { typeBox.classList.add('gas-mode'); setTab('high'); }
+            
+            if (found.fuel === 'electric') {
+                // EDV vehicle - show ONLY EDV tab
+                typeBox.classList.add('electric-mode');
+                tabEdv.style.display = 'block';
+                tabHigh.style.display = 'none';
+                tabLow.style.display = 'none';
+                setTab('edv');
+            } else {
+                // Non-EDV (gas/diesel) - show ONLY High/Low tabs
+                if (found.fuel === 'diesel') { 
+                    typeBox.classList.add('diesel-mode'); 
+                } else { 
+                    typeBox.classList.add('gas-mode'); 
+                }
+                tabHigh.style.display = 'block';
+                tabLow.style.display = 'block';
+                tabEdv.style.display = 'none';
+                setTab('high');
+            }
 
-            if (found.hasTow) { towBox.value = "Tow Assistance Active"; towBox.classList.add('tow-yes'); } 
-            else { towBox.value = "NO TOW ASSISTANCE"; towBox.classList.add('tow-no'); warningBox.style.display = 'block'; }
+            if (found.hasTow) { 
+                towBox.value = "Tow Assistance Active"; 
+                towBox.classList.add('tow-yes'); 
+            } else { 
+                towBox.value = "NO TOW ASSISTANCE"; 
+                towBox.classList.add('tow-no'); 
+                warningBox.style.display = 'block'; 
+            }
         } else {
-            typeBox.value = "Unknown Vehicle"; towBox.value = "Unknown Status";
+            typeBox.value = "Unknown Vehicle"; 
+            towBox.value = "Unknown Status";
+            // Show all tabs for unknown VIN
+            tabHigh.style.display = 'block';
+            tabLow.style.display = 'block';
+            tabEdv.style.display = 'block';
         }
-    } else { typeBox.value = ""; towBox.value = ""; }
+    } else { 
+        typeBox.value = ""; 
+        towBox.value = "";
+        // Show all tabs when no VIN entered
+        tabHigh.style.display = 'block';
+        tabLow.style.display = 'block';
+        tabEdv.style.display = 'block';
+    }
 }
 
 function setTab(id) {
@@ -645,33 +655,9 @@ function setTab(id) {
     if(id === 'high') document.getElementById('tab-high').classList.add('active');
     if(id === 'edv') document.getElementById('tab-edv').classList.add('active');
     if(id === 'low') document.getElementById('tab-low').classList.add('active');
-    if(id === 'mph') document.getElementById('tab-mph').classList.add('active');
 
     document.getElementById(id).classList.add('active');
     activeTab = id;
-
-    if(id === 'mph') {
-        setTimeout(() => { map.invalidateSize(); }, 100);
-        if (navigator.geolocation) {
-            document.getElementById('street').placeholder = "Locating...";
-            document.getElementById('gpsStatus').style.display = "block";
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const lat = pos.coords.latitude; const lng = pos.coords.longitude;
-                map.setView([lat, lng], 18);
-                L.marker([lat, lng]).addTo(map);
-                try {
-                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-                    const data = await response.json();
-                    if(data.address) {
-                        document.getElementById('street').value = data.address.road || "";
-                        document.getElementById('city').value = data.address.city || data.address.town || "";
-                        document.getElementById('state').value = data.address.state || "";
-                    }
-                    document.getElementById('gpsStatus').innerText = "✓ GPS AUTO-FILLED";
-                } catch (err) {}
-            });
-        }
-    }
 }
 
 async function submitForm() {
@@ -687,18 +673,15 @@ async function submitForm() {
     if (activeTab === 'high') reportType = "High Priority Issue";
     else if (activeTab === 'edv') reportType = "Electric Vehicle Issue";
     else if (activeTab === 'low') reportType = "Low Priority Issue";
-    else if (activeTab === 'mph') reportType = "Road MPH Error";
 
-    if (activeTab !== 'mph') {
-        const activeSection = document.getElementById(activeTab);
-        activeSection.querySelectorAll('.list-btn.selected').forEach(btn => {
-            selectedTags.push(btn.innerText.replace('✓', '').trim());
-        });
-    }
+    const activeSection = document.getElementById(activeTab);
+    activeSection.querySelectorAll('.list-btn.selected').forEach(btn => {
+        selectedTags.push(btn.innerText.replace('✓', '').trim());
+    });
 
     if(!driverName) { alert("Please enter Driver Name"); return; }
     if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
-    if(activeTab !== 'mph' && selectedTags.length === 0) { alert("Please select at least one issue."); return; }
+    if(selectedTags.length === 0) { alert("Please select at least one issue."); return; }
     
     // REQUIRED: Notes must be filled
     if(!notes || notes.trim().length === 0) { alert("Detailed Description is required. Please describe the issue."); return; }
@@ -719,9 +702,6 @@ async function submitForm() {
         vehicleType: vehicleType,
         tags: selectedTags,
         otherDescription: notes,
-        addressStreet: document.getElementById('street').value,
-        addressCity: document.getElementById('city').value,
-        addressState: document.getElementById('state').value,
         date: new Date().toLocaleDateString(),
         time: new Date().toLocaleTimeString(),
         photos: photos
