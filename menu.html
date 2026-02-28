@@ -10,12 +10,16 @@
     <link rel="icon" type="image/jpeg" href="icon.jpg">
     <style>
         :root {
-            /* MODERN DARK THEME COLORS */
+            /* MODERN DARK THEME */
             --bg-main: #0B0F19;
             --bg-card: #1A1F2E;
             --bg-card-hover: #242938;
             --accent-blue: #3B82F6;
             --accent-glow: rgba(59, 130, 246, 0.15);
+            --accent-orange: #FF9900;
+            --accent-red: #EF4444;
+            --accent-green: #10B981;
+            --accent-purple: #A855F7;
             --text-primary: #FFFFFF;
             --text-secondary: #94A3B8;
             --border-subtle: rgba(255, 255, 255, 0.06);
@@ -66,6 +70,210 @@
             overflow-x: hidden;
         }
 
+        /* ========================================== */
+        /* SECURITY GATES STYLING */
+        /* ========================================== */
+        .gate-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-main);
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: var(--space-md);
+            overflow-y: auto;
+        }
+
+        .gate-content {
+            width: 100%;
+            max-width: 440px;
+            padding: var(--space-xl);
+            border: 2px solid var(--accent-orange);
+            border-radius: var(--radius-xl);
+            background: var(--bg-card);
+            box-shadow: 0 0 60px rgba(255, 153, 0, 0.3);
+        }
+
+        #security-gate-arrival .gate-content {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 60px rgba(59, 130, 246, 0.3);
+        }
+
+        .disclaimer-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-bottom: var(--space-lg);
+            color: var(--accent-orange);
+        }
+
+        #security-gate-arrival .disclaimer-header {
+            color: var(--accent-blue);
+        }
+
+        .exclamation-symbol {
+            font-size: clamp(40px, 12vw, 50px);
+            font-weight: 900;
+            margin-bottom: var(--space-sm);
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .disclaimer-header h2 {
+            margin: 0;
+            font-size: var(--font-lg);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .main-disclaimer {
+            font-size: var(--font-sm);
+            color: var(--text-primary);
+            font-weight: 700;
+            margin-bottom: var(--space-lg);
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .checklist-container {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+        }
+
+        .check-item {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-sm);
+            font-size: var(--font-sm);
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: var(--space-xs);
+            border-radius: var(--radius-sm);
+            transition: background 0.2s ease;
+        }
+
+        .check-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .check-item input[type="checkbox"] {
+            width: clamp(18px, 4.5vw, 20px);
+            height: clamp(18px, 4.5vw, 20px);
+            accent-color: var(--accent-orange);
+            flex-shrink: 0;
+            margin-top: 2px;
+            cursor: pointer;
+        }
+
+        #security-gate-arrival .check-item input[type="checkbox"] {
+            accent-color: var(--accent-blue);
+        }
+
+        .policy-warning {
+            font-size: var(--font-xs);
+            color: var(--text-secondary);
+            line-height: 1.6;
+            padding: var(--space-md);
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--accent-orange);
+            margin-bottom: var(--space-lg);
+        }
+
+        #security-gate-arrival .policy-warning {
+            border-left-color: var(--accent-blue);
+        }
+
+        .ack-container {
+            margin-top: var(--space-md);
+        }
+
+        .ack-label {
+            font-size: var(--font-sm);
+            color: var(--accent-orange);
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: var(--space-xs);
+            display: block;
+        }
+
+        #security-gate-arrival .ack-label {
+            color: var(--accent-blue);
+        }
+
+        .ack-input {
+            width: 100%;
+            padding: var(--space-md);
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            color: white;
+            font-size: 16px;
+            min-height: var(--min-touch);
+            transition: all 0.3s ease;
+        }
+
+        .ack-input:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+            box-shadow: 0 0 20px rgba(255, 153, 0, 0.2);
+        }
+
+        #security-gate-arrival .ack-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+        }
+
+        .gate-btn {
+            width: 100%;
+            margin-top: var(--space-lg);
+            padding: var(--space-lg);
+            background: var(--accent-orange);
+            color: var(--bg-main);
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 900;
+            font-size: var(--font-md);
+            text-transform: uppercase;
+            cursor: not-allowed;
+            opacity: 0.3;
+            transition: all 0.3s ease;
+            min-height: var(--min-touch);
+            letter-spacing: 0.5px;
+        }
+
+        #security-gate-arrival .gate-btn {
+            background: var(--accent-blue);
+        }
+
+        .gate-btn.active {
+            cursor: pointer;
+            opacity: 1;
+            box-shadow: 0 8px 24px rgba(255, 153, 0, 0.4);
+        }
+
+        #security-gate-arrival .gate-btn.active {
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+        }
+
+        .gate-btn.active:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(255, 153, 0, 0.5);
+        }
+
+        #security-gate-arrival .gate-btn.active:hover {
+            box-shadow: 0 12px 32px rgba(59, 130, 246, 0.5);
+        }
+
+        /* ========================================== */
+        /* MAIN UI STYLING */
+        /* ========================================== */
         .container {
             width: 100%;
             max-width: 420px;
@@ -77,10 +285,9 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* HEADER */
-        .header {
-            margin-bottom: var(--space-xl);
-            text-align: center;
+        #main-ui {
+            display: block;
+            width: 100%;
         }
 
         .status-bar {
@@ -103,6 +310,7 @@
             box-shadow: var(--shadow-card);
             overflow: hidden;
             position: relative;
+            margin-bottom: var(--space-xl);
         }
 
         .logo-card::before {
@@ -126,7 +334,7 @@
         .notify-btn {
             width: 100%;
             padding: var(--space-md);
-            margin: var(--space-lg) 0;
+            margin-bottom: var(--space-lg);
             background: rgba(59, 130, 246, 0.1);
             border: 2px solid var(--accent-blue);
             border-radius: var(--radius-lg);
@@ -147,18 +355,18 @@
         }
 
         .notify-active {
-            border-color: #EF4444 !important;
-            color: #EF4444 !important;
+            border-color: var(--accent-red) !important;
+            color: var(--accent-red) !important;
             background: rgba(239, 68, 68, 0.1) !important;
         }
 
         .notify-inactive {
-            border-color: #10B981 !important;
-            color: #10B981 !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
             background: rgba(16, 185, 129, 0.1) !important;
         }
 
-        /* MENU CARDS - MODERN STYLE */
+        /* MENU CARDS */
         .menu-grid {
             display: flex;
             flex-direction: column;
@@ -175,6 +383,7 @@
             box-shadow: var(--shadow-card);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
+            cursor: pointer;
         }
 
         .menu-card::before {
@@ -183,7 +392,7 @@
             inset: 0;
             border-radius: var(--radius-lg);
             padding: 1px;
-            background: linear-gradient(135deg, transparent, var(--accent-blue), transparent);
+            background: linear-gradient(135deg, transparent, currentColor, transparent);
             -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor;
             mask-composite: exclude;
@@ -195,7 +404,6 @@
             transform: translateY(-4px) scale(1.01);
             box-shadow: var(--shadow-card-hover);
             background: var(--bg-card-hover);
-            border-color: rgba(59, 130, 246, 0.3);
         }
 
         .menu-card:hover::before {
@@ -206,7 +414,22 @@
             transform: translateY(-2px) scale(0.99);
         }
 
-        /* Image container */
+        /* Accent colors for different cards */
+        .card-blue { color: var(--accent-blue); }
+        .card-blue:hover { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 12px 48px rgba(59, 130, 246, 0.2); }
+        
+        .card-orange { color: var(--accent-orange); }
+        .card-orange:hover { border-color: rgba(255, 153, 0, 0.3); box-shadow: 0 12px 48px rgba(255, 153, 0, 0.2); }
+        
+        .card-red { color: var(--accent-red); }
+        .card-red:hover { border-color: rgba(239, 68, 68, 0.3); box-shadow: 0 12px 48px rgba(239, 68, 68, 0.2); }
+        
+        .card-green { color: var(--accent-green); }
+        .card-green:hover { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 12px 48px rgba(16, 185, 129, 0.2); }
+        
+        .card-purple { color: var(--accent-purple); }
+        .card-purple:hover { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 12px 48px rgba(168, 85, 247, 0.2); }
+
         .card-image {
             width: 100%;
             height: clamp(120px, 32vw, 140px);
@@ -236,7 +459,22 @@
             transform: scale(1.05);
         }
 
-        /* Card content */
+        /* Build Notes card special image */
+        .build-notes-image {
+            background: linear-gradient(135deg, #5B21B6 0%, #6D28D9 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-icon {
+            width: clamp(48px, 12vw, 64px);
+            height: clamp(48px, 12vw, 64px);
+            fill: var(--accent-purple);
+            opacity: 0.9;
+            z-index: 1;
+        }
+
         .card-content {
             padding: var(--space-md) var(--space-lg);
             display: flex;
@@ -256,7 +494,7 @@
         }
 
         .menu-card:hover .card-label {
-            color: var(--accent-blue);
+            color: currentColor;
         }
 
         .card-arrow {
@@ -272,35 +510,7 @@
         .card-arrow svg {
             width: 100%;
             height: 100%;
-            fill: var(--accent-blue);
-        }
-
-        /* BUILD NOTES CARD - SPECIAL STYLING */
-        .build-notes-card {
-            background: linear-gradient(135deg, #4C1D95 0%, #5B21B6 100%);
-            border-color: rgba(139, 92, 246, 0.3);
-        }
-
-        .build-notes-card .card-image {
-            background: linear-gradient(135deg, #5B21B6 0%, #6D28D9 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .build-notes-card .card-icon {
-            width: clamp(48px, 12vw, 64px);
-            height: clamp(48px, 12vw, 64px);
-            fill: #A78BFA;
-            opacity: 0.9;
-        }
-
-        .build-notes-card::before {
-            background: linear-gradient(135deg, transparent, #A78BFA, transparent);
-        }
-
-        .build-notes-card:hover {
-            box-shadow: 0 12px 48px rgba(139, 92, 246, 0.3);
+            fill: currentColor;
         }
 
         /* FOOTER */
@@ -316,6 +526,7 @@
         /* RESPONSIVE */
         @media (max-width: 340px) {
             body { padding: var(--space-sm); }
+            .gate-content { padding: var(--space-md); }
         }
 
         @media (min-width: 768px) {
@@ -328,137 +539,423 @@
                 --font-xl: 24px;
             }
         }
+
+        @media (max-height: 600px) and (orientation: landscape) {
+            .gate-overlay { align-items: flex-start; padding-top: 10px; }
+            .gate-content { margin: 10px auto; }
+        }
+
+        /* iOS-specific fix */
+        @supports (-webkit-touch-callout: none) {
+            input, textarea, select {
+                font-size: 16px !important;
+            }
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <!-- HEADER -->
-    <div class="header">
+    <!-- DEPARTURE GATE -->
+    <div id="security-gate" class="gate-overlay">
+        <div class="gate-content">
+            <div class="disclaimer-header">
+                <span class="exclamation-symbol">!</span>
+                <h2>Departure Requirements</h2>
+            </div>
+            <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all operational tools.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount (unless EDV).</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit health pre-check video.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
+            </div>
+            <div class="policy-warning">
+                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible.<br><br>
+                By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
+            </div>
+            <div class="ack-container">
+                <label class="ack-label">DA Acknowledgment</label>
+                <input 
+                    type="text" 
+                    id="da-name" 
+                    class="ack-input" 
+                    placeholder="Enter Full Name" 
+                    oninput="validateGate('gate')"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    data-form-type="other">
+            </div>
+            <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
+        </div>
+    </div>
+
+    <!-- ARRIVAL GATE -->
+    <div id="security-gate-arrival" class="gate-overlay">
+        <div class="gate-content">
+            <div class="disclaimer-header">
+                <span class="exclamation-symbol">!</span>
+                <h2>Arrival Requirements</h2>
+            </div>
+            <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Remove all trash and belongings from work van, slgp is not responsible for any lost personal items.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Make sure Van keys, Power Bank, Cable, Phone, and any other accessories are inside your van bag and given to night closer</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete your post trip DVIC in flex</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Record and upload your post trip fleet check video.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Turn off all headlights and hazard lights on your work vehicle.</span></label>
+                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Do not leave any totes or unreturned packages inside the van.</span></label>
+            </div>
+            <div class="policy-warning">
+                All SLGP vehicles must be returned fully fueled and free of any unsanitary or foreign materials. Drivers are required to remove and properly dispose of all trash, biohazardous waste, unreturned packages, and personal belongings prior to returning the vehicle.<br><br>
+                SLGP is not responsible for any personal items left behind.<br><br>
+                Drivers must also ensure the following before leaving the lot:<br>
+                Do not leave headlights or hazard lights on. Confirm all exterior and interior lights are turned off before parking your vehicle.<br>
+                Any and all vehicle issues must be reported using the "Report Issue" feature on the Fleet Check app.<br><br>
+                For operators of EDVs, you are required to:<br>
+                Plug in the vehicle upon return<br>
+                Ensure all doors are fully closed<br>
+                Turn off all dashboard lighting and accessories<br><br>
+                Failure to follow these requirements may result in corrective action.
+            </div>
+            <div class="ack-container">
+                <label class="ack-label">DA Acknowledgment</label>
+                <input 
+                    type="text" 
+                    id="arr-name" 
+                    class="ack-input" 
+                    placeholder="Enter Full Name" 
+                    oninput="validateGate('arrival')"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="words"
+                    spellcheck="false"
+                    data-form-type="other">
+            </div>
+            <button id="arrival-submit" class="gate-btn" onclick="unlockArrival()">Confirm Arrival</button>
+        </div>
+    </div>
+
+    <!-- MAIN UI -->
+    <div id="main-ui" class="container">
         <div class="status-bar">
             <span>SYSTEM ONLINE</span>
-            <span>v4.5.0</span>
+            <span id="header-version">v4.5.0</span>
         </div>
         
         <div class="logo-card">
-            <img src="./Final-01.jpg" alt="Strategic Logistics">
+            <img src="Final-01.jpg" alt="Strategic Logistics">
+        </div>
+
+        <button id="notifyBtn" class="notify-btn">Checking Connection...</button>
+
+        <div class="menu-grid">
+            <!-- Fleet Inspection -->
+            <div class="menu-card card-blue" onclick="openSecurityGate()">
+                <div class="card-image">
+                    <img src="fleet.jpg" alt="Fleet Inspection">
+                </div>
+                <div class="card-content">
+                    <span class="card-label">Fleet Inspection Vids</span>
+                    <div class="card-arrow">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Report Issue -->
+            <a href="/report?mode=issue" class="menu-card card-orange">
+                <div class="card-image">
+                    <img src="issue.jpg" alt="Report Issue">
+                </div>
+                <div class="card-content">
+                    <span class="card-label">Report Issue</span>
+                    <div class="card-arrow">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+
+            <!-- Accident Report -->
+            <a href="/report?mode=accident" class="menu-card card-red">
+                <div class="card-image">
+                    <img src="accident.jpg" alt="Accident Report">
+                </div>
+                <div class="card-content">
+                    <span class="card-label">Accident Report</span>
+                    <div class="card-arrow">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+
+            <!-- Insurance Cards -->
+            <a href="/report?mode=insurance" class="menu-card card-green">
+                <div class="card-image">
+                    <img src="insurance.jpg" alt="Insurance Cards">
+                </div>
+                <div class="card-content">
+                    <span class="card-label">Insurance Cards</span>
+                    <div class="card-arrow">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+
+            <!-- Build Notes -->
+            <a href="/build-notes" class="menu-card card-purple">
+                <div class="card-image build-notes-image">
+                    <svg class="card-icon" viewBox="0 0 24 24">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                </div>
+                <div class="card-content">
+                    <span class="card-label">Build Notes</span>
+                    <div class="card-arrow">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="footer">
+            Strategic Logistics Group • Fleet Management System • <span id="app-version">v4.5.0</span>
         </div>
     </div>
 
-    <!-- NOTIFICATION TOGGLE -->
-    <button id="notifyBtn" class="notify-btn">
-        ⚠️ RESET NOTIFICATIONS
-    </button>
+    <script>
+        const GATE_COOLDOWN_MS = 5 * 60 * 1000; // 5 Minutes
 
-    <!-- MENU CARDS -->
-    <div class="menu-grid">
-        <!-- Fleet Inspection -->
-        <a href="/video" class="menu-card">
-            <div class="card-image">
-                <img src="https://i.postimg.cc/mkh8L6K2/fdc00fc8-3ec1-4da0-968a-0caeacf6e621.webp" alt="Fleet Inspection">
-            </div>
-            <div class="card-content">
-                <span class="card-label">Fleet Inspection Vids</span>
-                <div class="card-arrow">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </div>
-        </a>
+        function openSecurityGate() {
+            const now = new Date();
+            const mins = (now.getHours() * 60) + now.getMinutes();
+            const currentTime = Date.now();
+            
+            const lastDep = localStorage.getItem('lastDepartureGate');
+            const lastArr = localStorage.getItem('lastArrivalGate');
 
-        <!-- Report Issue -->
-        <a href="/report?mode=issue" class="menu-card">
-            <div class="card-image">
-                <img src="https://i.postimg.cc/28Dj4GKF/12e4e15a-2c05-46d8-a6d7-46fe69c9bb2e.webp" alt="Report Issue">
-            </div>
-            <div class="card-content">
-                <span class="card-label">Report Issue</span>
-                <div class="card-arrow">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </div>
-        </a>
+            // Departure: 10:00 AM (600) to 6:00 PM (1080)
+            if (mins >= 600 && mins < 1080) {
+                if (lastDep && (currentTime - lastDep < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
+                
+                document.getElementById('da-name').value = '';
+                document.querySelectorAll('.gate-check').forEach(cb => cb.checked = false);
+                validateGate('gate');
+                
+                document.getElementById('security-gate').style.display = 'flex';
+                document.getElementById('main-ui').style.display = 'none';
+            } 
+            // Arrival: 6:15 PM (1095) to 9:00 AM (540)
+            else if (mins >= 1095 || mins < 540) {
+                if (lastArr && (currentTime - lastArr < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
+                
+                document.getElementById('arr-name').value = '';
+                document.querySelectorAll('.arrival-check').forEach(cb => cb.checked = false);
+                validateGate('arrival');
+                
+                document.getElementById('security-gate-arrival').style.display = 'flex';
+                document.getElementById('main-ui').style.display = 'none';
+            } 
+            else { window.location.href = "/video"; }
+        }
 
-        <!-- Accident Report -->
-        <a href="/report?mode=accident" class="menu-card">
-            <div class="card-image">
-                <img src="https://i.postimg.cc/XqKKS7vz/9f6f50f7-3d46-48dd-9bf7-6d91c40f3c83.webp" alt="Accident Report">
-            </div>
-            <div class="card-content">
-                <span class="card-label">Accident Report</span>
-                <div class="card-arrow">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </div>
-        </a>
+        document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
+        document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const daName = document.getElementById('da-name');
+            const arrName = document.getElementById('arr-name');
+            
+            daName.addEventListener('focus', function() {
+                this.setAttribute('autocomplete', 'new-password');
+            });
+            
+            arrName.addEventListener('focus', function() {
+                this.setAttribute('autocomplete', 'new-password');
+            });
+        });
+        
+        function validateGate(type) {
+            const checks = document.querySelectorAll(type === 'gate' ? '.gate-check' : '.arrival-check');
+            const input = document.getElementById(type === 'gate' ? 'da-name' : 'arr-name');
+            const btn = document.getElementById(type === 'gate' ? 'gate-submit' : 'arrival-submit');
+            
+            const allChecked = Array.from(checks).every(cb => cb.checked);
+            
+            if (allChecked && input.value.trim().length >= 2) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
 
-        <!-- Insurance Cards -->
-        <a href="/report?mode=insurance" class="menu-card">
-            <div class="card-image">
-                <img src="https://i.postimg.cc/sXb6jvP5/0871cf75-a4be-424b-ba92-e93327e9dd04.webp" alt="Insurance Cards">
-            </div>
-            <div class="card-content">
-                <span class="card-label">Insurance Cards</span>
-                <div class="card-arrow">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </div>
-        </a>
+        let isSubmitting = false;
 
-        <!-- Build Notes -->
-        <a href="/build-notes" class="menu-card build-notes-card">
-            <div class="card-image">
-                <svg class="card-icon" viewBox="0 0 24 24">
-                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
-                </svg>
-            </div>
-            <div class="card-content">
-                <span class="card-label">Build Notes</span>
-                <div class="card-arrow">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </div>
-        </a>
-    </div>
+        async function unlockPortal() { handleSubmission('gate-submit', 'da-name', '/log-gate-check', 'lastDepartureGate'); }
+        async function unlockArrival() { handleSubmission('arrival-submit', 'arr-name', '/log-arrival-check', 'lastArrivalGate'); }
 
-    <!-- FOOTER -->
-    <div class="footer">
-        Strategic Logistics Group • Fleet Management System
-    </div>
-</div>
+        async function handleSubmission(btnId, inputId, endpoint, storageKey) {
+            const btn = document.getElementById(btnId);
+            if (!btn.classList.contains('active') || isSubmitting) return;
+            
+            isSubmitting = true;
+            btn.innerText = "PROCESSING...";
+            btn.style.opacity = "0.5";
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch(endpoint, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ name: document.getElementById(inputId).value.trim() }) 
+                });
+                
+                if (response.ok) {
+                    localStorage.setItem(storageKey, Date.now());
+                    window.location.href = "/video";
+                } else {
+                    throw new Error("Server Error");
+                }
+            } catch (e) {
+                console.error("Submission failed", e);
+                isSubmitting = false;
+                btn.innerText = "CONFIRM";
+                btn.style.opacity = "1";
+                btn.disabled = false;
+            }
+        }
 
-<script>
-// Notification toggle
-const notifyBtn = document.getElementById('notifyBtn');
-notifyBtn.addEventListener('click', function() {
-    if (Notification.permission === "granted") {
-        notifyBtn.classList.add('notify-active');
-        notifyBtn.classList.remove('notify-inactive');
-        notifyBtn.textContent = '⚠️ RESET NOTIFICATIONS';
-    } else if (Notification.permission === "denied") {
-        notifyBtn.classList.add('notify-inactive');
-        notifyBtn.classList.remove('notify-active');
-        notifyBtn.textContent = '🔕 NOTIFICATIONS BLOCKED';
-    } else {
-        Notification.requestPermission().then(permission => {
-            if (permission === "granted") {
-                notifyBtn.classList.add('notify-inactive');
-                notifyBtn.classList.remove('notify-active');
-                notifyBtn.textContent = '✅ NOTIFICATIONS ENABLED';
+        const notifyBtn = document.getElementById('notifyBtn');
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(initPushUI);
+        
+        async function initPushUI() {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            notifyBtn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
+            notifyBtn.className = sub ? "notify-btn notify-active" : "notify-btn notify-inactive";
+        }
+
+        notifyBtn.addEventListener('click', async () => {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) { await sub.unsubscribe(); initPushUI(); } 
+            else {
+                const res = await fetch('/vapid-key');
+                const data = await res.json();
+                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(data.publicKey) });
+                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(await reg.pushManager.getSubscription()), headers: { 'content-type': 'application/json' } });
+                initPushUI();
             }
         });
-    }
-});
-</script>
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+            return outputArray;
+        }
+    </script>
+
+    <!-- SERVICE WORKER & AUTO-UPDATE -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/sw.js');
+                    console.log('✅ Service Worker registered:', registration.scope);
+                    
+                    let localVersion = null;
+                    
+                    async function checkForUpdates() {
+                        try {
+                            const res = await fetch('/version');
+                            if (res.ok) {
+                                const data = await res.json();
+                                
+                                if (!localVersion) {
+                                    localVersion = data.version;
+                                    console.log('📱 Current version:', localVersion);
+                                } else if (localVersion !== data.version) {
+                                    console.log('🔄 New version detected!', data.version);
+                                    showUpdateNotification();
+                                    setTimeout(() => {
+                                        console.log('🔄 Reloading to apply update...');
+                                        window.location.reload(true);
+                                    }, 3000);
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Update check failed:', err);
+                        }
+                    }
+                    
+                    function showUpdateNotification() {
+                        const banner = document.createElement('div');
+                        banner.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+                            color: white;
+                            padding: 15px 25px;
+                            border-radius: 12px;
+                            box-shadow: 0 4px 20px rgba(59,130,246,0.4);
+                            z-index: 10000;
+                            font-weight: bold;
+                            text-align: center;
+                            animation: slideDown 0.3s ease;
+                        `;
+                        banner.innerHTML = '🔄 Update available! Reloading in 3 seconds...';
+                        document.body.appendChild(banner);
+                        
+                        const style = document.createElement('style');
+                        style.textContent = `
+                            @keyframes slideDown {
+                                from { transform: translateX(-50%) translateY(-100px); opacity: 0; }
+                                to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+                    
+                    checkForUpdates();
+                    setInterval(checkForUpdates, 30000);
+                    
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        console.log('🔄 Service Worker update found');
+                        
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                console.log('✅ New Service Worker installed');
+                                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                            }
+                        });
+                    });
+                    
+                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                        console.log('🔄 New Service Worker activated - reloading');
+                        window.location.reload();
+                    });
+                    
+                } catch (error) {
+                    console.error('❌ Service Worker registration failed:', error);
+                }
+            });
+        }
+    </script>
 
 </body>
 </html>
