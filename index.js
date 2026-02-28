@@ -1244,7 +1244,7 @@ app.get('/debug-dashboard', async (req, res) => {
 // HTML PAGES
 // ============================================
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video.html'));
+    res.sendFile(path.join(__dirname, 'video-inspection.html'));
 });
 
 app.get('/success', (req, res) => {
@@ -1253,6 +1253,10 @@ app.get('/success', (req, res) => {
 
 app.get('/alerts', (req, res) => {
     res.sendFile(path.join(__dirname, 'alerts.html'));
+});
+
+app.get('/build-notes', (req, res) => {
+    res.sendFile(path.join(__dirname, 'build-notes.html'));
 });
 
 app.get('/report', (req, res) => {
@@ -1364,7 +1368,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v2.2 - EMAIL PHOTO ATTACHMENTS          ║
+║  v4.5.0 - BUILD NOTES ADDED              ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1375,13 +1379,15 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
-📧 ACCIDENT PHOTO FIX APPLIED:
-   ✅ Photos attached to email (not uploaded to Drive)
-   ✅ Works with FREE Gmail
-   ✅ Beautiful HTML email templates
-   ✅ No more storage quota errors
+📝 NEW FEATURES v4.5.0:
+   ✅ Build Notes page at /build-notes
+   ✅ Video requirement for issue reports
+   ✅ Mandatory notes field for all issues
+   ✅ Auto-scaling responsive design
+   ✅ Rivian VIN database corrected
 
 🌐 Ready at: http://localhost:${PORT}
+📋 Build Notes: http://localhost:${PORT}/build-notes
     `);
 });
 
