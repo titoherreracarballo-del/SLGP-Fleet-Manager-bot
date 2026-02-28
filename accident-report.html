@@ -2,23 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.3 FINAL FIX</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Accident Report</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
-            --bg-body: #0A6CF1;        
-            --bg-card: #1C1C1E;        
-            --bg-input: #2C2C2E;       
+            --bg-body: #0A6CF1;
+            --bg-card: #1C1C1E;
+            --bg-input: #2C2C2E;
+            --bg-btn: #2C2C2E;
+            --primary-red: #EF4444; 
             --primary-blue: #1976D2;
             --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
-            --text-label: #1976D2;      
+            --text-label: #1976D2;
             --text-white: #ffffff;
             --text-primary: #FFFFFF;
+            --text-gray: #8E8E93;
+            --text-green: #4CAF50;
             --text-on-blue: #FFFFFF;
+            --radius: clamp(12px, 3vw, 16px);
             --border-color: rgba(255, 255, 255, 0.1);
             
-            /* FLUID SPACING */
+            /* FLUID SPACING - Auto-scales with screen size */
             --space-xs: clamp(4px, 1vw, 6px);
             --space-sm: clamp(6px, 1.5vw, 10px);
             --space-md: clamp(10px, 2.5vw, 15px);
@@ -32,9 +40,6 @@
             --font-md: clamp(16px, 3.6vw, 18px);
             --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
-            
-            /* FLUID RADIUS */
-            --radius: clamp(12px, 3vw, 16px);
             
             /* MIN TOUCH TARGET */
             --min-touch: 44px;
@@ -58,57 +63,80 @@
             -moz-osx-font-smoothing: grayscale;
         }
 
+        /* --- SECURITY GATE OVERLAY --- */
+        #accident-gate {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.98); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+            padding: var(--space-md); box-sizing: border-box; overflow-y: auto;
+        }
+        .gate-content {
+            background: #161B28; border: 2px solid var(--primary-red);
+            padding: var(--space-xl) var(--space-lg);
+            border-radius: clamp(16px, 4vw, 20px); 
+            max-width: 420px; width: 100%;
+            box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
+            display: flex; flex-direction: column; gap: var(--space-md);
+        }
+        .gate-icon { 
+            font-size: clamp(36px, 10vw, 44px); 
+            display: block; text-align: center; margin-bottom: var(--space-xs); 
+        }
+        .gate-title { 
+            color: var(--primary-red); 
+            font-size: var(--font-lg); 
+            font-weight: 900; 
+            text-transform: uppercase; text-align: center; margin-bottom: var(--space-sm); 
+        }
+
+        /* CHECKLIST - AUTO-SCALING */
+        .checklist-container { 
+            display: flex; flex-direction: column; gap: var(--space-sm); margin-bottom: var(--space-xs); 
+        }
+        .check-item { 
+            display: flex; align-items: flex-start; gap: var(--space-sm);
+            font-size: var(--font-sm); color: #cbd5e1; cursor: pointer; line-height: 1.4;
+            background: rgba(255, 255, 255, 0.03); 
+            padding: var(--space-sm); 
+            border-radius: var(--radius);
+            min-height: var(--min-touch);
+        }
+        .gate-check { 
+            width: clamp(20px, 5vw, 24px); 
+            height: clamp(20px, 5vw, 24px);
+            accent-color: var(--primary-red); 
+            flex-shrink: 0; margin-top: 2px; cursor: pointer;
+        }
+
+        .gate-text { 
+            font-size: var(--font-xs); line-height: 1.6; color: #94a3b8;
+            background: rgba(0,0,0,0.3); padding: var(--space-md); 
+            border-radius: var(--radius);
+            border-left: 3px solid var(--primary-red); margin-bottom: var(--space-xs);
+        }
+        
+        .gate-btn {
+            background: var(--primary-red); color: white; border: none;
+            padding: var(--space-md);
+            width: 100%; font-weight: 900; border-radius: var(--radius);
+            font-size: var(--font-base);
+            text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
+            min-height: var(--min-touch);
+        }
+        .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+
+        /* --- MAIN CONTAINER --- */
         .container {
-            width: 100%;
-            max-width: 420px;
-            background-color: var(--bg-card);
-            border-radius: clamp(18px, 5vw, 24px);
-            padding: clamp(18px, 5vw, 24px);
+            width: 100%; max-width: 450px; background-color: var(--bg-card);
+            border-radius: clamp(18px, 5vw, 24px); 
+            padding: clamp(18px, 5vw, 24px); 
             border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3); display: none;
         }
 
-        #progress-container {
-            width: 100% !important;
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%) !important;
-            border-radius: clamp(12px, 3.5vw, 16px) !important;
-            margin: var(--space-xl) 0 !important;
-            height: clamp(60px, 18vw, 80px) !important;
-            display: none;
-            overflow: visible !important;
-            border: clamp(3px, 1vw, 5px) solid #22c55e !important;
-            box-shadow: 0 0 30px rgba(34, 197, 94, 0.6), inset 0 2px 4px rgba(0,0,0,0.3) !important;
-            position: relative !important;
-        }
-
-        #progress-fill {
-            height: 100% !important;
-            width: 0% !important;
-            background: linear-gradient(90deg, #10b981 0%, #22c55e 50%, #4ade80 100%) !important;
-            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            box-shadow: inset 0 4px 8px rgba(255,255,255,0.3) !important;
-            border-radius: clamp(8px, 2vw, 12px) !important;
-        }
-
-        .progress-percentage-overlay {
-            position: absolute !important;
-            top: 50% !important;
-            left: 50% !important;
-            transform: translate(-50%, -50%) !important;
-            color: #ffffff !important;
-            font-size: clamp(24px, 8vw, 36px) !important;
-            font-weight: 900 !important;
-            text-shadow: 0 3px 10px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(34, 197, 94, 0.5) !important;
-            z-index: 1000 !important;
-            letter-spacing: 2px !important;
-            font-family: 'Courier New', monospace !important;
-        }
-
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: var(--space-lg);
+        .logo-header { 
+            display: block; margin: 0 auto var(--space-md) auto; 
+            max-width: 100%; width: clamp(220px, 60vw, 280px); height: auto; border-radius: 4px; 
         }
         .back-link { 
             display: inline-flex;
@@ -135,408 +163,148 @@
             transform: translateY(0);
             box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
         }
-        
-        .reset-btn {
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            color: #ef4444;
-            font-size: var(--font-xs);
-            font-weight: 700;
-            padding: var(--space-xs) var(--space-sm);
-            border-radius: var(--radius);
-            cursor: pointer;
-            text-transform: uppercase;
-            min-height: var(--min-touch);
-        }
-        .reset-btn:active { background-color: #1f2937; }
-
         .timestamp { 
-            color: #4ade80; 
-            text-align: center; 
-            font-size: var(--font-sm); 
-            font-weight: 700; 
-            margin-bottom: var(--space-xs); 
+            color: var(--text-green); text-align: center; 
+            font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); 
         }
         h1 { 
-            color: var(--text-label); 
-            text-align: center; 
-            font-size: var(--font-xl); 
-            font-weight: 900; 
-            text-transform: uppercase; 
-            margin: 0 0 var(--space-xl) 0; 
-            letter-spacing: 1px; 
-            text-shadow: 0 0 15px rgba(59, 130, 246, 0.3); 
+            color: var(--primary-red); text-align: center; 
+            font-size: var(--font-xl); font-weight: 900;
+            text-transform: uppercase; margin: 0 0 var(--space-xl) 0; letter-spacing: 1px; 
+        }
+        h2 { 
+            font-size: var(--font-md); color: var(--text-label);
+            text-transform: uppercase; border-bottom: 2px solid #333;
+            padding-bottom: var(--space-xs); 
+            margin-top: var(--space-xl); 
+            margin-bottom: var(--space-md); 
         }
 
+        /* --- FORMS - FLUID SIZING --- */
         .form-group { margin-bottom: var(--space-lg); }
         .row-split { display: flex; gap: var(--space-sm); }
         .vin-col { flex: 0.3; min-width: 70px; } 
         .type-col { flex: 0.7; }
 
         label { 
-            color: var(--text-label); 
-            display: block; 
-            font-size: var(--font-xs); 
-            font-weight: 800; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
+            color: var(--text-label); display: block; 
+            font-size: var(--font-xs); font-weight: 800;
+            text-transform: uppercase; letter-spacing: 0.5px; 
             margin-bottom: var(--space-xs); 
-            white-space: nowrap; 
         }
-        input { 
-            width: 100%; 
-            background-color: var(--bg-input); 
-            border: 1px solid var(--border-color); 
-            color: white; 
-            padding: var(--space-md); 
-            border-radius: var(--radius); 
-            font-size: 16px; /* Fixed to prevent iOS zoom */
-            box-sizing: border-box; 
-            outline: none; 
-            transition: border-color 0.2s;
-            min-height: var(--min-touch);
-        }
-        #vehicleType { 
-            font-size: var(--font-xs); 
-            white-space: normal; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-        }
-        input:focus { border-color: var(--text-label); }
-        input[readonly] { 
-            background-color: #1a202c; 
-            font-weight: bold; 
-            cursor: not-allowed; 
-            border-color: #2d3748; 
-            color: #6b7280; 
-        }
-        input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
-        input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
-        input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
-
-        .status-box {
-            width: 100%;
-            padding: var(--space-md);
-            border-radius: var(--radius);
-            font-size: var(--font-base);
-            font-weight: 800;
-            text-align: center;
-            text-transform: uppercase;
+        input, textarea {
+            width: 100%; background-color: var(--bg-input); 
             border: 1px solid var(--border-color);
-            background-color: var(--bg-input);
-            color: #6b7280;
-            transition: all 0.3s ease;
-            box-sizing: border-box;
+            color: white;
+            padding: var(--space-md);
+            border-radius: var(--radius); 
+            font-size: 16px; /* Fixed 16px prevents iOS zoom */
+            box-sizing: border-box; outline: none;
             min-height: var(--min-touch);
         }
-
-        .status-msg {
-            font-size: var(--font-lg) !important;
-            font-weight: 800 !important;
-            color: #22c55e !important;
-            text-align: center !important;
-            padding: var(--space-md) !important;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5) !important;
-        }
-        .status-box.active { 
-            background-color: rgba(74, 222, 128, 0.1); 
-            border-color: #4ade80; 
-            color: #4ade80; 
-            box-shadow: 0 0 10px rgba(74, 222, 128, 0.2); 
-        }
-        .status-box.inactive { 
-            background-color: rgba(239, 68, 68, 0.1); 
-            border-color: #ef4444; 
-            color: #ef4444; 
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
+        input:focus, textarea:focus { border-color: var(--primary-red); }
+        input[readonly] { 
+            background-color: #1a202c; color: #6b7280; 
+            font-weight: bold; cursor: not-allowed; 
         }
 
-        .type-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: var(--space-sm); 
-            margin-bottom: var(--space-lg); 
+        .char-count { 
+            font-size: var(--font-xs); color: #6b7280;
+            text-align: right; margin-top: var(--space-xs); 
         }
-        .type-btn { 
-            background-color: transparent; 
-            border: 1px solid #374151; 
-            color: #64748b; 
-            padding: var(--space-sm); 
-            border-radius: var(--radius); 
-            font-size: var(--font-sm); 
-            font-weight: 800; 
-            text-transform: uppercase; 
-            cursor: pointer; 
+
+        /* --- INCIDENT BUTTONS --- */
+        .btn-option {
+            width: 100%; background-color: var(--bg-btn); 
+            border: 1px solid #2d3748; color: #cbd5e1;
+            padding: var(--space-md);
+            border-radius: var(--radius); font-weight: 700; 
+            font-size: var(--font-sm);
+            text-transform: uppercase; cursor: pointer; 
+            margin-bottom: var(--space-sm);
             transition: all 0.2s;
             min-height: var(--min-touch);
         }
-        .type-btn.selected { 
-            background-color: var(--primary-blue); 
-            border-color: var(--primary-blue); 
-            color: white; 
-            box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); 
+        .btn-option.selected { 
+            background-color: #1e293b; border-color: var(--primary-red); 
+            color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
         }
 
-        .video-box { 
-            position: relative; 
-            width: 100%; 
-            height: clamp(300px, 80vw, 400px); 
-            background: black; 
-            border-radius: var(--radius); 
-            overflow: hidden; 
-            border: 1px solid #374151; 
-            margin-bottom: var(--space-lg); 
+        /* --- MAP & ADDRESS --- */
+        #map { 
+            height: clamp(160px, 40vw, 200px);
+            width: 100%; border-radius: var(--radius); 
+            border: 1px solid #333; margin-top: var(--space-xs); 
         }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        
-        #loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: black;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 15;
+        .gps-info { 
+            font-size: var(--font-xs); color: var(--text-gray);
+            margin-top: var(--space-xs); 
+            display: flex; justify-content: space-between; 
         }
-        .spinner {
-            width: clamp(40px, 12vw, 50px);
-            height: clamp(40px, 12vw, 50px);
-            border: 4px solid #374151;
-            border-top: 4px solid #3B82F6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        #timer-display { 
-            position: absolute; 
-            top: var(--space-lg); 
-            right: var(--space-lg); 
-            background-color: rgba(0,0,0,0.6); 
-            padding: var(--space-xs) var(--space-sm); 
-            border-radius: var(--radius); 
-            color: #ef4444; 
-            font-weight: 900; 
-            font-size: var(--font-lg); 
-            border: 1px solid rgba(239, 68, 68, 0.5); 
-            display: none; 
-            z-index: 20; 
-        }
-        
-        #camera-status {
-            position: absolute;
-            top: var(--space-lg);
-            left: var(--space-lg);
-            background-color: rgba(0,0,0,0.7);
-            padding: var(--space-xs) var(--space-sm);
+        .weather-box { 
+            background: rgba(255,255,255,0.05); 
+            padding: var(--space-sm);
             border-radius: var(--radius);
             font-size: var(--font-xs);
-            font-weight: 700;
-            z-index: 20;
-            display: none;
-        }
-        #camera-status.ready { color: #4ade80; border: 1px solid #4ade80; }
-        #camera-status.error { color: #ef4444; border: 1px solid #ef4444; }
-        #camera-status.flash-on { color: #FCD34D; border: 1px solid #FCD34D; }
-        
-        #flip-camera-btn {
-            position: absolute;
-            bottom: clamp(70px, 20vw, 80px);
-            left: var(--space-sm);
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            color: #3B82F6;
-            padding: var(--space-sm);
-            border-radius: 50%;
-            font-size: var(--font-lg);
-            cursor: pointer;
-            z-index: 5;
-            width: clamp(45px, 12vw, 50px);
-            height: clamp(45px, 12vw, 50px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        #flip-camera-btn:active {
-            background-color: #1f2937;
-        }
-        
-        #current-camera-label {
-            position: absolute;
-            bottom: clamp(130px, 35vw, 150px);
-            left: var(--space-sm);
-            background: rgba(0,0,0,0.8);
-            padding: var(--space-xs) var(--space-sm);
-            border-radius: clamp(16px, 4vw, 20px);
-            font-size: var(--font-xs);
-            font-weight: 700;
-            color: #3B82F6;
-            z-index: 5;
-            border: 1px solid #3B82F6;
-        }
-        #flash-toggle {
-            position: absolute;
-            bottom: clamp(90px, 24vw, 100px);
-            right: var(--space-lg);
-            width: clamp(40px, 11vw, 45px);
-            height: clamp(40px, 11vw, 45px);
-            border-radius: 50%;
-            background-color: rgba(0,0,0,0.6);
-            border: 2px solid #6b7280;
-            color: #6b7280;
-            font-size: var(--font-lg);
-            cursor: pointer;
-            z-index: 20;
-            display: none;
-        }
-        #flash-toggle.active {
-            background-color: rgba(252, 211, 77, 0.2);
-            border-color: #FCD34D;
-            color: #FCD34D;
-        }
-        
-        .controls { 
-            position: absolute; 
-            bottom: var(--space-lg); 
-            left: 0; 
-            right: 0; 
-            display: flex; 
-            justify-content: center; 
-            gap: var(--space-lg); 
-            z-index: 10; 
-        }
-        .btn-circle { 
-            width: clamp(55px, 15vw, 60px); 
-            height: clamp(55px, 15vw, 60px); 
-            border-radius: 50%; 
-            border: none; 
-            cursor: pointer; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); 
-            font-weight: bold; 
-            font-size: var(--font-xs); 
-            text-transform: uppercase; 
-        }
-        #btn-record { 
-            background-color: #ef4444; 
-            color: white; 
-            border: 3px solid rgba(255,255,255,0.3); 
-        }
-        #btn-record.recording { 
-            animation: pulse 1s infinite; 
-            background-color: darkred; 
-        }
-        #btn-stop { 
-            background-color: #374151; 
-            color: white; 
-            display: none; 
-        }
-        #btn-upload { 
-            background-color: #4ade80; 
-            color: #064e3b; 
-            display: none; 
-            width: 100%; 
-            border-radius: var(--radius); 
-            padding: var(--space-lg); 
-            font-size: var(--font-md); 
-            font-weight: 900;
-            min-height: clamp(50px, 12vw, 56px);
-            cursor: pointer;
-            border: none;
-        }
-        @keyframes pulse { 
-            0% { transform: scale(1); } 
-            50% { transform: scale(1.1); } 
-            100% { transform: scale(1); } 
-        }
-        .status-msg { 
-            text-align: center; 
-            color: #94a3b8; 
-            margin-top: var(--space-sm); 
-            font-size: var(--font-sm); 
-            height: clamp(16px, 5vw, 20px); 
+            color: #fff; margin-top: var(--space-sm); 
+            border: 1px solid #333;
         }
 
-        .modal {
-            display: none; 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.95); 
-            z-index: 9999;
-            align-items: center; 
-            justify-content: center; 
-            padding: var(--space-lg); 
-            box-sizing: border-box;
+        /* --- SIGNATURE PAD --- */
+        canvas { 
+            background: #1a1a1a; border: 1px solid var(--text-label);
+            border-radius: var(--radius); cursor: crosshair; 
+            touch-action: none; width: 100%; 
+            height: clamp(140px, 35vw, 160px);
         }
-        .modal-content {
-            background-color: #1f2937; 
-            border: 2px solid;
-            padding: var(--space-xl) var(--space-lg); 
-            border-radius: clamp(12px, 3.5vw, 16px); 
-            width: 90%; 
-            max-width: 400px;
-            text-align: center;
-            box-shadow: 0 0 50px rgba(0,0,0,0.6);
-            box-sizing: border-box;
-        }
-        .warning-icon { 
-            font-size: clamp(32px, 10vw, 40px); 
-            margin-bottom: var(--space-sm); 
-            display: block; 
-        }
-        .modal-title { 
-            font-size: var(--font-lg); 
-            font-weight: 900; 
-            text-transform: uppercase; 
-            margin-bottom: var(--space-md); 
-        }
-        .modal-text { 
-            color: #e5e7eb; 
-            font-size: var(--font-sm); 
-            font-weight: 700; 
-            line-height: 1.6; 
-            margin-bottom: var(--space-lg); 
-            text-align: left; 
-        }
-        .modal-btn { 
-            color: white; 
-            padding: var(--space-md); 
-            width: 100%; 
-            border: none; 
-            border-radius: var(--radius); 
-            font-weight: 800; 
-            font-size: var(--font-base); 
-            text-transform: uppercase; 
-            cursor: pointer;
+        .clear-sig { 
+            background: transparent; color: var(--primary-red); 
+            border: 1px solid var(--primary-red);
+            font-size: var(--font-xs);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius); float: right; 
+            margin-top: var(--space-xs); cursor: pointer; 
             min-height: var(--min-touch);
         }
 
-        .modal-red { 
-            border-color: #ef4444; 
-            box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); 
+        /* --- CAMERA --- */
+        .camera-box {
+            border: 2px dashed #4b5563;
+            border-radius: var(--radius); 
+            height: clamp(120px, 30vw, 140px);
+            display: flex; flex-direction: column; 
+            align-items: center; justify-content: center;
+            cursor: pointer; background-color: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden; margin-bottom: var(--space-lg);
         }
-        .modal-red .modal-title { color: #ef4444; }
-        .modal-red .modal-btn { background-color: #ef4444; }
+        #photoInput { 
+            position: absolute; width: 100%; height: 100%; 
+            opacity: 0; z-index: 10; cursor: pointer;
+        }
+        .camera-icon { 
+            width: clamp(28px, 8vw, 35px); 
+            height: clamp(28px, 8vw, 35px);
+            fill: #cbd5e1; margin-bottom: var(--space-xs); 
+        }
+        .camera-title { 
+            font-size: var(--font-sm); font-weight: 800;
+            margin-bottom: var(--space-xs);
+        }
+        .camera-sub {
+            font-size: var(--font-xs);
+        }
 
-        .modal-blue { 
-            border-color: #2563EB; 
-            box-shadow: 0 0 50px rgba(37, 99, 235, 0.3); 
+        /* --- SUBMIT BUTTON --- */
+        .btn-submit {
+            width: 100%; background-color: var(--primary-red); color: white; border: none;
+            padding: var(--space-lg);
+            border-radius: var(--radius); font-weight: 900; 
+            font-size: var(--font-md);
+            text-transform: uppercase; margin-top: var(--space-xl); cursor: pointer;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+            min-height: clamp(50px, 12vw, 56px);
         }
-        .modal-blue .modal-title { color: #2563EB; }
-        .modal-blue .modal-btn { background-color: #2563EB; }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* --- RESPONSIVE BREAKPOINTS --- */
         @media (max-width: 340px) {
@@ -546,20 +314,20 @@
 
         @media (min-width: 768px) {
             :root {
-                --font-xs: 12px;
-                --font-sm: 13px;
-                --font-base: 15px;
-                --font-md: 16px;
-                --font-lg: 18px;
-                --font-xl: 24px;
+                --font-xs: 13px;
+                --font-sm: 14px;
+                --font-base: 16px;
+                --font-md: 18px;
+                --font-lg: 22px;
+                --font-xl: 26px;
             }
         }
 
         @media (max-height: 600px) and (orientation: landscape) {
-            .video-box { height: clamp(250px, 60vw, 300px); }
+            #accident-gate { align-items: flex-start; padding-top: 10px; }
+            .gate-content { margin: 10px auto; }
         }
 
-        /* iOS-specific fix */
         @supports (-webkit-touch-callout: none) {
             input, textarea, select {
                 font-size: 16px !important;
@@ -569,1055 +337,452 @@
 </head>
 <body>
 
-<div id="towWarningModal" class="modal">
-    <div class="modal-content modal-red">
-        <span class="warning-icon">⚠️</span>
-        <div class="modal-title">No Tow Assistance</div>
-        <div class="modal-text">
-            Warning: This vehicle is not equipped with tow assistance.<br><br>
-            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
-            📞📲📞 For deliveries where the customer's location involves any of these conditions, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
-            💰 Failure to comply with this directive, including disregarding this warning, will result in the driver being financially responsible for any towing or recovery costs incurred.
-        </div>
-        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
-    </div>
-</div>
+    <div id="accident-gate">
+        <div class="gate-content">
+            <span class="gate-icon">⚠️</span>
+            <div class="gate-title">Accident Protocol</div>
+            
+            <div class="checklist-container">
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-713-0953)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
+                <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
+            </div>
 
-<div id="towActiveModal" class="modal">
-    <div class="modal-content modal-blue">
-        <span class="warning-icon">🚨</span>
-        <div class="modal-title">Tow Assistance Active</div>
-        <div class="modal-text">
-            Alert: This vehicle is equipped with tow assistance.<br><br>
-            🛠️ Please note that tow assistance is strictly limited to mechanical failures only.<br><br>
-            🚫 Long driveways, dirt or gravel roads, and any unnecessary or reckless driving must be avoided at all times.<br><br>
-            ⚖️ As an equal opportunity employer, all expectations and company policies apply equally to all employees and must be followed without exception.<br><br>
-            📞📲📞 For deliveries where the customer's location involves any of the conditions noted above, drivers are required to follow the call–text–call procedure to determine whether an alternate delivery location is available.<br><br>
-            💰 Failure to comply with this directive, including disregarding this notice, will result in the driver being financially responsible for any towing or recovery costs incurred.
-        </div>
-        <button class="modal-btn" onclick="closeModal()">I Understand & Agree</button>
-    </div>
-</div>
+            <div class="gate-text" id="affidavitText">
+                <strong>AFFIDAVIT:</strong><br><br>
+                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
+                All accident and/or workplace incidents are required to be completed and submitted within 24 hours of the event.<br><br>
+                DAs are permitted to be seen by an authorized panel of physicians only. Note that DAs will also be required to take a drug test upon arrival.
+            </div>
 
-<div id="frontCameraWarningModal" class="modal">
-    <div class="modal-content modal-red">
-        <span class="warning-icon">📷</span>
-        <div class="modal-title">⚠️ FRONT CAMERA DETECTED</div>
-        <div class="modal-text">
-            <strong>WARNING: The front-facing camera is currently active.</strong><br><br>
-            🔄 Please try the following:<br><br>
-            1️⃣ <strong>Close this page completely</strong> (swipe away from recent apps)<br>
-            2️⃣ <strong>Reopen the Fleet Portal</strong><br>
-            3️⃣ If problem persists, <strong>restart your phone</strong><br><br>
-            📹 Vehicle inspections must use the <strong>rear camera</strong> for proper documentation.<br><br>
-            ⚠️ If rear camera continues to fail, contact fleet management immediately.
+            <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
         </div>
-        <button class="modal-btn" onclick="closeFrontCameraWarning()">I Understand - Continue Anyway</button>
     </div>
-</div>
 
-<div class="container">
-    <div class="header-row">
+    <div class="container" id="main-form">
         <a href="/" class="back-link">← Back to Menu</a>
-        <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
-    </div>
-    
-    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.6.0</div>
-    
-    <div class="timestamp" id="ts">Loading...</div>
-    <h1>Video Inspection</h1>
-
-    <div class="form-group">
-        <label>Driver Full Name</label>
-        <input type="text" id="driverName" placeholder="Enter Full Name">
-    </div>
-
-    <div class="form-group row-split">
-        <div class="vin-col">
-            <label>Last 4 VIN</label>
-            <input type="text" id="vinInput" placeholder="e.g. 1051" maxlength="4" onkeyup="checkVin()" style="text-transform:uppercase;">
-        </div>
-        <div class="type-col">
-            <label>Vehicle Type / Fuel</label>
-            <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <label>Tow Assistance Status</label>
-        <div id="towStatusBox" class="status-box">Pending VIN...</div>
-    </div>
-
-    <label>Inspection Type</label>
-    <div class="type-grid">
-        <button id="btn-pre" class="type-btn" onclick="selectType('Pre-Trip')">Pre-Trip</button>
-        <button id="btn-post" class="type-btn" onclick="selectType('Post-Trip')">Post-Trip</button>
-    </div>
-
-    <div class="video-box">
-        <div id="loading-overlay">
-            <div class="spinner"></div>
-            <p style="color: #94a3b8; margin-top: 15px; font-size: 12px;">Starting camera...</p>
-        </div>
-        <div id="camera-status">Initializing...</div>
-        <div id="timer-display">00:00</div>
-        <button id="flip-camera-btn" onclick="flipCamera()">🔄</button>
-        <div id="current-camera-label">REAR</div>
-        <button id="flash-toggle" onclick="toggleFlash()">💡</button>
-        <video id="preview" autoplay playsinline muted></video>
-        <video id="playback" controls style="display:none;"></video>
         
-        <div class="controls">
-            <button id="btn-record" class="btn-circle" onclick="toggleRecording()">REC</button>
-            <button id="btn-stop" class="btn-circle" onclick="stopRecording()">STOP</button>
-        </div>
-    </div>
-
-    <button id="btn-upload" onclick="uploadVideo()">SUBMIT INSPECTION</button>
-    
-    <div id="progress-container">
-        <div id="progress-fill"></div>
-        <div class="progress-percentage-overlay" id="progress-percentage">0%</div>
-    </div>
-    
-    <div class="status-msg" id="status">Ready for Inspection</div>
-</div>
-
-<script>
-    document.getElementById('ts').innerText = new Date().toLocaleString();
-
-    // ============================================
-    // CONFIGURATION - HIGH QUALITY VIDEO SETTINGS
-    // ============================================
-    const CONFIG = {
-        VIDEO_BITRATE: 10000000,  // 10 Mbps - HIGH QUALITY
-        VIDEO_WIDTH: 1920,
-        VIDEO_HEIGHT: 1080,
-        MAX_RETRY_ATTEMPTS: 3,
-        CAMERA_TIMEOUT: 15000,
-        BRIGHTNESS_THRESHOLD: 70,  // Auto-flash threshold (higher = more sensitive, triggers in more lighting conditions)
-        BRIGHTNESS_CHECK_INTERVAL: 2000
-    };
-
-    // ========================================
-    // SUNSET DETECTION FOR AUTO-FLASH
-    // ========================================
-    async function checkSunsetAndEnableFlash() {
-        try {
-            // User location: Ashburn, Virginia
-            const lat = 39.0438;
-            const lng = -77.4874;
-            
-            const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&formatted=0`);
-            const data = await response.json();
-            
-            if (data.status === 'OK') {
-                const sunset = new Date(data.results.sunset);
-                const sunrise = new Date(data.results.sunrise);
-                const now = new Date();
-                
-                // Check if current time is after sunset OR before sunrise (nighttime)
-                if (now > sunset || now < sunrise) {
-                    console.log('🌙 After sunset - Auto-enabling flash');
-                    // Auto-enable flash for nighttime recording
-                    if (!flashEnabled) {
-                        setFlash(true);
-                        updateFlashUI(true);
-                    }
-                    return true;
-                } else {
-                    console.log('☀️ During daylight hours');
-                    return false;
-                }
-            }
-        } catch (error) {
-            console.error('Failed to fetch sunset time:', error);
-            // If API fails, fall back to time-based check (after 6 PM or before 6 AM)
-            const hour = new Date().getHours();
-            if (hour >= 18 || hour < 6) {
-                console.log('🌙 Using time-based fallback - Auto-enabling flash');
-                if (!flashEnabled) {
-                    setFlash(true);
-                    updateFlashUI(true);
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
-    let localVersion = null;
-    let wakeLock = null;
-    let mediaRecorder;
-    let chunks = [];
-    let videoBlob;
-    let timerInterval;
-    let seconds = 0;
-    let inspectionType = '';
-    let currentStream = null;
-    let currentVideoTrack = null;
-    let flashEnabled = false;
-    let preferredFacingMode = "environment"; // "environment" = rear, "user" = front
-    let brightnessCheckInterval = null;
-
-    const vinDatabase = {
-        "9488": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "0213": { type: "Large Van (Diesel)", fuel: "diesel", tow: true },
-        "8929": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "5691": { type: "Extra Large Van (Diesel)", fuel: "diesel", tow: true },
-        "7867": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7871": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "9412": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7866": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7865": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7860": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "9418": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7863": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7859": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7857": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "8125": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "8084": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7918": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "7898": { type: "Rivian MEDIUM (Electric)", fuel: "electric", tow: false },
-        "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "1295": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6864": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6880": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "6907": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "1051": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "7373": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "3754": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
-        "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", tow: false },
-        "5490": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "5311": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "3010": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "1587": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "5344": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "3344": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "2347": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: true },
-        "0890": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "1853": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "0876": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "8786": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "9651": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
-        "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
-        "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: true },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true }
-    };
-
-    async function checkForUpdates() {
-        try {
-            const res = await fetch('/version');
-            if (res.ok) {
-                const data = await res.json();
-                if (!localVersion) localVersion = data.version; 
-                else if (localVersion !== data.version) window.location.reload(true);
-            }
-        } catch (err) {}
-    }
-    setInterval(checkForUpdates, 30000);
-    checkForUpdates();
-
-    async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator && !wakeLock) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('✅ Wake Lock Active');
-                wakeLock.addEventListener('release', () => {
-                    wakeLock = null;
-                });
-            }
-        } catch (err) {} 
-    }
-
-    function detectBrightness() {
-        const video = document.getElementById('preview');
-        if (!video.srcObject || video.readyState < 2) return;
-
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 160;
-            canvas.height = 120;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            let totalBrightness = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                const brightness = (0.299 * r + 0.587 * g + 0.114 * b);
-                totalBrightness += brightness;
-            }
-            
-            const avgBrightness = totalBrightness / (canvas.width * canvas.height);
-            console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
-            
-            // AUTO-ADJUST FLASH BASED ON BRIGHTNESS
-            // Turn flash ON if too dark (below threshold)
-            if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 AUTO-FLASH ON (dark scene detected)');
-                setFlash(true);
-                updateFlashUI(true);
-            }
-            // Turn flash OFF if bright enough (above threshold + hysteresis)
-            else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
-                console.log('💡 AUTO-FLASH OFF (bright enough)');
-                setFlash(false);
-                updateFlashUI(false);
-            }
-            
-        } catch (e) {
-            console.log('Brightness detection failed:', e.message);
-        }
-    }
-
-    function startBrightnessMonitoring() {
-        stopBrightnessMonitoring();
-        // Check immediately, then every 2 seconds
-        setTimeout(() => {
-            detectBrightness();
-            brightnessCheckInterval = setInterval(detectBrightness, CONFIG.BRIGHTNESS_CHECK_INTERVAL);
-        }, 500); // Start after 500ms to let camera stabilize
-    }
-
-    function stopBrightnessMonitoring() {
-        if (brightnessCheckInterval) {
-            clearInterval(brightnessCheckInterval);
-            brightnessCheckInterval = null;
-        }
-    }
-
-    async function setFlash(enable) {
-        if (!currentVideoTrack) return false;
+        <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.0</div>
         
-        try {
-            const capabilities = currentVideoTrack.getCapabilities();
-            if (capabilities.torch) {
-                await currentVideoTrack.applyConstraints({
-                    advanced: [{ torch: enable }]
-                });
-                flashEnabled = enable;
-                console.log(`💡 Flash ${enable ? 'ON' : 'OFF'}`);
-                return true;
+        <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
+        <div class="timestamp" id="ts">Loading Time...</div>
+        <h1>Accident Report</h1>
+
+        <h2>1. Driver & Vehicle</h2>
+        <div class="form-group">
+            <label>Driver Full Name</label>
+            <input type="text" id="driverName" placeholder="Enter Full Name">
+        </div>
+
+        <div class="form-group row-split">
+            <div class="vin-col">
+                <label>Last 4 VIN</label>
+                <input type="text" id="vinInput" placeholder="VIN" maxlength="4" style="text-transform:uppercase;">
+            </div>
+            <div class="type-col">
+                <label>Vehicle Type</label>
+                <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
+            </div>
+        </div>
+
+        <h2>2. Incident Details</h2>
+        <div class="form-group">
+            <label>Incident Type</label>
+            <div id="incidentTypes">
+                <button class="btn-option">Slip / Trip / Fall</button>
+                <button class="btn-option">Dog Bite</button>
+                <button class="btn-option">Customer Altercation</button>
+                <button class="btn-option selected">Vehicle Accident</button>
+                <button class="btn-option">Property Damage</button>
+                <button class="btn-option">Other</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Location (Auto-Detected)</label>
+            <div id="map"></div>
+            <div class="gps-info">
+                <span>Lat: <span id="gpsLat">...</span></span>
+                <span>Lng: <span id="gpsLng">...</span></span>
+            </div>
+            <div class="weather-box" id="weatherBox">Fetching Weather...</div>
+        </div>
+
+        <div class="form-group">
+            <label>Street Address / House # (Auto-Filled)</label>
+            <input type="text" id="addrStreet" placeholder="Detecting Street...">
+        </div>
+        <div class="form-group row-split">
+            <div style="flex: 2;">
+                <label>City</label>
+                <input type="text" id="addrCity" placeholder="City">
+            </div>
+            <div style="flex: 1;">
+                <label>State</label>
+                <input type="text" id="addrState" placeholder="State">
+            </div>
+            <div style="flex: 1.2;">
+                <label>Zip</label>
+                <input type="text" id="addrZip" placeholder="Zip">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Detailed Statement (Max 500)</label>
+            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+            <div class="char-count" id="charCounter">0 / 500</div>
+        </div>
+
+        <div class="form-group row-split">
+            <div style="flex:1;">
+                <label>Police Report # (Required)</label>
+                <input type="text" id="policeReport" placeholder="Required">
+            </div>
+            <div style="flex:1;">
+                <label>LMET Case # (Required)</label>
+                <input type="text" id="lmetCase" placeholder="Required">
+            </div>
+        </div>
+
+        <h2>3. Evidence (Min 3 Photos)</h2>
+        <div class="form-group">
+            <label>Photos (Scene & Damage)</label>
+            <div class="camera-box">
+                <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
+                <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                <div class="camera-title">TAP TO ADD PHOTOS</div>
+                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Attached (3 Required)</div>
+            </div>
+        </div>
+
+        <h2>4. Driver Signature</h2>
+        <div class="form-group">
+            <label>Sign Below</label>
+            <canvas id="sigCanvas"></canvas>
+            <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
+        </div>
+
+        <div class="form-group" style="margin-top:20px;">
+            <label>Email for Copy of Panel of Physicians</label>
+            <input type="email" id="driverEmail" placeholder="Enter your email address">
+        </div>
+
+        <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // --- VIN DB ---
+        const vinDatabase = {
+            "7097": { type: "Custom Delivery Van 12ft (Gas)" }, "1288": { type: "Custom Delivery Van 12ft (Gas)" },
+            "1051": { type: "Extra Large Van (Gas)" }, "7863": { type: "Rivian MEDIUM (Electric)" },
+            "7860": { type: "Rivian MEDIUM (Electric)" }, "9412": { type: "Rivian MEDIUM (Electric)" },
+            "7859": { type: "Rivian MEDIUM (Electric)" }, "7867": { type: "Rivian MEDIUM (Electric)" },
+            "7871": { type: "Rivian MEDIUM (Electric)" }, "7857": { type: "Rivian MEDIUM (Electric)" },
+            "7865": { type: "Rivian MEDIUM (Electric)" }, "7866": { type: "Rivian MEDIUM (Electric)" },
+            "9418": { type: "Rivian MEDIUM (Electric)" }, "9488": { type: "Extra Large Van (Diesel)" },
+            "5490": { type: "Custom Delivery Van 16ft (Gas)" }, "3754": { type: "Extra Large Van (Gas)" },
+            "8125": { type: "Rivian MEDIUM (Electric)" }, "8084": { type: "Rivian MEDIUM (Electric)" },
+            "7918": { type: "Rivian MEDIUM (Electric)" }, "7898": { type: "Rivian MEDIUM (Electric)" }
+        };
+
+        let map, photos = [], isSubmitting = false;
+        let sigCanvas, sigCtx, drawing = false;
+
+        // --- GATE CHECKLIST LOGIC ---
+        document.querySelectorAll('.gate-check').forEach(cb => {
+            cb.addEventListener('change', validateAccidentGate);
+        });
+
+        function validateAccidentGate() {
+            const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
+            const btn = document.getElementById('gateBtn');
+            if (allChecked) {
+                btn.classList.add('active');
+                btn.disabled = false;
             } else {
-                console.log('⚠️  Flash not supported on this device');
-                return false;
+                btn.classList.remove('active');
+                btn.disabled = true;
             }
-        } catch (e) {
-            console.log('Flash control error:', e.message);
-            return false;
         }
-    }
 
-    function toggleFlash() {
-        setFlash(!flashEnabled);
-        updateFlashUI(!flashEnabled);
-    }
+        function enterReport() {
+            if (document.getElementById('gateBtn').disabled) return;
+            document.getElementById('accident-gate').style.display = 'none';
+            document.getElementById('main-form').style.display = 'block';
+            initMap();
+            initSignaturePad();
+        }
 
-    function updateFlashUI(enabled) {
-        const flashBtn = document.getElementById('flash-toggle');
-        const statusEl = document.getElementById('camera-status');
-        
-        if (enabled) {
-            flashBtn.classList.add('active');
-            statusEl.innerText = '💡 Flash ON';
-            statusEl.className = 'flash-on';
-            statusEl.style.display = 'block';
-            setTimeout(() => {
-                if (statusEl.className === 'flash-on') {
-                    statusEl.style.display = 'none';
+        function updateCount() {
+            const len = document.getElementById('statement').value.length;
+            document.getElementById('charCounter').innerText = `${len} / 500`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('ts').innerText = new Date().toLocaleString();
+
+            // VIN Logic
+            document.getElementById('vinInput').addEventListener('keyup', function() {
+                let vin = this.value.toUpperCase();
+                let type = "Unknown";
+                if(vin.length === 4) {
+                    if(vinDatabase[vin]) type = vinDatabase[vin].type;
+                    else if(vin.startsWith("W")) type = "Mercedes (Diesel)";
                 }
-            }, 2000);
-        } else {
-            flashBtn.classList.remove('active');
-        }
-    }
-
-    async function flipCamera() {
-        console.log("🔄 === FLIP CAMERA BUTTON CLICKED ===");
-        
-        const label = document.getElementById('current-camera-label');
-        
-        if (preferredFacingMode === "environment") {
-            preferredFacingMode = "user";
-            label.innerText = "FRONT";
-            label.style.color = "#fbbf24";
-            label.style.borderColor = "#fbbf24";
-            console.log("👤 User selected: FRONT camera");
-        } else {
-            preferredFacingMode = "environment";
-            label.innerText = "REAR";
-            label.style.color = "#3B82F6";
-            label.style.borderColor = "#3B82F6";
-            console.log("📹 User selected: REAR camera");
-        }
-        
-        console.log(`✅ preferredFacingMode set to: "${preferredFacingMode}"`);
-        
-        stopBrightnessMonitoring();
-        
-        if (currentStream) {
-            console.log("Stopping current camera streams...");
-            currentStream.getTracks().forEach(track => {
-                console.log(`  Stopping: ${track.kind} - ${track.label}`);
-                track.stop();
+                if(vin.length === 4) document.getElementById('vehicleType').value = type;
             });
-            currentStream = null;
-            currentVideoTrack = null;
-        }
-        
-        const preview = document.getElementById('preview');
-        if (preview && preview.srcObject) {
-            preview.srcObject.getTracks().forEach(track => track.stop());
-            preview.srcObject = null;
-        }
-        
-        console.log("Waiting 500ms before restarting camera...");
-        setTimeout(() => {
-            console.log("Restarting camera with new preference...");
-            startCamera();
-        }, 500);
-    }
 
-    async function startCamera() {
-        const preview = document.getElementById('preview');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const statusEl = document.getElementById('camera-status');
-        const flashBtn = document.getElementById('flash-toggle');
-        
-        console.log('🚀 Starting SIMPLE camera...');
-        
-        loadingOverlay.style.display = 'flex';
-        statusEl.style.display = 'none';
-        flashBtn.style.display = 'none';
-
-        // Stop any existing streams
-        stopBrightnessMonitoring();
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-            currentStream = null;
-            currentVideoTrack = null;
-        }
-        if (preview.srcObject) {
-            preview.srcObject.getTracks().forEach(track => track.stop());
-            preview.srcObject = null;
-        }
-
-        try {
-            console.log('📹 Requesting camera with simple constraints...');
-            
-            // MINIMUM 1080p - camera can use higher resolution if available (4K, etc)
-            const constraints = {
-                video: {
-                    facingMode: { ideal: preferredFacingMode },
-                    width: { min: 1920 },   // MINIMUM width - can go higher
-                    height: { min: 1080 }   // MINIMUM height - can go higher
-                },
-                audio: true
-            };
-            
-            console.log('Constraints:', JSON.stringify(constraints));
-            
-            // Set timeout for getUserMedia
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Camera timeout after 20 seconds')), 20000)
-            );
-            
-            const streamPromise = navigator.mediaDevices.getUserMedia(constraints);
-            
-            currentStream = await Promise.race([streamPromise, timeoutPromise]);
-            
-            console.log('✅ Stream obtained!');
-            
-            currentVideoTrack = currentStream.getVideoTracks()[0];
-            const settings = currentVideoTrack.getSettings();
-            
-            console.log(`Camera active: ${settings.width}x${settings.height}`);
-            console.log(`Facing mode: ${settings.facingMode || 'unknown'}`);
-            console.log(`Device: ${currentVideoTrack.label}`);
-            
-            preview.srcObject = currentStream;
-            
-            // Wait for video to be ready (lenient timeout)
-            try {
-                await new Promise((resolve, reject) => {
-                    const loadTimeout = setTimeout(() => {
-                        console.warn('Video load timeout - continuing anyway');
-                        resolve(); // Don't reject, just continue
-                    }, 15000);
-                    
-                    preview.onloadedmetadata = () => {
-                        console.log('Video metadata loaded');
-                        preview.play()
-                            .then(() => {
-                                console.log('Video playing');
-                                clearTimeout(loadTimeout);
-                                resolve();
-                            })
-                            .catch(err => {
-                                console.error('Video play error:', err);
-                                // Try without waiting for play to complete
-                                clearTimeout(loadTimeout);
-                                resolve();
-                            });
-                    };
-                    
-                    // Also try playing immediately in case metadata already loaded
-                    if (preview.readyState >= 2) {
-                        console.log('Video already ready, playing immediately');
-                        preview.play().catch(console.error);
-                    }
+            // Incident Buttons
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
                 });
-            } catch (e) {
-                console.warn('Video load promise failed:', e);
-                // Continue anyway - stream is already set
-            }
-            
-            // Enable flash if available
-            try {
-                const capabilities = currentVideoTrack.getCapabilities();
-                if (capabilities.torch) {
-                    flashBtn.style.display = 'block';
-                    console.log('💡 Flash available');
-                    // Check if it's after sunset and auto-enable flash
-                    checkSunsetAndEnableFlash();
+            });
+
+            // Camera Logic WITH COMPRESSION
+            document.getElementById('photoInput').addEventListener('change', async function(e) {
+                const files = Array.from(e.target.files);
+                if(files.length > 0) {
+                    const statusLabel = document.getElementById('photoCount');
+                    statusLabel.innerText = "Compressing photos...";
+                    statusLabel.style.color = "#FF9900";
+
+                    for (let file of files) {
+                        const compressedData = await compressImage(file);
+                        photos.push(compressedData);
+                    }
+                    updatePhotoUI();
                 }
-            } catch (e) {
-                console.log('Flash check skipped');
-            }
-            
-            loadingOverlay.style.display = 'none';
-            statusEl.innerText = `Ready (${settings.width}x${settings.height})`;
-            statusEl.className = 'ready';
-            statusEl.style.display = 'block';
-            
-            setTimeout(() => {
-                if (statusEl.className === 'ready') statusEl.style.display = 'none';
-            }, 3000);
-
-            startBrightnessMonitoring();
-            
-            console.log('✅ Camera initialization complete!');
-            
-        } catch (error) {
-            console.error('❌ Camera failed:', error);
-            loadingOverlay.style.display = 'none';
-            statusEl.innerText = 'Camera Failed';
-            statusEl.className = 'error';
-            statusEl.style.display = 'block';
-            
-            let errorMsg = 'Camera Error: ' + error.message;
-            if (error.message.includes('denied') || error.name === 'NotAllowedError') {
-                errorMsg += '\n\nFix:\n1. Settings → Apps → Browser\n2. Permissions → Camera → Allow\n3. Refresh page';
-            } else if (error.message.includes('timeout')) {
-                errorMsg += '\n\nFix:\n1. Close other camera apps\n2. Try Reset Camera button\n3. Restart phone if needed';
-            } else if (error.name === 'NotReadableError') {
-                errorMsg += '\n\nFix: Camera is in use by another app. Close all camera apps.';
-            }
-            
-            alert(errorMsg);
-        }
-    }
-
-    
-        function resetCamera() {
-        console.log("🔄 === RESET CAMERA CLICKED ===");
-        
-        if (mediaRecorder && mediaRecorder.state === "recording") {
-            console.log("Stopping active recording...");
-            mediaRecorder.stop();
-        }
-        
-        stopBrightnessMonitoring();
-        
-        if (currentStream) {
-            console.log("Stopping currentStream tracks...");
-            const tracks = currentStream.getTracks();
-            tracks.forEach(track => {
-                console.log(`  Stopping ${track.kind}: ${track.label}`);
-                track.stop();
             });
-            currentStream = null;
-        }
-        
-        if (currentVideoTrack) {
-            console.log("Stopping currentVideoTrack...");
-            try {
-                currentVideoTrack.stop();
-            } catch (e) {
-                console.log("Error stopping track:", e);
-            }
-            currentVideoTrack = null;
-        }
-        
-        const preview = document.getElementById("preview");
-        if (preview && preview.srcObject) {
-            console.log("Stopping preview.srcObject tracks...");
-            const tracks = preview.srcObject.getTracks();
-            tracks.forEach(track => {
-                console.log(`  Stopping preview ${track.kind}: ${track.label}`);
-                track.stop();
+        });
+
+        // --- IMAGE COMPRESSION ---
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1024;
+                        const MAX_HEIGHT = 1024;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve({ 
+                            name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", 
+                            data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] 
+                        });
+                    };
+                };
             });
-            preview.srcObject = null;
         }
-        
-        const playback = document.getElementById("playback");
-        if (preview) preview.style.display = "block";
-        if (playback) {
-            playback.style.display = "none";
-            playback.src = "";
-        }
-        
-        document.getElementById("btn-record").style.display = "flex";
-        document.getElementById("btn-stop").style.display = "none";
-        document.getElementById("btn-upload").style.display = "none";
-        document.getElementById("status").innerText = "Restarting camera...";
-        
-        flashEnabled = false;
-        updateFlashUI(false);
-        
-        console.log("Waiting 1.5s before restarting...");
-        setTimeout(() => {
-            console.log("Starting camera after reset...");
-            startCamera();
-        }, 1500);
-    }
 
-    function checkVin() {
-        let vin = document.getElementById('vinInput').value.toUpperCase();
-        const typeBox = document.getElementById('vehicleType');
-        const towBox = document.getElementById('towStatusBox');
-        const warnModal = document.getElementById('towWarningModal');
-        const activeModal = document.getElementById('towActiveModal');
-
-        typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-        towBox.classList.remove('active', 'inactive');
-        towBox.innerText = "Pending VIN...";
-        
-        if (vin.length >= 4) {
-            let found = vinDatabase[vin] || vinDatabase[vin.slice(-4)];
+        function updatePhotoUI() {
+            const count = photos.length;
+            const label = document.getElementById('photoCount');
+            label.innerText = `${count} Attached (${Math.max(0, 3 - count)} more needed)`;
             
-            if (vin.startsWith("W")) { 
-                typeBox.value = "Mercedes (Diesel)"; 
-                typeBox.classList.add('diesel-mode');
-                towBox.innerText = "COVERAGE ACTIVE";
-                towBox.classList.add('active');
-                activeModal.style.display = 'flex';
+            if (count >= 3) {
+                label.style.color = "#4ade80";
+                label.innerText = `${count} Photos Attached (Ready)`;
+            } else {
+                label.style.color = "#EF4444";
+            }
+        }
+
+        // --- MAP & ADDRESS LOGIC ---
+        function initMap() {
+            if(!navigator.geolocation) {
+                document.getElementById('weatherBox').innerText = "GPS Not Supported";
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                document.getElementById('gpsLat').innerText = lat.toFixed(5);
+                document.getElementById('gpsLng').innerText = lng.toFixed(5);
+
+                map = L.map('map').setView([lat, lng], 17);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                L.marker([lat, lng]).addTo(map);
+
+                // 1. Fetch Weather
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const w = data.current_weather;
+                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
+                    });
+
+                // 2. Fetch Address (Reverse Geocoding)
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.address) {
+                            const addr = data.address;
+                            document.getElementById('addrStreet').value = (addr.house_number ? addr.house_number + " " : "") + (addr.road || "");
+                            document.getElementById('addrCity').value = addr.city || addr.town || addr.village || "";
+                            document.getElementById('addrState').value = addr.state || "";
+                            document.getElementById('addrZip').value = addr.postcode || "";
+                        }
+                    })
+                    .catch(err => console.log("Address lookup failed", err));
+
+            }, err => {
+                document.getElementById('weatherBox').innerText = "GPS Error: " + err.message;
+            }, { enableHighAccuracy: true });
+        }
+
+        // --- SIGNATURE FUNCTIONS ---
+        function initSignaturePad() {
+            sigCanvas = document.getElementById('sigCanvas');
+            sigCanvas.width = sigCanvas.offsetWidth;
+            const computedHeight = window.getComputedStyle(sigCanvas).height;
+            sigCanvas.height = parseInt(computedHeight);
+            
+            sigCtx = sigCanvas.getContext('2d');
+            sigCtx.strokeStyle = "#3B82F6"; 
+            sigCtx.lineWidth = 2;
+
+            sigCanvas.addEventListener('mousedown', startDraw);
+            sigCanvas.addEventListener('mousemove', draw);
+            sigCanvas.addEventListener('mouseup', stopDraw);
+            sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, {passive: false});
+            sigCanvas.addEventListener('touchend', stopDraw);
+        }
+
+        function startDraw(e) {
+            drawing = true;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.beginPath();
+            sigCtx.moveTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+        }
+        function draw(e) {
+            if(!drawing) return;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.lineTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
+            sigCtx.stroke();
+        }
+        function stopDraw() { drawing = false; }
+        function clearSignature() { sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); }
+
+        // --- SUBMIT ---
+        async function submitReport() {
+            if(isSubmitting) return;
+
+            const name = document.getElementById('driverName').value;
+            const vin = document.getElementById('vinInput').value;
+            const statement = document.getElementById('statement').value;
+            const police = document.getElementById('policeReport').value;
+            const lmet = document.getElementById('lmetCase').value;
+            const driverEmail = document.getElementById('driverEmail').value;
+
+            // --- VALIDATION RULES ---
+            if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
+            if(vin.length < 4) { alert("Please enter VIN"); return; }
+            if(!statement) { alert("Statement is required"); return; }
+            if(!police) { alert("Police Report # is required"); return; }
+            if(!lmet) { alert("LMET Case # is required"); return; }
+            
+            // Photo Mandate
+            if(photos.length < 3) { 
+                alert(`You must upload at least 3 photos. You currently have ${photos.length}.`); 
                 return; 
             }
 
-            if (found) {
-                typeBox.value = found.type; 
-                typeBox.classList.add(found.fuel + '-mode');
+            let incidentType = "Unknown";
+            const btn = document.querySelector('.btn-option.selected');
+            if(btn) incidentType = btn.innerText;
 
-                if (found.tow) {
-                    towBox.innerText = "COVERAGE ACTIVE";
-                    towBox.classList.add('active');
-                    activeModal.style.display = 'flex';
-                } else {
-                    towBox.innerText = "NO COVERAGE - CONTACT DISPATCH";
-                    towBox.classList.add('inactive');
-                    warnModal.style.display = 'flex';
-                }
-            } else {
-                typeBox.value = "Unknown Vehicle";
-                towBox.innerText = "Unknown Status";
-            }
-        } else {
-            typeBox.value = "";
-        }
-    }
+            // SCRAPE CHECKLIST & AFFIDAVIT
+            const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
+            const affidavitText = document.getElementById('affidavitText').innerText;
 
-    function closeModal() {
-        document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
-    }
-    
-    function closeFrontCameraWarning() {
-        document.getElementById('frontCameraWarningModal').style.display = 'none';
-    }
+            isSubmitting = true;
+            const sBtn = document.querySelector('.btn-submit');
+            sBtn.innerText = "UPLOADING...";
+            sBtn.disabled = true;
 
-    function selectType(type) {
-        inspectionType = type;
-        document.getElementById('btn-pre').classList.remove('selected');
-        document.getElementById('btn-post').classList.remove('selected');
-        document.getElementById(type === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
-    }
+            const payload = {
+                reportType: "ACCIDENT_REPORT",
+                driverName: name,
+                driverEmail: driverEmail,
+                vinLast4: vin,
+                incidentType: incidentType,
+                locationData: {
+                    street: document.getElementById('addrStreet').value,
+                    city: document.getElementById('addrCity').value,
+                    state: document.getElementById('addrState').value,
+                    zip: document.getElementById('addrZip').value,
+                    gpsLat: document.getElementById('gpsLat').innerText,
+                    gpsLng: document.getElementById('gpsLng').innerText
+                },
+                statement: statement,
+                policeReport: police,
+                lmetCase: lmet,
+                weather: document.getElementById('weatherBox').innerText,
+                signature: sigCanvas.toDataURL().split(',')[1],
+                photos: photos,
+                checklist: checklistItems,
+                affidavit: affidavitText,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString()
+            };
 
-    function autoSelectInspection() {
-        const hour = new Date().getHours();
-        selectType(hour < 13 ? 'Pre-Trip' : 'Post-Trip');
-    }
-
-    function startTimer() {
-        seconds = 0;
-        const timerEl = document.getElementById('timer-display');
-        timerEl.style.display = 'block';
-        timerEl.innerText = "00:00";
-        
-        timerInterval = setInterval(() => {
-            seconds++;
-            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const secs = (seconds % 60).toString().padStart(2, '0');
-            timerEl.innerText = `${mins}:${secs}`;
-        }, 1000);
-    }
-
-    function stopTimer() {
-        clearInterval(timerInterval);
-        document.getElementById('timer-display').style.display = 'none';
-    }
-
-    function toggleRecording() {
-        if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-            if (!currentStream) {
-                alert('Camera not ready. Please wait or reset camera.');
-                return;
-            }
-
-            requestWakeLock();
-
-            const codecOptions = [
-                { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
-                { mimeType: 'video/webm; codecs="av01.0.05M.08,opus"', name: 'AV1' },
-                { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
-                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High' },
-                { mimeType: 'video/mp4; codecs="avc1"', name: 'H.264' },
-                { mimeType: 'video/webm; codecs="vp8,opus"', name: 'VP8' },
-                { mimeType: 'video/webm', name: 'WebM' }
-            ];
-
-            let selectedOption = codecOptions.find(opt => MediaRecorder.isTypeSupported(opt.mimeType));
-
-            if (!selectedOption) {
-                alert('No supported video codec found!');
-                return;
-            }
-
-            console.log(`🎥 Recording with: ${selectedOption.name} @ ${(CONFIG.VIDEO_BITRATE / 1000000).toFixed(1)} Mbps`);
+            // AUTO-DETECT URL (Fixes "Localhost" testing issues)
+            const apiBase = (window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
+                ? 'https://slgp-fleet-manager-bot.up.railway.app' 
+                : '';
 
             try {
-                mediaRecorder = new MediaRecorder(currentStream, {
-                    mimeType: selectedOption.mimeType,
-                    videoBitsPerSecond: CONFIG.VIDEO_BITRATE
+                const res = await fetch(`${apiBase}/submit-report`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
                 });
                 
-                chunks = [];
-
-                mediaRecorder.ondataavailable = e => {
-                    if (e.data && e.data.size > 0) chunks.push(e.data);
-                };
-
-                mediaRecorder.onstop = () => {
-                    stopTimer();
-                    stopBrightnessMonitoring();
-                    
-                    if (chunks.length === 0) {
-                        alert('Recording failed: No data captured');
-                        return;
-                    }
-
-                    videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
-                    console.log(`✅ Recording complete: ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB`);
-                    
-                    const preview = document.getElementById('preview');
-                    const playback = document.getElementById('playback');
-                    
-                    preview.style.display = 'none';
-                    playback.style.display = 'block';
-                    playback.src = URL.createObjectURL(videoBlob);
-                    
-                    document.getElementById('btn-record').style.display = 'none';
-                    document.getElementById('btn-stop').style.display = 'none';
-                    document.getElementById('btn-upload').style.display = 'block';
-                    document.getElementById('flash-toggle').style.display = 'none';
-                    document.getElementById('status').innerText = `Video Ready (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB)`;
-                };
-
-                mediaRecorder.onerror = (event) => {
-                    console.error('❌ MediaRecorder error:', event.error);
-                    alert('Recording error: ' + event.error);
-                    stopTimer();
-                };
-
-                mediaRecorder.start(1000);
-                startTimer();
-                document.getElementById('btn-record').classList.add('recording');
-                document.getElementById('btn-stop').style.display = 'flex';
-                document.getElementById('status').innerText = "Recording... Walk around vehicle";
-                
-            } catch (error) {
-                console.error('❌ Failed to start recording:', error);
-                alert('Failed to start recording: ' + error.message);
-            }
-        }
-    }
-
-    function stopRecording() {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-            document.getElementById('btn-record').classList.remove('recording');
-        }
-    }
-
-    async function uploadVideo() {
-        const driver = document.getElementById('driverName').value.trim();
-        const vin = document.getElementById('vinInput').value.trim();
-        
-        if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields and record a video.");
-            return;
-        }
-
-        if (videoBlob.size > 150 * 1024 * 1024) {
-            alert(`Video too large (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 150MB.`);
-            return;
-        }
-
-        requestWakeLock();
-
-        const btn = document.getElementById('btn-upload');
-        const status = document.getElementById('status');
-        const progressBar = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
-
-        btn.style.display = 'none';
-        progressBar.style.display = 'block';
-        status.innerText = "Preparing upload...";
-        const percentOverlay = document.getElementById('progress-percentage');
-        if (percentOverlay) percentOverlay.innerText = '0%';
-
-        const formData = new FormData();
-        formData.append('video', videoBlob, 'inspection.mp4');
-        formData.append('driverName', driver);
-        formData.append('vin', vin);
-        formData.append('inspectionType', inspectionType);
-
-        let attempts = 0;
-
-        async function attemptUpload() {
-            attempts++;
-            console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
-            
-            let simulatedProgress = 0;
-            let progressInterval = null;
-            let realProgressReceived = false;
-            
-            return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/upload-to-google-drive', true);
-                xhr.timeout = 120000; // 2 minutes
-
-                console.log('⏱️ Starting simulated progress timer...');
-                let progressStuckCount = 0;
-                progressInterval = setInterval(() => {
-                    if (!realProgressReceived) {
-                        if (simulatedProgress < 95) {
-                            simulatedProgress += 5;
-                            progressStuckCount = 0;
-                        } else if (simulatedProgress < 98) {
-                            // Slow down near the end
-                            simulatedProgress += 1;
-                            progressStuckCount++;
-                            
-                            // If stuck at 95%+ for too long (10 seconds), jump to 100%
-                            if (progressStuckCount > 12) {
-                                console.warn('Upload taking too long, forcing 100%');
-                                simulatedProgress = 100;
-                            }
-                        }
-                        
-                        progressFill.style.width = simulatedProgress + '%';
-                        const percentOverlay = document.getElementById('progress-percentage');
-                        if (percentOverlay) percentOverlay.innerText = simulatedProgress + '%';
-                        
-                        const estimatedMB = (videoBlob.size / 1024 / 1024).toFixed(1);
-                        const uploadedMB = ((simulatedProgress / 100) * videoBlob.size / 1024 / 1024).toFixed(1);
-                        status.innerText = `Uploading: ${simulatedProgress}% (${uploadedMB}/${estimatedMB}MB)`;
-                        console.log(`⏱️ Simulated progress: ${simulatedProgress}%`);
-                    }
-                }, 800);
-
-                xhr.upload.onprogress = function(e) {
-                    console.log('📊 Real progress event received!', e);
-                    if (e.lengthComputable) {
-                        realProgressReceived = true;
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            console.log('✅ Switched to real progress');
-                        }
-                        
-                        const percent = Math.round((e.loaded / e.total) * 100);
-                        progressFill.style.width = percent + '%';
-                        const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
-                        const mbTotal = (e.total / 1024 / 1024).toFixed(1);
-                        status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
-                        const percentOverlay = document.getElementById('progress-percentage');
-                        if (percentOverlay) percentOverlay.innerText = percent + '%';
-                        console.log(`📊 Real progress: ${percent}% (${mbLoaded}/${mbTotal}MB)`);
-                    }
-                };
-
-                xhr.onload = function() {
-                    console.log('✅ Upload complete, xhr.status:', xhr.status);
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
-                    }
-                    
-                    progressFill.style.width = '100%';
-                    const percentOverlay = document.getElementById('progress-percentage');
-                    if (percentOverlay) percentOverlay.innerText = '100%';
-                    
-                    if (xhr.status === 200) {
-                        try {
-                            const response = JSON.parse(xhr.responseText);
-                            if (response.success) {
-                                resolve(response);
-                            } else {
-                                reject(new Error(response.error || 'Upload failed'));
-                            }
-                        } catch (e) {
-                            reject(new Error('Invalid server response'));
-                        }
-                    } else {
-                        reject(new Error(`Server error: ${xhr.status}`));
-                    }
-                };
-
-                xhr.onerror = () => {
-                    if (progressInterval) clearInterval(progressInterval);
-                    reject(new Error('Network error'));
-                };
-                
-                xhr.ontimeout = () => {
-                    if (progressInterval) clearInterval(progressInterval);
-                    reject(new Error('Upload timeout'));
-                };
-
-                console.log('📤 Sending upload request...');
-                console.log('📦 Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
-                xhr.send(formData);
-            });
-        }
-
-        while (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
-            try {
-                await attemptUpload();
-                
-                if (wakeLock) {
-                    wakeLock.release();
-                    wakeLock = null;
-                }
-                
-                status.innerText = "Upload Complete! ✅";
-                progressFill.style.backgroundColor = "#4ade80";
-                
-                setTimeout(() => window.location.href = '/success', 2000);
-                return;
-                
-            } catch (error) {
-                console.error(`❌ Attempt ${attempts} failed:`, error.message);
-                
-                if (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
-                    status.innerText = `Retrying (${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS})...`;
-                    progressFill.style.width = '0%';
-                    const percentOverlay = document.getElementById('progress-percentage');
-                    if (percentOverlay) percentOverlay.innerText = '0%';
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                if(res.ok) {
+                    alert("Accident Report Filed Successfully.");
+                    window.location.href = "/";
                 } else {
-                    if (wakeLock) {
-                        wakeLock.release();
-                        wakeLock = null;
-                    }
-                    
-                    alert(`Upload failed after ${CONFIG.MAX_RETRY_ATTEMPTS} attempts:
-${error.message}
-
-Please check your connection and try again.`);
-                    
-                    btn.style.display = 'block';
-                    progressBar.style.display = 'none';
-                    progressFill.style.width = '0%';
-                    const percentOverlay = document.getElementById('progress-percentage');
-                    if (percentOverlay) percentOverlay.innerText = '0%';
-                    status.innerText = "Upload failed. Ready to retry.";
+                    throw new Error("Server rejected report");
                 }
+            } catch(e) {
+                console.error(e);
+                alert("Upload Failed. Check connection.");
+                isSubmitting = false;
+                sBtn.innerText = "SUBMIT ACCIDENT REPORT";
+                sBtn.disabled = false;
             }
         }
-    }
-
-    startCamera();
-    autoSelectInspection();
+    </script>
     
-    window.addEventListener('beforeunload', () => {
-        stopBrightnessMonitoring();
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-        }
-        if (wakeLock) {
-            wakeLock.release();
-        }
-    });
-</script>
-
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-            try {
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                console.log('✅ Service Worker registered');
-                
-                let localVersion = null;
-                let isRecording = false;
-                
-                const originalStartRecording = window.startRecording;
-                window.startRecording = function() {
-                    isRecording = true;
-                    return originalStartRecording.apply(this, arguments);
-                };
-                
-                const originalStopRecording = window.stopRecording;
-                window.stopRecording = function() {
-                    isRecording = false;
-                    return originalStopRecording.apply(this, arguments);
-                };
-                
-                async function checkForUpdates() {
-                    if (isRecording) {
-                        console.log('⏸️  Skipping update check - recording in progress');
-                        return;
-                    }
-                    
-                    try {
-                        const res = await fetch('/version');
-                        if (res.ok) {
-                            const data = await res.json();
-                            
-                            if (!localVersion) {
-                                localVersion = data.version;
-                            } else if (localVersion !== data.version) {
-                                console.log('🔄 New version detected - reloading...');
-                                window.location.reload(true);
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Update check failed:', err);
-                    }
-                }
-                
-                checkForUpdates();
-                setInterval(checkForUpdates, 30000);
-                
-            } catch (error) {
-                console.error('❌ Service Worker registration failed:', error);
-            }
-        });
-    }
-</script>
+    <script src="/auto-refresh.js"></script>
 
 </body>
 </html>
