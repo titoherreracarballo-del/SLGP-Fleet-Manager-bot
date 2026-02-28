@@ -1244,7 +1244,7 @@ app.get('/debug-dashboard', async (req, res) => {
 // HTML PAGES
 // ============================================
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video-inspection.html'));
+    res.sendFile(path.join(__dirname, 'video.html'));
 });
 
 app.get('/success', (req, res) => {
@@ -1298,11 +1298,11 @@ app.get('/', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    const menuPath = path.join(__dirname, 'menu.html');
-    if (fs.existsSync(menuPath)) {
-        res.sendFile(menuPath);
+    const indexPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
     } else {
-        res.status(404).send('menu.html not found');
+        res.status(404).send('index.html not found');
     }
 });
 
