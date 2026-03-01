@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Today's Forecast - SLGP Fleet</title>
+    
+    <!-- Leaflet CSS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <style>
         :root {
             --bg-body: #0A6CF1;
@@ -315,12 +320,6 @@
             font-size: var(--font-xs);
         }
 
-        .legend-color {
-            width: 20px;
-            height: 4px;
-            border-radius: 2px;
-        }
-
         .info-section {
             background: var(--bg-section);
             border-radius: var(--radius);
@@ -594,36 +593,26 @@
                     <div class="sunset-time">${sunsetFormatted}</div>
                 </div>
                 
-                <div class="section-title">🚦 Road Conditions</div>
+                <div class="section-title">🗺️ Your Location & Area Map</div>
                 
                 <div class="map-container">
-                    <iframe 
-                        id="traffic-map"
-                        src=""
-                        loading="lazy"
-                        referrerpolicy="no-referrer-when-downgrade">
-                    </iframe>
+                    <div id="traffic-map"></div>
                 </div>
                 
                 <div class="legend">
-                    <div class="legend-title">Traffic Conditions</div>
+                    <div class="legend-title">🗺️ Interactive Map</div>
                     <div class="legend-items">
                         <div class="legend-item">
-                            <div class="legend-color" style="background: #34A853;"></div>
-                            <span>Light Traffic</span>
+                            <div style="width: 20px; height: 20px; background: #1E88E5; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>📍 Your Location</span>
                         </div>
                         <div class="legend-item">
-                            <div class="legend-color" style="background: #FBBC04;"></div>
-                            <span>Moderate</span>
+                            <div style="width: 20px; height: 4px; background: #42A5F5; border-radius: 2px; margin-right: 8px; opacity: 0.5;"></div>
+                            <span>Delivery Area</span>
                         </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background: #EA4335;"></div>
-                            <span>Heavy</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background: #9E4747;"></div>
-                            <span>Severe</span>
-                        </div>
+                    </div>
+                    <div style="margin-top: var(--space-sm); font-size: var(--font-xs); color: var(--text-gray);">
+                        💡 Zoom and pan the map to explore surrounding roads and routes
                     </div>
                 </div>
                 
@@ -643,9 +632,30 @@
                 </div>
             `;
             
-            // Update traffic map with user's location
-            const mapIframe = document.getElementById('traffic-map');
-            mapIframe.src = `https://www.google.com/maps/embed/v1/view?key=&center=${userLat},${userLon}&zoom=11&maptype=roadmap`;
+            // Initialize OpenStreetMap with user's location
+            setTimeout(() => {
+                const map = L.map('traffic-map').setView([userLat, userLon], 12);
+                
+                // Add OpenStreetMap tiles (free, no API key needed)
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Add marker for user's location
+                L.marker([userLat, userLon])
+                    .addTo(map)
+                    .bindPopup(`📍 ${locationName}`)
+                    .openPopup();
+                
+                // Add circle to show delivery area
+                L.circle([userLat, userLon], {
+                    color: '#1E88E5',
+                    fillColor: '#42A5F5',
+                    fillOpacity: 0.15,
+                    radius: 8000 // 8km radius
+                }).addTo(map);
+            }, 500);
             
             document.getElementById('last-updated').textContent = locationName;
         }
