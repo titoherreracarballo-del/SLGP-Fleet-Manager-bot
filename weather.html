@@ -383,11 +383,12 @@
         let userLon = null;
         let locationName = "Getting location...";
         let trafficLayer = null;
+        let globalMap = null;
         const UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour
         
         // TomTom Traffic API Key - Get free key at: https://developer.tomtom.com/
         // Free tier: 2,500 requests/day (plenty for fleet use)
-        const TOMTOM_API_KEY = 'YOUR_TOMTOM_API_KEY'; // Replace with your free TomTom key
+        const TOMTOM_API_KEY = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
         
         // Fetch traffic incidents (accidents, closures, construction)
         async function fetchTrafficIncidents() {
@@ -806,13 +807,13 @@
             
             // Initialize OpenStreetMap with user's location
             setTimeout(() => {
-                const map = L.map('traffic-map').setView([userLat, userLon], 12);
+                globalMap = L.map('traffic-map').setView([userLat, userLon], 12);
                 
                 // Add OpenStreetMap tiles (free, no API key needed)
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors',
                     maxZoom: 19
-                }).addTo(map);
+                }).addTo(globalMap);
                 
                 // Add TomTom Traffic Flow overlay (shows congestion levels)
                 if (TOMTOM_API_KEY && TOMTOM_API_KEY !== 'YOUR_TOMTOM_API_KEY') {
@@ -823,7 +824,7 @@
                             maxZoom: 19,
                             opacity: 0.7
                         }
-                    ).addTo(map);
+                    ).addTo(globalMap);
                     
                     // Add traffic toggle button
                     const trafficToggle = L.control({position: 'topright'});
@@ -846,14 +847,14 @@
                         `;
                         return div;
                     };
-                    trafficToggle.addTo(map);
+                    trafficToggle.addTo(globalMap);
                 } else {
                     console.warn('TomTom API key not configured - traffic layer disabled');
                 }
                 
                 // Add marker for user's location
                 L.marker([userLat, userLon])
-                    .addTo(map)
+                    .addTo(globalMap)
                     .bindPopup(`📍 ${locationName}`)
                     .openPopup();
                 
@@ -863,12 +864,12 @@
                     fillColor: '#42A5F5',
                     fillOpacity: 0.15,
                     radius: 8000 // 8km radius
-                }).addTo(map);
+                }).addTo(globalMap);
                 
                 // Fetch and display traffic incidents
                 fetchTrafficIncidents().then(incidents => {
                     if (incidents.length > 0) {
-                        displayTrafficIncidents(incidents, map);
+                        displayTrafficIncidents(incidents, globalMap);
                     }
                 });
             }, 500);
@@ -953,25 +954,19 @@
         // Toggle traffic layer on/off
         let trafficVisible = true;
         function toggleTraffic() {
-            if (trafficLayer) {
+            if (trafficLayer && globalMap) {
                 if (trafficVisible) {
                     trafficLayer.remove();
                     document.querySelector('.traffic-toggle-btn button').innerHTML = '🚦 Traffic: OFF';
                     document.querySelector('.traffic-toggle-btn button').style.background = '#666';
                 } else {
-                    const map = document.querySelector('#traffic-map')._leaflet_map;
-                    if (map) {
-                        trafficLayer.addTo(map);
-                        document.querySelector('.traffic-toggle-btn button').innerHTML = '🚦 Traffic: ON';
-                        document.querySelector('.traffic-toggle-btn button').style.background = 'linear-gradient(135deg, #1E88E5, #42A5F5)';
-                    }
+                    trafficLayer.addTo(globalMap);
+                    document.querySelector('.traffic-toggle-btn button').innerHTML = '🚦 Traffic: ON';
+                    document.querySelector('.traffic-toggle-btn button').style.background = 'linear-gradient(135deg, #1E88E5, #42A5F5)';
                 }
                 trafficVisible = !trafficVisible;
             }
         }
-        
-        // Make map globally accessible for traffic toggle
-        let globalMap = null;
     </script>
 </body>
 </html>
