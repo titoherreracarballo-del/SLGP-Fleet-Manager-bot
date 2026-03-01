@@ -17,7 +17,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.1';
+const VERSION_STRING = '4.6.2';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -928,6 +928,522 @@ app.post('/submit-report', async (req, res) => {
 });
 
 // ============================================
+// LEARNING AI SYSTEM - DATABASES
+// ============================================
+const ISSUE_HISTORY_FILE = path.join(VOLUME_PATH, 'issue_history.json');
+const KNOWLEDGE_BASE_FILE = path.join(VOLUME_PATH, 'fleet_knowledge_base.json');
+
+// Initialize learning databases
+function initializeLearningSystem() {
+    // Issue History Database
+    if (!fs.existsSync(ISSUE_HISTORY_FILE)) {
+        const initialHistory = {
+            total_issues: 0,
+            classifications: [],
+            patterns: {},
+            last_updated: new Date().toISOString()
+        };
+        fs.writeFileSync(ISSUE_HISTORY_FILE, JSON.stringify(initialHistory, null, 2));
+        console.log('✅ Issue history database initialized');
+    }
+    
+    // Fleet Knowledge Base
+    if (!fs.existsSync(KNOWLEDGE_BASE_FILE)) {
+        const initialKnowledge = {
+            common_issues: {
+                brake_problems: {
+                    keywords: ["grinding", "squealing", "brake", "stopping", "shake", "vibration"],
+                    priority: "HIGH_PRIORITY",
+                    category: "Brakes Squealing / Grinding",
+                    typical_causes: ["worn brake pads", "warped rotors", "brake fluid low"],
+                    fleet_frequency: 0
+                },
+                battery_issues: {
+                    keywords: ["won't start", "dead battery", "clicking", "no power"],
+                    priority: "HIGH_PRIORITY",
+                    category: "Flat Tire / Battery Dead",
+                    typical_causes: ["battery age", "alternator failure", "parasitic drain"],
+                    fleet_frequency: 0
+                },
+                charging_issues: {
+                    keywords: ["not charging", "charge", "plug", "EDV", "electric"],
+                    priority: "EDV_ELECTRIC",
+                    category: "Vehicle Not Charging",
+                    typical_causes: ["charging port damage", "cable fault", "onboard charger"],
+                    fleet_frequency: 0
+                },
+                cosmetic_damage: {
+                    keywords: ["scratch", "dent", "paint", "cosmetic", "minor damage"],
+                    priority: "LOW_PRIORITY",
+                    category: "Light Scratches",
+                    typical_causes: ["parking incidents", "debris", "normal wear"],
+                    fleet_frequency: 0
+                }
+            },
+            vehicle_specific: {
+                rivian: {
+                    common_issues: ["charging port", "bulkhead door", "key fob battery"],
+                    priority_override: "EDV_ELECTRIC"
+                },
+                diesel: {
+                    common_issues: ["DEF system", "exhaust", "turbo"],
+                    watches: ["DEF light", "exhaust smoke", "power loss"]
+                }
+            },
+            learned_patterns: {},
+            last_updated: new Date().toISOString()
+        };
+        fs.writeFileSync(KNOWLEDGE_BASE_FILE, JSON.stringify(initialKnowledge, null, 2));
+        console.log('✅ Fleet knowledge base initialized');
+    }
+}
+
+initializeLearningSystem();
+
+// Load learning data
+function loadLearningData() {
+    try {
+        const history = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
+        const knowledge = JSON.parse(fs.readFileSync(KNOWLEDGE_BASE_FILE, 'utf8'));
+        return { history, knowledge };
+    } catch (e) {
+        console.error('Failed to load learning data:', e);
+        return { history: { classifications: [] }, knowledge: { common_issues: {} } };
+    }
+}
+
+// Save classification to history
+function saveClassification(description, classification, vehicleType, vinLast4) {
+    try {
+        const history = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
+        
+        history.total_issues++;
+        history.classifications.push({
+            timestamp: new Date().toISOString(),
+            description: description,
+            classification: classification,
+            vehicle_type: vehicleType,
+            vin: vinLast4
+        });
+        
+        // Keep only last 500 classifications to prevent file bloat
+        if (history.classifications.length > 500) {
+            history.classifications = history.classifications.slice(-500);
+        }
+        
+        // Update patterns
+        const priorityKey = classification.priority;
+        if (!history.patterns[priorityKey]) {
+            history.patterns[priorityKey] = 0;
+        }
+        history.patterns[priorityKey]++;
+        
+        history.last_updated = new Date().toISOString();
+        
+        fs.writeFileSync(ISSUE_HISTORY_FILE, JSON.stringify(history, null, 2));
+        console.log(`📚 Classification saved to learning database (Total: ${history.total_issues})`);
+    } catch (e) {
+        console.error('Failed to save classification:', e);
+    }
+}
+
+// Update knowledge base with learned patterns
+function updateKnowledgeBase(description, classification) {
+    try {
+        const knowledge = JSON.parse(fs.readFileSync(KNOWLEDGE_BASE_FILE, 'utf8'));
+        
+        // Extract keywords from description
+        const words = description.toLowerCase().split(/\s+/);
+        
+        // Find matching common issue
+        for (const [issueKey, issueData] of Object.entries(knowledge.common_issues)) {
+            const matches = issueData.keywords.filter(keyword => 
+                words.some(word => word.includes(keyword) || keyword.includes(word))
+            );
+            
+            if (matches.length > 0) {
+                issueData.fleet_frequency++;
+                console.log(`📊 Updated frequency for ${issueKey}: ${issueData.fleet_frequency}`);
+            }
+        }
+        
+        // Learn new patterns
+        const categoryKey = classification.category.toLowerCase().replace(/\s+/g, '_');
+        if (!knowledge.learned_patterns[categoryKey]) {
+            knowledge.learned_patterns[categoryKey] = {
+                count: 0,
+                example_descriptions: []
+            };
+        }
+        
+        knowledge.learned_patterns[categoryKey].count++;
+        if (knowledge.learned_patterns[categoryKey].example_descriptions.length < 5) {
+            knowledge.learned_patterns[categoryKey].example_descriptions.push(description);
+        }
+        
+        knowledge.last_updated = new Date().toISOString();
+        
+        fs.writeFileSync(KNOWLEDGE_BASE_FILE, JSON.stringify(knowledge, null, 2));
+        console.log('🧠 Knowledge base updated with new patterns');
+    } catch (e) {
+        console.error('Failed to update knowledge base:', e);
+    }
+}
+
+// Build contextual prompt with learning data
+function buildLearningPrompt(description, vehicleType, vinLast4, learningData) {
+    const { history, knowledge } = learningData;
+    
+    // Get recent similar classifications
+    const recentSimilar = history.classifications
+        .filter(c => {
+            const descWords = description.toLowerCase().split(/\s+/);
+            const histWords = c.description.toLowerCase().split(/\s+/);
+            const overlap = descWords.filter(w => histWords.includes(w)).length;
+            return overlap > 2; // At least 2 word overlap
+        })
+        .slice(-3); // Last 3 similar issues
+    
+    // Build historical context
+    let historicalContext = '';
+    if (recentSimilar.length > 0) {
+        historicalContext = '\n\nRECENT SIMILAR ISSUES:\n';
+        recentSimilar.forEach((item, idx) => {
+            historicalContext += `${idx + 1}. "${item.description}" → ${item.classification.priority} (${item.classification.category})\n`;
+        });
+    }
+    
+    // Build fleet knowledge context
+    let fleetContext = '\n\nFLEET-SPECIFIC KNOWLEDGE:\n';
+    if (vehicleType && vehicleType.toLowerCase().includes('rivian')) {
+        fleetContext += '- Vehicle is Electric (Rivian EDV)\n';
+        fleetContext += '- Common Rivian issues: charging port, bulkhead door, key fob battery\n';
+        fleetContext += '- Prioritize as EDV_ELECTRIC for electric-specific issues\n';
+    }
+    if (vehicleType && vehicleType.toLowerCase().includes('diesel')) {
+        fleetContext += '- Vehicle is Diesel\n';
+        fleetContext += '- Watch for: DEF system, exhaust, turbo issues\n';
+    }
+    
+    // Add frequency data
+    const topIssues = Object.entries(knowledge.common_issues)
+        .sort((a, b) => b[1].fleet_frequency - a[1].fleet_frequency)
+        .slice(0, 3);
+    
+    if (topIssues.length > 0) {
+        fleetContext += '\nMOST COMMON ISSUES IN THIS FLEET:\n';
+        topIssues.forEach(([key, data]) => {
+            fleetContext += `- ${data.category} (${data.fleet_frequency} occurrences)\n`;
+        });
+    }
+    
+    return `You are analyzing a vehicle issue for SLGP Fleet. Use your knowledge AND the historical data below to make an accurate classification.
+
+CURRENT ISSUE: "${description}"
+VEHICLE: ${vehicleType || 'Unknown'} (VIN: ${vinLast4})
+${historicalContext}${fleetContext}
+
+CLASSIFICATION RULES:
+1. HIGH PRIORITY - Safety-critical issues requiring immediate attention:
+   - Brakes squealing/grinding/failure
+   - Tire blowout/extreme wear/flat tire
+   - Steering problems/column loose
+   - Vehicle won't start/dead battery
+   - Burning smell/fluid leaks
+   - Doors stuck (affects deliveries)
+   - Lights out (safety hazard)
+   - Backup camera failure
+   - Low DEF warning (diesel)
+   - Missing license plate/tag
+
+2. EDV_ELECTRIC - Electric vehicle specific issues (Rivian fleet):
+   - Key fob battery low
+   - Vehicle not charging/charging issues
+   - Electric system warning lights
+   - Bulkhead door problems
+   - Severe body damage
+   - Broken mirror/glass
+
+3. LOW_PRIORITY - Minor issues not affecting immediate safety/operation:
+   - Light scratches/cosmetic damage
+   - Interior cleanliness
+   - Door sensor errors (non-critical)
+   - Seat adjustment problems
+   - Radio/audio malfunctions
+   - QR code faded/unreadable
+
+IMPORTANT:
+- Learn from historical patterns above
+- Consider vehicle type (Electric vs Gas vs Diesel)
+- Match to most common fleet issues when applicable
+- Use confidence score based on clarity of description
+
+Respond ONLY with valid JSON (no markdown, no backticks):
+{
+  "priority": "HIGH_PRIORITY" or "EDV_ELECTRIC" or "LOW_PRIORITY",
+  "category": "specific issue category from lists above",
+  "confidence": 0.0 to 1.0,
+  "reasoning": "brief explanation including any historical pattern matches"
+}`;
+}
+
+// ============================================
+// LEARNING AI ISSUE REPORT ENDPOINT
+// ============================================
+app.post('/submit-issue-ai', async (req, res) => {
+    try {
+        const { driverName, vinLast4, vehicleType, issueDescription, date, time, photos } = req.body;
+        
+        if (!driverName || !vinLast4 || !issueDescription) {
+            return res.status(400).json({ success: false, error: 'Missing required fields' });
+        }
+
+        console.log(`\n🔍 Issue Report - Driver: ${driverName}, VIN: ${vinLast4}`);
+        console.log(`📝 Description: "${issueDescription}"`);
+
+        // Load learning data
+        const learningData = loadLearningData();
+        console.log(`🧠 Loaded ${learningData.history.total_issues} historical classifications`);
+
+        // Build contextual prompt with learning
+        const classificationPrompt = buildLearningPrompt(issueDescription, vehicleType, vinLast4, learningData);
+
+        // Call Claude API with learning context
+        let aiResponse = null;
+        try {
+            const apiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-20250514',
+                    max_tokens: 500,
+                    messages: [{
+                        role: 'user',
+                        content: classificationPrompt
+                    }]
+                })
+            });
+
+            if (!apiResponse.ok) {
+                throw new Error(`Claude API error: ${apiResponse.status}`);
+            }
+
+            const apiData = await apiResponse.json();
+            const responseText = apiData.content[0].text;
+            aiResponse = JSON.parse(responseText);
+            
+            console.log(`🤖 Classification: ${aiResponse.priority} - ${aiResponse.category}`);
+            console.log(`📊 Confidence: ${Math.round(aiResponse.confidence * 100)}%`);
+            console.log(`💡 Reasoning: ${aiResponse.reasoning}`);
+            
+            // Save to learning database
+            saveClassification(issueDescription, aiResponse, vehicleType, vinLast4);
+            
+            // Update knowledge base
+            updateKnowledgeBase(issueDescription, aiResponse);
+            
+        } catch (aiError) {
+            console.error('❌ AI Classification failed:', aiError.message);
+            // Fallback classification
+            aiResponse = {
+                priority: 'HIGH_PRIORITY',
+                category: 'Other (See Notes)',
+                confidence: 0.5,
+                reasoning: 'AI unavailable - defaulting to high priority for safety'
+            };
+        }
+
+        // Map priority to report type
+        let reportType = 'General Issue';
+        if (aiResponse.priority === 'HIGH_PRIORITY') reportType = 'High Priority Issue';
+        else if (aiResponse.priority === 'EDV_ELECTRIC') reportType = 'Electric Vehicle Issue';
+        else if (aiResponse.priority === 'LOW_PRIORITY') reportType = 'Low Priority Issue';
+
+        // Create PDF report
+        const doc = await PDFDocument.create();
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+        const fontReg = await doc.embedFont(StandardFonts.Helvetica);
+        
+        let page = doc.addPage([600, 800]);
+        let y = 780;
+        
+        // Header
+        const headerColor = aiResponse.priority === 'HIGH_PRIORITY' ? rgb(0.9, 0.2, 0.2) :
+                           aiResponse.priority === 'EDV_ELECTRIC' ? rgb(0.145, 0.388, 0.922) :
+                           rgb(0.4, 0.6, 0.3);
+        
+        page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: headerColor });
+        page.drawText('FLEET ISSUE REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
+        page.drawText(`Filed: ${date} ${time}`, { x: 30, y: 730, size: 10, font: fontReg, color: rgb(1,1,1) });
+        page.drawText(`Priority: ${aiResponse.priority}`, { x: 30, y: 710, size: 12, font: fontBold, color: rgb(1,1,1) });
+        
+        y = 680;
+        
+        // Classification
+        page.drawText('CLASSIFICATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0.2,0.2,0.2) });
+        y -= 20;
+        page.drawText(`Category: ${aiResponse.category}`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+        y -= 15;
+        page.drawText(`Confidence: ${Math.round(aiResponse.confidence * 100)}%`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+        y -= 15;
+        const reasoningLines = wrapText(aiResponse.reasoning, fontReg, 9, 540);
+        for (let line of reasoningLines.slice(0, 3)) {
+            page.drawText(line, { x: 30, y, size: 9, font: fontReg, color: rgb(0.3,0.3,0.3) });
+            y -= 12;
+        }
+        y -= 15;
+        
+        // Driver & Vehicle Info
+        page.drawText('DRIVER & VEHICLE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+        y -= 20;
+        page.drawText(`Driver: ${driverName}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+        y -= 15;
+        page.drawText(`VIN: ${vinLast4} | Type: ${vehicleType || 'Unknown'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+        y -= 25;
+        
+        // Description
+        page.drawText('ISSUE DESCRIPTION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+        y -= 20;
+        const descLines = wrapText(issueDescription, fontReg, 10, 540);
+        for (let line of descLines) {
+            if (y < 50) {
+                page = doc.addPage([600, 800]);
+                y = 780;
+            }
+            page.drawText(line, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) });
+            y -= 15;
+        }
+        y -= 10;
+        
+        // Evidence
+        if (photos && photos.length > 0) {
+            page.drawText('EVIDENCE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) });
+            y -= 20;
+            page.drawText(`${photos.length} file(s) attached to email`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) });
+        }
+        
+        const pdfPath = path.join(UPLOAD_DIR, `Issue_${driverName}_${Date.now()}.pdf`);
+        fs.writeFileSync(pdfPath, await doc.save());
+        
+        // Prepare email attachments
+        const emailAttachments = [{ filename: 'Issue_Report.pdf', path: pdfPath }];
+        
+        // Attach photos/videos
+        if (photos && photos.length > 0) {
+            console.log(`📧 Attaching ${photos.length} files...`);
+            for (let i = 0; i < photos.length; i++) {
+                try {
+                    const fileBuffer = Buffer.from(photos[i].data, 'base64');
+                    const ext = photos[i].name.includes('.mp4') || photos[i].name.includes('video') ? 'mp4' : 'jpg';
+                    const filePath = path.join(UPLOAD_DIR, `evidence_${Date.now()}_${i}.${ext}`);
+                    fs.writeFileSync(filePath, fileBuffer);
+                    emailAttachments.push({
+                        filename: `Evidence_${i+1}.${ext}`,
+                        path: filePath
+                    });
+                } catch (e) {
+                    console.error(`❌ File ${i+1} attachment failed:`, e.message);
+                }
+            }
+        }
+        
+        // Send email
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
+        
+        const priorityEmoji = aiResponse.priority === 'HIGH_PRIORITY' ? '🚨' :
+                             aiResponse.priority === 'EDV_ELECTRIC' ? '⚡' : '📋';
+        
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `${priorityEmoji} ${reportType}: ${aiResponse.category} - ${driverName.toUpperCase()} (VIN: ${vinLast4})`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                    <div style="background: linear-gradient(135deg, ${aiResponse.priority === 'HIGH_PRIORITY' ? '#EF4444 0%, #DC2626' : aiResponse.priority === 'EDV_ELECTRIC' ? '#2563EB 0%, #1d4ed8' : '#10b981 0%, #059669'} 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                        <h1 style="color: white; margin: 0; font-size: 28px;">${priorityEmoji} ${reportType}</h1>
+                        <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">${aiResponse.category}</p>
+                    </div>
+                    <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Issue Details</h2>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                            <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
+                            <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vinLast4}</td></tr>
+                            <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Vehicle:</td><td style="padding: 12px; color: #1f2937;">${vehicleType || 'Unknown'}</td></tr>
+                            <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Priority:</td><td style="padding: 12px; color: #1f2937;">${reportType}</td></tr>
+                            <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Confidence:</td><td style="padding: 12px; color: #1f2937;">${Math.round(aiResponse.confidence * 100)}%</td></tr>
+                        </table>
+                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                            <h3 style="color: #92400e; margin: 0 0 10px 0; font-size: 14px;">Driver Description</h3>
+                            <p style="margin: 0; color: #78350f; font-size: 13px; line-height: 1.6;">${issueDescription}</p>
+                        </div>
+                        ${photos && photos.length > 0 ? `
+                        <div style="background: #dbeafe; border-left: 4px solid #2563EB; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                            <p style="margin: 0; color: #1e3a8a; font-size: 13px;"><strong>${photos.length} file(s) attached</strong></p>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `,
+            attachments: emailAttachments
+        });
+        
+        console.log(`✅ Email sent with ${emailAttachments.length} attachments`);
+        
+        // Cleanup
+        fs.unlinkSync(pdfPath);
+        for (let i = 1; i < emailAttachments.length; i++) {
+            try { fs.unlinkSync(emailAttachments[i].path); } catch (e) {}
+        }
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        console.error('❌ Issue submission error:', error);
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'error',
+            message: 'Issue submission failed',
+            stack: error.stack,
+            source: 'submit-issue-ai'
+        });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// KNOWLEDGE BASE MANAGEMENT API (OPTIONAL - FOR ADMIN USE)
+// ============================================
+app.get('/api/knowledge-base', (req, res) => {
+    const password = req.query.key;
+    if (password !== 'slgp-admin-2026') {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    try {
+        const knowledge = JSON.parse(fs.readFileSync(KNOWLEDGE_BASE_FILE, 'utf8'));
+        const history = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
+        
+        res.json({
+            knowledge_base: knowledge,
+            issue_history: {
+                total_issues: history.total_issues,
+                patterns: history.patterns,
+                recent_classifications: history.classifications.slice(-10)
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ============================================
 // VIDEO UPLOAD WITH DIRECT STREAMING
 // ============================================
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -1368,7 +1884,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.1 - CORRIDOR ALERTS                ║
+║  v4.6.2 - LEARNING AI                    ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1378,18 +1894,20 @@ app.listen(PORT, '0.0.0.0', () => {
 ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
+✅ Learning AI initialized
+✅ Knowledge base loaded
 
-📝 NEW FEATURES v4.6.1:
-   🚦 Corridor traffic alerts (8 major routes)
-   🗺️ Alternative route suggestions
-   ❌ Removed weekend traffic assumption
-   🌅 Sunset approaching alert (60 min warning)
-   📊 Speed ratio display (% of normal)
-   📍 7 new delivery zones added
+📝 NEW FEATURES v4.6.2:
+   🧠 Silent learning AI (invisible to drivers)
+   📚 Issue history database (continuous learning)
+   🎯 Fleet-specific pattern recognition
+   📧 Photos/videos in email (not Drive)
+   🔍 Historical context in classifications
 
 🌐 Ready at: http://localhost:${PORT}
 🚦 Route Planning: http://localhost:${PORT}/weather
 📋 Build Notes: http://localhost:${PORT}/build-notes
+🧠 Knowledge Base: http://localhost:${PORT}/api/knowledge-base?key=slgp-admin-2026
     `);
 });
 
