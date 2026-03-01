@@ -242,7 +242,89 @@
     
     <div class="header">
         <h1>Build Notes</h1>
-        <div class="version">Current Version: 4.6.1</div>
+        <div class="version">Current Version: 4.6.2</div>
+    </div>
+
+    <!-- BUILD v4.6.2 - March 1, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 1, 2026</div>
+            <div class="build-version">v4.6.2</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🧠 SILENT LEARNING AI SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Invisible Classification:</span> AI analyzes issues in background - drivers never see it working</li>
+                <li class="change-item"><span class="highlight">Continuous Learning:</span> System remembers every classification and improves over time</li>
+                <li class="change-item"><span class="highlight">Fleet Knowledge Base:</span> Builds database of common issues specific to SLGP fleet</li>
+                <li class="change-item"><span class="highlight">Historical Context:</span> AI references similar past issues when classifying new reports</li>
+                <li class="change-item"><span class="highlight">Pattern Recognition:</span> Tracks issue frequency and adapts to fleet-specific problems</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">📚 LEARNING DATABASE SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Issue History Database:</span> Stores all classifications with descriptions, confidence scores, and reasoning</li>
+                <li class="change-item"><span class="highlight">Knowledge Base:</span> Pre-seeded with common vehicle issues and learns fleet-specific patterns</li>
+                <li class="change-item"><span class="highlight">Frequency Tracking:</span> Counts how often each issue occurs in the fleet</li>
+                <li class="change-item"><span class="highlight">Vehicle-Specific Learning:</span> Adapts to Rivian EDV, diesel, and gas vehicle differences</li>
+                <li class="change-item"><span class="highlight">Admin API:</span> View knowledge base and learning statistics at /api/knowledge-base?key=slgp-admin-2026</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">📧 EMAIL ATTACHMENT SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Photos/Videos in Email:</span> All media files attached directly to email (no Google Drive)</li>
+                <li class="change-item"><span class="highlight">Instant Access:</span> Fleet managers receive everything in one email</li>
+                <li class="change-item"><span class="highlight">Multiple Files Supported:</span> Accept both photos and videos in single submission</li>
+                <li class="change-item"><span class="highlight">Auto-Cleanup:</span> Temporary files deleted after email sent</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🎨 UI IMPROVEMENTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">No AI Branding:</span> Drivers see simple, clean issue reporting form</li>
+                <li class="change-item"><span class="highlight">Natural Language:</span> Just describe the issue - no categories to select</li>
+                <li class="change-item"><span class="highlight">Simplified Form:</span> Fewer clicks, faster reporting</li>
+                <li class="change-item"><span class="highlight">Standard Submit Button:</span> No mention of AI or automation</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📊 TECHNICAL IMPLEMENTATION</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">Learning Files:</span> issue_history.json and fleet_knowledge_base.json</li>
+                <li class="change-item"><span class="code">Claude API:</span> Uses claude-sonnet-4-20250514 with historical context</li>
+                <li class="change-item"><span class="code">Adaptive Prompts:</span> Includes recent similar issues and fleet patterns</li>
+                <li class="change-item"><span class="code">Auto-Initialize:</span> Creates knowledge base on first run with common issues</li>
+                <li class="change-item"><span class="code">History Limit:</span> Keeps last 500 classifications to prevent database bloat</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🔍 HOW LEARNING WORKS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Step 1:</span> Driver submits issue description</li>
+                <li class="change-item"><span class="highlight">Step 2:</span> AI loads historical data and fleet knowledge</li>
+                <li class="change-item"><span class="highlight">Step 3:</span> AI finds similar past issues for context</li>
+                <li class="change-item"><span class="highlight">Step 4:</span> AI classifies using learned patterns</li>
+                <li class="change-item"><span class="highlight">Step 5:</span> Classification saved to database for future learning</li>
+                <li class="change-item"><span class="highlight">Step 6:</span> Knowledge base updated with new patterns</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">report-issue.html</span> - Removed AI branding, natural input form, v4.6.2</li>
+                <li class="change-item"><span class="code">index.js</span> - Learning AI system, knowledge base, history tracking, v4.6.2</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.2</li>
+            </ul>
+        </div>
     </div>
 
     <!-- BUILD v4.6.1 - March 1, 2026 -->
