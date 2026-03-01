@@ -242,7 +242,54 @@
     
     <div class="header">
         <h1>Build Notes</h1>
-        <div class="version">Current Version: 4.6.0</div>
+        <div class="version">Current Version: 4.6.1</div>
+    </div>
+
+    <!-- BUILD v4.6.1 - March 1, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 1, 2026</div>
+            <div class="build-version">v4.6.1</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 WEATHER SYSTEM IMPROVEMENTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Removed Inaccurate Logic:</span> Eliminated weekend traffic assumption (was not data-driven)</li>
+                <li class="change-item"><span class="highlight">Real Traffic Data:</span> Integrated TomTom Traffic Flow API for actual road conditions</li>
+                <li class="change-item"><span class="highlight">Sunset Alert:</span> Added alert when sunset is approaching within 60 minutes</li>
+                <li class="change-item"><span class="highlight">Speed Ratio Display:</span> Shows current speed vs normal speed (e.g., "72% of normal")</li>
+                <li class="change-item"><span class="highlight">Data-Driven Alerts:</span> Traffic conditions based on real API measurements, not assumptions</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🌅 NEW ALERT TYPES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Sunset Approaching:</span> "🌅 SUNSET APPROACHING (45 min)" with flash reminder</li>
+                <li class="change-item"><span class="highlight">Heavy Traffic:</span> "🚨 HEAVY TRAFFIC" when speed <50% of normal</li>
+                <li class="change-item"><span class="highlight">Moderate Traffic:</span> "⚠️ MODERATE TRAFFIC" when speed 50-80% of normal</li>
+                <li class="change-item"><span class="highlight">Light Traffic:</span> "✅ LIGHT TRAFFIC" when speed >80% of normal</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📊 TECHNICAL CHANGES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">TomTom API:</span> Fetches real-time traffic flow data for user's location</li>
+                <li class="change-item"><span class="code">Sunset Calculation:</span> Compares current time to sunset time for proximity alerts</li>
+                <li class="change-item"><span class="code">Speed Analysis:</span> Calculates currentSpeed/freeFlowSpeed ratio for traffic status</li>
+                <li class="change-item"><span class="code">Removed:</span> Hardcoded weekend and time-of-day traffic assumptions</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">weather.html</span> - Real TomTom traffic integration, sunset alerts, v4.6.1</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.1</li>
+            </ul>
+        </div>
     </div>
 
     <!-- BUILD v4.6.0 - February 28, 2026 -->
