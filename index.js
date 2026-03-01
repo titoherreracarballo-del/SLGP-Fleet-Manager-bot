@@ -1368,7 +1368,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.1 - WEATHER IMPROVEMENTS           ║
+║  v4.6.1 - CORRIDOR ALERTS                ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1380,24 +1380,15 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
 📝 NEW FEATURES v4.6.1:
+   🚦 Corridor traffic alerts (8 major routes)
+   🗺️ Alternative route suggestions
    ❌ Removed weekend traffic assumption
-   ✅ Real TomTom traffic data integration
    🌅 Sunset approaching alert (60 min warning)
-   🚗 Data-driven traffic conditions
    📊 Speed ratio display (% of normal)
-
-📝 FEATURES v4.6.0:
-   ✅ Today's Forecast & Road Conditions
-   ✅ Real-time weather with hourly updates
-   ✅ Sunset time for flash detection
-   ✅ Live traffic map for Atlanta metro
-   ✅ Weather-based road alerts
-   ✅ Peak hour warnings
-   ✅ Blue gradient UI redesign
-   ✅ Dark theme with SF Pro fonts
+   📍 7 new delivery zones added
 
 🌐 Ready at: http://localhost:${PORT}
-⛅ Weather & Traffic: http://localhost:${PORT}/weather
+🚦 Route Planning: http://localhost:${PORT}/weather
 📋 Build Notes: http://localhost:${PORT}/build-notes
     `);
 });
