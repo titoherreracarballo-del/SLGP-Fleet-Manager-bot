@@ -382,7 +382,85 @@
         let userLat = null;
         let userLon = null;
         let locationName = "Getting location...";
+        let trafficLayer = null;
         const UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour
+        
+        // TomTom Traffic API Key - Get free key at: https://developer.tomtom.com/
+        // Free tier: 2,500 requests/day (plenty for fleet use)
+        const TOMTOM_API_KEY = 'YOUR_TOMTOM_API_KEY'; // Replace with your free TomTom key
+        
+        // Fetch traffic incidents (accidents, closures, construction)
+        async function fetchTrafficIncidents() {
+            if (!userLat || !userLon) return [];
+            
+            try {
+                // Using HERE Traffic API (free tier: 250k transactions/month)
+                // Get free key at: https://developer.here.com/
+                const HERE_API_KEY = 'YOUR_HERE_API_KEY'; // Replace with your free HERE key
+                
+                if (HERE_API_KEY === 'YOUR_HERE_API_KEY') {
+                    console.warn('HERE API key not configured - traffic incidents disabled');
+                    return [];
+                }
+                
+                // Search for incidents within 10km radius
+                const radius = 10000; // 10km
+                const url = `https://data.traffic.hereapi.com/v7/incidents?in=circle:${userLat},${userLon};r=${radius}&apiKey=${HERE_API_KEY}`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                return data.results || [];
+            } catch (error) {
+                console.error('Traffic incident fetch failed:', error);
+                return [];
+            }
+        }
+        
+        // Check for heavy traffic based on current time and weather
+        function detectHeavyTraffic(weatherCode, hour) {
+            const alerts = [];
+            
+            // Peak hours traffic
+            if ((hour >= 7 && hour <= 9) || (hour >= 16 && hour <= 19)) {
+                alerts.push({
+                    type: 'peak_hours',
+                    severity: 'moderate',
+                    title: '🚦 Peak Hours Traffic',
+                    message: 'Heavy traffic expected on major routes. Allow extra delivery time and use alternate routes when possible.'
+                });
+            }
+            
+            // Weather-based traffic
+            if (weatherCode >= 61 && weatherCode <= 65) {
+                alerts.push({
+                    type: 'rain_traffic',
+                    severity: 'high',
+                    title: '🌧️ Rain Causing Slowdowns',
+                    message: 'Wet roads are slowing traffic. Reduce speed, increase following distance, and expect delays.'
+                });
+            }
+            
+            if (weatherCode >= 71 && weatherCode <= 75) {
+                alerts.push({
+                    type: 'snow_traffic',
+                    severity: 'critical',
+                    title: '❄️ Snow Impacting Traffic',
+                    message: 'Snow is causing significant delays and hazardous conditions. Use extreme caution and consider route changes.'
+                });
+            }
+            
+            if (weatherCode >= 95) {
+                alerts.push({
+                    type: 'storm_traffic',
+                    severity: 'critical',
+                    title: '⛈️ Severe Weather Traffic Impact',
+                    message: 'Thunderstorms causing dangerous driving conditions. Seek shelter if possible and avoid travel during severe weather.'
+                });
+            }
+            
+            return alerts;
+        }
         
         // Get user's current GPS location
         async function getUserLocation() {
@@ -486,9 +564,37 @@
             const hourly = weather.hourly;
             const now = new Date();
             const hour = now.getHours();
+            const isWeekend = (now.getDay() === 0 || now.getDay() === 6);
             
             // Build alerts
             let alertsHTML = '';
+            
+            // High wind alert
+            if (current.wind_speed_10m >= 25) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">💨 HIGH WIND ADVISORY</div>
+                        <div class="alert-description">Winds at ${Math.round(current.wind_speed_10m)} mph. Use caution when driving, especially with high-profile vehicles. Secure loose items.</div>
+                    </div>
+                `;
+            }
+            
+            // Temperature extreme alerts
+            if (current.temperature_2m >= 95) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌡️ EXCESSIVE HEAT WARNING</div>
+                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Stay hydrated, take breaks in air conditioning, and check vehicle cooling system.</div>
+                    </div>
+                `;
+            } else if (current.temperature_2m <= 32) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🥶 FREEZING TEMPERATURE ALERT</div>
+                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Watch for ice on roads, bridges, and overpasses. Allow extra time for vehicle warm-up.</div>
+                    </div>
+                `;
+            }
             
             // Severe weather alerts
             if (current.weather_code >= 95) {
@@ -512,14 +618,41 @@
                         <div class="alert-description">Rain expected today. Roads may be slippery. Increase following distance and reduce speed.</div>
                     </div>
                 `;
+            } else if (current.weather_code >= 45 && current.weather_code <= 48) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌫️ FOG / LOW VISIBILITY</div>
+                        <div class="alert-description">Foggy conditions reducing visibility. Use low-beam headlights, reduce speed, and increase following distance.</div>
+                    </div>
+                `;
             }
             
-            // Peak hour warning
-            if ((hour >= 7 && hour <= 9) || (hour >= 16 && hour <= 19)) {
+            // Peak hour warning (weekday only)
+            if (!isWeekend && ((hour >= 7 && hour <= 9) || (hour >= 16 && hour <= 19))) {
                 alertsHTML += `
                     <div class="warning-banner">
                         <div class="alert-title">⏰ PEAK HOURS ALERT</div>
                         <div class="alert-description">Heavy traffic expected on major routes. Allow extra delivery time and use alternate routes when possible.</div>
+                    </div>
+                `;
+            }
+            
+            // Weekend light traffic notice
+            if (isWeekend && hour >= 10 && hour <= 15) {
+                alertsHTML += `
+                    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: var(--radius); padding: var(--space-md); margin-bottom: var(--space-md); border: 2px solid #34d399;">
+                        <div style="font-size: var(--font-md); font-weight: 800; margin-bottom: var(--space-xs); text-transform: uppercase; color: #1C1C1E;">✅ WEEKEND - LIGHT TRAFFIC</div>
+                        <div style="font-size: var(--font-sm); line-height: 1.5; color: #1C1C1E;">Reduced traffic expected. Good conditions for deliveries.</div>
+                    </div>
+                `;
+            }
+            
+            // Early morning optimal conditions
+            if (hour >= 5 && hour < 7) {
+                alertsHTML += `
+                    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: var(--radius); padding: var(--space-md); margin-bottom: var(--space-md); border: 2px solid #34d399;">
+                        <div style="font-size: var(--font-md); font-weight: 800; margin-bottom: var(--space-xs); text-transform: uppercase; color: #1C1C1E;">🌅 EARLY MORNING - OPTIMAL CONDITIONS</div>
+                        <div style="font-size: var(--font-sm); line-height: 1.5; color: #1C1C1E;">Light traffic and good visibility. Excellent time for deliveries.</div>
                     </div>
                 `;
             }
@@ -600,7 +733,7 @@
                 </div>
                 
                 <div class="legend">
-                    <div class="legend-title">🗺️ Interactive Map</div>
+                    <div class="legend-title">🗺️ Map Legend</div>
                     <div class="legend-items">
                         <div class="legend-item">
                             <div style="width: 20px; height: 20px; background: #1E88E5; border-radius: 50%; margin-right: 8px;"></div>
@@ -611,20 +744,59 @@
                             <span>Delivery Area</span>
                         </div>
                     </div>
-                    <div style="margin-top: var(--space-sm); font-size: var(--font-xs); color: var(--text-gray);">
-                        💡 Zoom and pan the map to explore surrounding roads and routes
+                    <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div class="legend-title" style="margin-top: 0;">🚦 Traffic Flow (when enabled)</div>
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <div style="width: 20px; height: 6px; background: #22C55E; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Free Flow</span>
+                            </div>
+                            <div class="legend-item">
+                                <div style="width: 20px; height: 6px; background: #FBBF24; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Moderate Traffic</span>
+                            </div>
+                            <div class="legend-item">
+                                <div style="width: 20px; height: 6px; background: #F97316; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Heavy Traffic</span>
+                            </div>
+                            <div class="legend-item">
+                                <div style="width: 20px; height: 6px; background: #EF4444; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Congested</span>
+                            </div>
+                        </div>
                     </div>
+                    <div style="margin-top: var(--space-sm); font-size: var(--font-xs); color: var(--text-gray);">
+                        💡 Zoom and pan the map to explore routes • Traffic updates every 5 minutes
+                    </div>
+                </div>
+
+                <!-- Traffic Incidents Section -->
+                <div id="traffic-incidents-section" style="display: none;">
+                    <div class="section-title">🚨 Active Traffic Incidents</div>
+                    <div id="traffic-incidents-list"></div>
                 </div>
                 
                 <div class="info-section">
                     <div class="section-title" style="margin-top: 0;">⚠️ Safety Reminders</div>
                     <ul class="info-list">
                         <li class="info-item">🚧 Always check GPS for real-time route updates</li>
-                        <li class="info-item">⏰ Allow extra time during peak hours (7-9 AM, 4-7 PM)</li>
+                        <li class="info-item">⏰ Allow extra time during peak hours (7-9 AM, 4-7 PM weekdays)</li>
                         <li class="info-item">🌧️ Reduce speed in wet conditions</li>
                         <li class="info-item">📱 Report road hazards via Report Issue feature</li>
                         <li class="info-item">🚨 Call dispatch for severe road closures</li>
                     </ul>
+                </div>
+                
+                <div style="background: rgba(66, 165, 245, 0.1); border-radius: var(--radius); padding: var(--space-md); border-left: 4px solid #42A5F5;">
+                    <div style="font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); color: #42A5F5;">💡 SMART ALERTS SYSTEM</div>
+                    <div style="font-size: var(--font-xs); color: var(--text-gray); line-height: 1.6;">
+                        Alerts appear automatically based on current conditions:<br>
+                        • Peak traffic hours (weekday rush hours)<br>
+                        • Weather conditions (rain, snow, fog, storms)<br>
+                        • Temperature extremes (heat, freezing)<br>
+                        • High winds (25+ mph)<br>
+                        • Optimal delivery times (early morning, weekends)
+                    </div>
                 </div>
                 
                 <div class="refresh-notice">
@@ -642,6 +814,43 @@
                     maxZoom: 19
                 }).addTo(map);
                 
+                // Add TomTom Traffic Flow overlay (shows congestion levels)
+                if (TOMTOM_API_KEY && TOMTOM_API_KEY !== 'YOUR_TOMTOM_API_KEY') {
+                    trafficLayer = L.tileLayer(
+                        `https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${TOMTOM_API_KEY}&thickness=10`,
+                        {
+                            attribution: '© TomTom',
+                            maxZoom: 19,
+                            opacity: 0.7
+                        }
+                    ).addTo(map);
+                    
+                    // Add traffic toggle button
+                    const trafficToggle = L.control({position: 'topright'});
+                    trafficToggle.onAdd = function() {
+                        const div = L.DomUtil.create('div', 'traffic-toggle-btn');
+                        div.innerHTML = `
+                            <button onclick="toggleTraffic()" style="
+                                background: linear-gradient(135deg, #1E88E5, #42A5F5);
+                                color: white;
+                                border: none;
+                                padding: 10px 15px;
+                                border-radius: 8px;
+                                font-weight: bold;
+                                cursor: pointer;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                font-size: 13px;
+                            ">
+                                🚦 Traffic: ON
+                            </button>
+                        `;
+                        return div;
+                    };
+                    trafficToggle.addTo(map);
+                } else {
+                    console.warn('TomTom API key not configured - traffic layer disabled');
+                }
+                
                 // Add marker for user's location
                 L.marker([userLat, userLon])
                     .addTo(map)
@@ -655,6 +864,13 @@
                     fillOpacity: 0.15,
                     radius: 8000 // 8km radius
                 }).addTo(map);
+                
+                // Fetch and display traffic incidents
+                fetchTrafficIncidents().then(incidents => {
+                    if (incidents.length > 0) {
+                        displayTrafficIncidents(incidents, map);
+                    }
+                });
             }, 500);
             
             document.getElementById('last-updated').textContent = locationName;
@@ -665,6 +881,97 @@
         
         // Auto-refresh every hour
         setInterval(fetchWeather, UPDATE_INTERVAL);
+        
+        // Display traffic incidents on map and in list
+        function displayTrafficIncidents(incidents, map) {
+            const section = document.getElementById('traffic-incidents-section');
+            const list = document.getElementById('traffic-incidents-list');
+            
+            if (!incidents || incidents.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            
+            section.style.display = 'block';
+            let incidentsHTML = '';
+            
+            incidents.forEach(incident => {
+                const type = incident.properties?.iconCategory || 'OTHER';
+                const description = incident.properties?.description || 'Traffic incident reported';
+                const location = incident.properties?.from || 'Unknown location';
+                const lat = incident.geometry?.coordinates?.[1];
+                const lon = incident.geometry?.coordinates?.[0];
+                
+                // Get incident icon and color
+                let icon = '⚠️';
+                let color = '#F59E0B';
+                
+                if (type.includes('ACCIDENT')) {
+                    icon = '🚗💥';
+                    color = '#EF4444';
+                } else if (type.includes('ROADWORK') || type.includes('CONSTRUCTION')) {
+                    icon = '🚧';
+                    color = '#FBBF24';
+                } else if (type.includes('ROAD_CLOSED')) {
+                    icon = '🚫';
+                    color = '#DC2626';
+                } else if (type.includes('CONGESTION')) {
+                    icon = '🐌';
+                    color = '#F97316';
+                }
+                
+                // Add to list
+                incidentsHTML += `
+                    <div style="background: rgba(255, 255, 255, 0.05); border-left: 4px solid ${color}; padding: var(--space-md); margin-bottom: var(--space-sm); border-radius: var(--radius);">
+                        <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+                            <span style="font-size: 20px;">${icon}</span>
+                            <span style="font-weight: bold; color: ${color};">${type.replace(/_/g, ' ')}</span>
+                        </div>
+                        <div style="font-size: var(--font-sm); color: var(--text-gray); margin-bottom: var(--space-xs);">📍 ${location}</div>
+                        <div style="font-size: var(--font-sm); line-height: 1.5;">${description}</div>
+                    </div>
+                `;
+                
+                // Add marker to map if coordinates available
+                if (lat && lon) {
+                    const marker = L.circleMarker([lat, lon], {
+                        radius: 8,
+                        fillColor: color,
+                        color: '#ffffff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(map);
+                    
+                    marker.bindPopup(`<strong>${icon} ${type.replace(/_/g, ' ')}</strong><br>${description}`);
+                }
+            });
+            
+            list.innerHTML = incidentsHTML;
+        }
+        
+        // Toggle traffic layer on/off
+        let trafficVisible = true;
+        function toggleTraffic() {
+            if (trafficLayer) {
+                if (trafficVisible) {
+                    trafficLayer.remove();
+                    document.querySelector('.traffic-toggle-btn button').innerHTML = '🚦 Traffic: OFF';
+                    document.querySelector('.traffic-toggle-btn button').style.background = '#666';
+                } else {
+                    const map = document.querySelector('#traffic-map')._leaflet_map;
+                    if (map) {
+                        trafficLayer.addTo(map);
+                        document.querySelector('.traffic-toggle-btn button').innerHTML = '🚦 Traffic: ON';
+                        document.querySelector('.traffic-toggle-btn button').style.background = 'linear-gradient(135deg, #1E88E5, #42A5F5)';
+                    }
+                }
+                trafficVisible = !trafficVisible;
+            }
+        }
+        
+        // Make map globally accessible for traffic toggle
+        let globalMap = null;
     </script>
 </body>
 </html>
