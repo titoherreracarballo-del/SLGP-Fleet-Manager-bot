@@ -17,7 +17,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.0';
+const VERSION_STRING = '4.6.1';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -1368,7 +1368,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.0 - WEATHER & TRAFFIC              ║
+║  v4.6.1 - WEATHER IMPROVEMENTS           ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1379,7 +1379,14 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ✅ Push notifications ready
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
-📝 NEW FEATURES v4.6.0:
+📝 NEW FEATURES v4.6.1:
+   ❌ Removed weekend traffic assumption
+   ✅ Real TomTom traffic data integration
+   🌅 Sunset approaching alert (60 min warning)
+   🚗 Data-driven traffic conditions
+   📊 Speed ratio display (% of normal)
+
+📝 FEATURES v4.6.0:
    ✅ Today's Forecast & Road Conditions
    ✅ Real-time weather with hourly updates
    ✅ Sunset time for flash detection
