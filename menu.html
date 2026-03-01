@@ -3,992 +3,887 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SLGP Fleet Portal</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="icon.jpg">
-    <link rel="icon" type="image/jpeg" href="icon.jpg">
+    <title>Today's Forecast - SLGP Fleet</title>
+    
+    <!-- Leaflet CSS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <style>
         :root {
-            /* MODERN BLUE GRADIENT THEME */
-            --bg-main: #0A6CF1;
+            --bg-body: #0A6CF1;
             --bg-card: #1C1C1E;
-            --bg-card-hover: #2C2C2E;
-            --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --bg-section: #2C2C2E;
             --primary-blue: #1976D2;
-            --primary-blue-light: #64B5F6;
-            --accent-glow: rgba(255, 255, 255, 0.25);
-            --accent-green: #4CAF50;
-            --accent-red: #F44336;
-            --accent-yellow: #FFC107;
+            --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --text-white: #ffffff;
             --text-primary: #FFFFFF;
-            --text-secondary: #8E8E93;
-            --text-on-blue: #FFFFFF;
-            --border-subtle: rgba(255, 255, 255, 0.1);
-            --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.3);
-            --shadow-card-hover: 0 12px 32px rgba(0, 0, 0, 0.4);
+            --text-gray: #8E8E93;
+            --border-color: rgba(255, 255, 255, 0.1);
             
-            /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
-            --space-sm: clamp(8px, 2vw, 12px);
-            --space-md: clamp(12px, 3vw, 16px);
-            --space-lg: clamp(16px, 4vw, 24px);
-            --space-xl: clamp(24px, 6vw, 32px);
+            --space-sm: clamp(6px, 1.5vw, 10px);
+            --space-md: clamp(10px, 2.5vw, 15px);
+            --space-lg: clamp(15px, 3.5vw, 20px);
+            --space-xl: clamp(20px, 4.5vw, 30px);
             
-            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
             --font-md: clamp(16px, 3.6vw, 18px);
             --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
+            --font-xxl: clamp(32px, 8vw, 48px);
             
-            /* MODERN RADIUS */
-            --radius-sm: clamp(12px, 3vw, 16px);
-            --radius-md: clamp(16px, 4vw, 20px);
-            --radius-lg: clamp(20px, 5vw, 24px);
-            --radius-xl: clamp(24px, 6vw, 28px);
-            
+            --radius: clamp(12px, 3vw, 16px);
             --min-touch: 44px;
         }
 
         * {
+            -webkit-tap-highlight-color: transparent;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            background: var(--bg-main);
+            background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: var(--text-on-blue);
-            min-height: 100vh;
-            padding: var(--space-lg);
+            color: white;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
+            padding: clamp(10px, 4vw, 20px);
+            margin: 0;
+            min-height: 100vh;
             font-size: var(--font-base);
-            overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
-        /* ========================================== */
-        /* SECURITY GATES STYLING */
-        /* ========================================== */
-        .gate-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-main);
-            z-index: 9999;
-            display: none;
-            justify-content: center;
-            align-items: center;
-            padding: var(--space-md);
-            overflow-y: auto;
-        }
-
-        .gate-content {
-            width: 100%;
-            max-width: 440px;
-            padding: var(--space-xl);
-            border: none;
-            border-radius: var(--radius-xl);
-            background: var(--bg-card);
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
-        }
-
-        .disclaimer-header {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            margin-bottom: var(--space-lg);
-            color: var(--primary-blue);
-        }
-
-        #security-gate-arrival .disclaimer-header {
-            color: var(--accent-green);
-        }
-
-        .exclamation-symbol {
-            font-size: clamp(40px, 12vw, 50px);
-            font-weight: 800;
-            margin-bottom: var(--space-sm);
-        }
-
-        .disclaimer-header h2 {
-            margin: 0;
-            font-size: var(--font-lg);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 700;
-        }
-
-        .main-disclaimer {
-            font-size: var(--font-sm);
-            color: var(--text-primary);
-            font-weight: 600;
-            margin-bottom: var(--space-lg);
-            text-align: center;
-            line-height: 1.6;
-        }
-
-        .checklist-container {
-            display: flex;
-            flex-direction: column;
-            gap: var(--space-sm);
-            margin-bottom: var(--space-lg);
-        }
-
-        .check-item {
-            display: flex;
-            align-items: flex-start;
-            gap: var(--space-sm);
-            font-size: var(--font-sm);
-            color: var(--text-primary);
-            cursor: pointer;
-            padding: var(--space-sm);
-            border-radius: var(--radius-sm);
-            transition: background 0.2s ease;
-        }
-
-        .check-item:hover {
-            background: rgba(25, 118, 210, 0.08);
-        }
-
-        .check-item input[type="checkbox"] {
-            width: clamp(20px, 4.5vw, 22px);
-            height: clamp(20px, 4.5vw, 22px);
-            accent-color: var(--primary-blue);
-            flex-shrink: 0;
-            margin-top: 2px;
-            cursor: pointer;
-        }
-
-        #security-gate-arrival .check-item input[type="checkbox"] {
-            accent-color: var(--accent-green);
-        }
-
-        .policy-warning {
-            font-size: var(--font-xs);
-            color: var(--text-secondary);
-            line-height: 1.7;
-            padding: var(--space-md);
-            background: rgba(25, 118, 210, 0.06);
-            border-radius: var(--radius-md);
-            border-left: 4px solid var(--primary-blue);
-            margin-bottom: var(--space-lg);
-        }
-
-        #security-gate-arrival .policy-warning {
-            border-left-color: var(--accent-green);
-            background: rgba(76, 175, 80, 0.06);
-        }
-
-        .ack-container {
-            margin-top: var(--space-md);
-        }
-
-        .ack-label {
-            font-size: var(--font-sm);
-            color: var(--primary-blue);
-            font-weight: 700;
-            text-transform: uppercase;
-            margin-bottom: var(--space-xs);
-            display: block;
-            letter-spacing: 0.5px;
-        }
-
-        #security-gate-arrival .ack-label {
-            color: var(--accent-green);
-        }
-
-        .ack-input {
-            width: 100%;
-            padding: var(--space-md);
-            background: #2C2C2E;
-            border: 2px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            color: var(--text-primary);
-            font-size: 16px;
-            min-height: var(--min-touch);
-            transition: all 0.3s ease;
-            font-family: inherit;
-        }
-
-        .ack-input:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-            box-shadow: 0 0 0 4px rgba(25, 118, 210, 0.15);
-            background: #3C3C3E;
-        }
-
-        #security-gate-arrival .ack-input:focus {
-            border-color: var(--accent-green);
-            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.15);
-        }
-
-        .gate-btn {
-            width: 100%;
-            margin-top: var(--space-lg);
-            padding: var(--space-lg);
-            background: var(--primary-gradient);
-            color: white;
-            border: none;
-            border-radius: var(--radius-md);
-            font-weight: 700;
-            font-size: var(--font-md);
-            text-transform: uppercase;
-            cursor: not-allowed;
-            opacity: 0.5;
-            transition: all 0.3s ease;
-            min-height: var(--min-touch);
-            letter-spacing: 0.5px;
-            font-family: inherit;
-        }
-
-        #security-gate-arrival .gate-btn {
-            background: linear-gradient(135deg, var(--accent-green) 0%, #66BB6A 100%);
-        }
-
-        .gate-btn.active {
-            cursor: pointer;
-            opacity: 1;
-            box-shadow: 0 8px 20px rgba(30, 136, 229, 0.4);
-        }
-
-        #security-gate-arrival .gate-btn.active {
-            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.4);
-        }
-
-        .gate-btn.active:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 28px rgba(30, 136, 229, 0.5);
-        }
-
-        #security-gate-arrival .gate-btn.active:hover {
-            box-shadow: 0 12px 28px rgba(76, 175, 80, 0.5);
-        }
-
-        /* ========================================== */
-        /* MAIN UI STYLING */
-        /* ========================================== */
         .container {
             width: 100%;
-            max-width: 420px;
-            animation: fadeIn 0.6s ease;
+            max-width: 600px;
+            background-color: var(--bg-card);
+            border-radius: clamp(18px, 5vw, 24px);
+            padding: clamp(18px, 5vw, 24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        #main-ui {
-            display: block;
-            width: 100%;
-        }
-
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
+        .back-link {
+            display: inline-flex;
             align-items: center;
-            font-size: var(--font-xs);
-            color: rgba(255, 255, 255, 0.85);
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
+            gap: var(--space-sm);
+            color: #ffffff;
+            background: var(--primary-gradient);
+            text-decoration: none;
+            font-size: var(--font-md);
             font-weight: 700;
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius);
+            border: none;
+            box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
+            transition: all 0.2s ease;
             margin-bottom: var(--space-lg);
         }
+        .back-link:hover {
+            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
+            box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
+            transform: translateY(-2px);
+        }
 
-        .logo-card {
-            background: var(--bg-card);
-            border: none;
-            border-radius: var(--radius-xl);
-            padding: var(--space-lg);
-            box-shadow: var(--shadow-card);
-            overflow: hidden;
-            position: relative;
+        .header {
+            text-align: center;
             margin-bottom: var(--space-xl);
         }
 
-        .logo-card img {
-            width: 100%;
-            border-radius: var(--radius-sm);
-            display: block;
+        h1 {
+            font-size: var(--font-xl);
+            font-weight: 900;
+            color: #ffffff;
+            margin-bottom: var(--space-sm);
+            letter-spacing: -0.03em;
         }
 
-        /* NOTIFICATION BUTTON */
-        .notify-btn {
-            width: 100%;
-            padding: var(--space-md);
-            margin-bottom: var(--space-lg);
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: var(--radius-lg);
-            color: white;
-            font-weight: 700;
+        .subtitle {
+            color: var(--text-gray);
             font-size: var(--font-sm);
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: var(--min-touch);
+            font-weight: 600;
+        }
+
+        .current-weather {
+            background: linear-gradient(135deg, #2C2C2E 0%, #1C1C1E 100%);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            text-align: center;
+            margin-bottom: var(--space-lg);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .temp-display {
+            font-size: var(--font-xxl);
+            font-weight: 800;
+            color: #ffffff;
+            margin: var(--space-sm) 0;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .condition {
+            font-size: var(--font-lg);
+            color: rgba(255, 255, 255, 0.95);
+            font-weight: 700;
+            margin-bottom: var(--space-xs);
+        }
+
+        .feels-like {
+            color: var(--text-gray);
+            font-size: var(--font-sm);
+            font-weight: 600;
+        }
+
+        .weather-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
+            gap: var(--space-md);
+            margin-top: var(--space-lg);
+        }
+
+        .detail-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: var(--space-md);
+            border-radius: calc(var(--radius) * 0.7);
+            text-align: center;
+        }
+
+        .detail-label {
+            color: var(--text-gray);
+            font-size: var(--font-xs);
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: var(--space-xs);
+        }
+
+        .detail-value {
+            color: #ffffff;
+            font-size: var(--font-md);
+            font-weight: 800;
+        }
+
+        .alert-banner {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #F87171;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .warning-banner {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #FBBF24;
+        }
+
+        .info-banner {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #60A5FA;
+        }
+
+        .success-banner {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            border: 2px solid #34d399;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.95; transform: scale(1.01); }
+        }
+
+        .alert-title {
+            font-size: var(--font-md);
+            font-weight: 800;
+            margin-bottom: var(--space-xs);
+            text-transform: uppercase;
+            color: #1C1C1E;
+        }
+
+        .alert-description {
+            font-size: var(--font-sm);
+            line-height: 1.5;
+            color: #1C1C1E;
+        }
+
+        .section-title {
+            font-size: var(--font-lg);
+            font-weight: 800;
+            color: #ffffff;
+            margin: var(--space-lg) 0 var(--space-md) 0;
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .hourly-forecast {
+            display: flex;
+            gap: var(--space-md);
+            overflow-x: auto;
+            padding: var(--space-md) 0;
+            margin-bottom: var(--space-lg);
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .hourly-forecast::-webkit-scrollbar { display: none; }
+
+        .hourly-item {
+            flex: 0 0 auto;
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-md);
+            text-align: center;
+            min-width: min(90px, 25vw);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hourly-time {
+            font-size: var(--font-xs);
+            color: var(--text-gray);
+            font-weight: 700;
+            margin-bottom: var(--space-xs);
+        }
+
+        .hourly-icon {
+            font-size: clamp(24px, 6vw, 32px);
+            margin: var(--space-xs) 0;
+        }
+
+        .hourly-temp {
+            font-size: var(--font-md);
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: var(--space-xs);
+        }
+
+        .hourly-pop {
+            font-size: var(--font-xs);
+            color: #60A5FA;
+            font-weight: 700;
+        }
+
+        .sunset-info {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            text-align: center;
+            margin-bottom: var(--space-lg);
+            border: 2px solid #FBBF24;
+        }
+
+        .sunset-label {
+            font-size: var(--font-sm);
+            color: #1C1C1E;
+            font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            font-family: inherit;
+            margin-bottom: var(--space-sm);
         }
 
-        .notify-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        .sunset-time {
+            font-size: var(--font-xl);
+            font-weight: 900;
+            color: #1C1C1E;
         }
 
-        .notify-active {
-            background: rgba(244, 67, 54, 0.2) !important;
-            border-color: var(--accent-red) !important;
-            color: white !important;
+        .map-container {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: var(--space-lg);
+            border: 2px solid rgba(255, 255, 255, 0.1);
         }
 
-        .notify-inactive {
-            background: rgba(76, 175, 80, 0.2) !important;
-            border-color: var(--accent-green) !important;
-            color: white !important;
+        #traffic-map {
+            width: 100%;
+            height: 300px;
         }
 
-        /* MENU CARDS */
-        .menu-grid {
+        .legend {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .legend-title {
+            font-size: var(--font-md);
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: var(--space-md);
+        }
+
+        .legend-items {
             display: flex;
             flex-direction: column;
-            gap: var(--space-md);
+            gap: var(--space-sm);
         }
 
-        .menu-card {
-            background: var(--bg-card);
-            border: none;
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            text-decoration: none;
-            display: block;
-            box-shadow: var(--shadow-card);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            cursor: pointer;
-        }
-
-        .menu-card:hover {
-            transform: translateY(-4px) scale(1.01);
-            box-shadow: var(--shadow-card-hover);
-        }
-
-        .menu-card:active {
-            transform: translateY(-2px) scale(0.99);
-        }
-
-        .card-image {
-            width: 100%;
-            height: clamp(120px, 32vw, 140px);
-            overflow: hidden;
-            background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
-            position: relative;
-        }
-
-        .card-image::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 40%;
-            background: linear-gradient(to top, var(--bg-card), transparent);
-        }
-
-        .card-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .menu-card:hover .card-image img {
-            transform: scale(1.05);
-        }
-
-        .card-icon {
-            width: clamp(48px, 12vw, 64px);
-            height: clamp(48px, 12vw, 64px);
-            fill: var(--accent-yellow);
-            opacity: 0.9;
-            z-index: 1;
-        }
-
-        .card-content {
-            padding: var(--space-md) var(--space-lg);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            min-height: var(--min-touch);
-            background: var(--bg-card);
-        }
-
-        .card-label {
-            font-size: var(--font-md);
-            font-weight: 700;
-            color: var(--text-primary);
-            letter-spacing: 0.25px;
-            transition: color 0.3s ease;
-        }
-
-        .card-arrow {
-            width: clamp(20px, 5vw, 24px);
-            height: clamp(20px, 5vw, 24px);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .menu-card:hover .card-arrow {
-            transform: translateX(4px);
-        }
-
-        .card-arrow svg {
-            width: 100%;
-            height: 100%;
-            fill: var(--primary-blue);
-        }
-
-        /* FOOTER */
-        /* Build Notes Section - Always Visible */
-        .build-notes-section {
-            margin: clamp(20px, 4vw, 30px) auto;
-            max-width: 800px;
-            padding: 0 clamp(16px, 4vw, 24px);
-        }
-
-        .build-notes-link {
+        .legend-item {
             display: flex;
             align-items: center;
-            gap: clamp(12px, 3vw, 16px);
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
-            border: 2px solid rgba(255, 255, 255, 0.15);
-            border-radius: clamp(12px, 3vw, 16px);
-            padding: clamp(14px, 3.5vw, 18px) clamp(16px, 4vw, 20px);
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .build-notes-link:active {
-            transform: scale(0.98);
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
-        }
-
-        .build-notes-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: clamp(40px, 10vw, 48px);
-            height: clamp(40px, 10vw, 48px);
-            background: linear-gradient(135deg, #00A8E1, #0084b4);
-            border-radius: clamp(10px, 2.5vw, 12px);
-            color: white;
-            flex-shrink: 0;
-        }
-
-        .build-notes-icon svg {
-            width: clamp(20px, 5vw, 24px);
-            height: clamp(20px, 5vw, 24px);
-        }
-
-        .build-notes-content {
-            flex: 1;
-        }
-
-        .build-notes-title {
-            font-size: clamp(14px, 3.5vw, 16px);
+            font-size: var(--font-sm);
+            color: rgba(255, 255, 255, 0.9);
             font-weight: 600;
-            color: #FFFFFF;
-            margin-bottom: 2px;
         }
 
-        .build-notes-version {
-            font-size: clamp(11px, 2.8vw, 13px);
-            color: rgba(255, 255, 255, 0.6);
+        .safety-reminders {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .build-notes-arrow {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: rgba(255, 255, 255, 0.4);
-            flex-shrink: 0;
+        .reminder-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
         }
 
-        .build-notes-arrow svg {
-            width: clamp(18px, 4.5vw, 20px);
-            height: clamp(18px, 4.5vw, 20px);
+        .reminder-list li {
+            padding: var(--space-sm) 0;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: var(--font-sm);
+            line-height: 1.6;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-weight: 500;
         }
 
-        .footer {
-            margin-top: var(--space-xl);
-            padding-top: var(--space-lg);
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        .reminder-list li:last-child {
+            border-bottom: none;
+        }
+
+        .reminder-list li::before {
+            content: "✓ ";
+            color: #10b981;
+            font-weight: 800;
+            margin-right: var(--space-sm);
+        }
+
+        .coverage-area {
+            background: var(--bg-section);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .area-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+
+        .area-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: var(--space-sm);
+            border-radius: calc(var(--radius) * 0.6);
+            font-size: var(--font-sm);
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 600;
             text-align: center;
-            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .last-updated {
+            text-align: center;
+            color: var(--text-gray);
             font-size: var(--font-xs);
+            margin-top: var(--space-lg);
+            font-weight: 600;
         }
 
-        /* RESPONSIVE */
-        @media (max-width: 340px) {
-            body { padding: var(--space-sm); }
-            .gate-content { padding: var(--space-md); }
+        .loading {
+            text-align: center;
+            padding: var(--space-xl);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: var(--font-md);
         }
 
-        @media (min-width: 768px) {
-            :root {
-                --font-xs: 12px;
-                --font-sm: 14px;
-                --font-base: 16px;
-                --font-md: 18px;
-                --font-lg: 20px;
-                --font-xl: 26px;
-            }
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px solid #EF4444;
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            text-align: center;
+            color: #FCA5A5;
+            font-weight: 600;
         }
 
-        @media (max-height: 600px) and (orientation: landscape) {
-            .gate-overlay { align-items: flex-start; padding-top: 10px; }
-            .gate-content { margin: 10px auto; }
-        }
-
-        /* iOS-specific fix */
-        @supports (-webkit-touch-callout: none) {
-            input, textarea, select {
-                font-size: 16px !important;
+        @media (max-width: 480px) {
+            .area-grid {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
     </style>
 </head>
 <body>
-
-    <!-- DEPARTURE GATE -->
-    <div id="security-gate" class="gate-overlay">
-        <div class="gate-content">
-            <div class="disclaimer-header">
-                <span class="exclamation-symbol">⚠️</span>
-                <h2>Departure Requirements</h2>
-            </div>
-            <p class="main-disclaimer">All SLGP employees are required to adhere to the following standards prior to beginning their shift:</p>
-            <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Ensure that work device is fully functional.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Verify van bag contains all operational tools.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Confirm van has a phone mount (unless EDV).</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Submit health pre-check video.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete DVIC within the Flex app.</span></label>
-            </div>
-            <div class="policy-warning">
-                Any equipment needs must be reported <strong>no later than wave time</strong>. Once a DA leaves, they are responsible.<br><br>
-                By submitting, you confirm all requirements have been met. SLGP will not reimburse fuel or equipment purchases.
-            </div>
-            <div class="ack-container">
-                <label class="ack-label">DA Acknowledgment</label>
-                <input 
-                    type="text" 
-                    id="da-name" 
-                    class="ack-input" 
-                    placeholder="Enter Full Name" 
-                    oninput="validateGate('gate')"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="words"
-                    spellcheck="false"
-                    data-form-type="other">
-            </div>
-            <button id="gate-submit" class="gate-btn" onclick="unlockPortal()">Confirm & Enter</button>
-        </div>
-    </div>
-
-    <!-- ARRIVAL GATE -->
-    <div id="security-gate-arrival" class="gate-overlay">
-        <div class="gate-content">
-            <div class="disclaimer-header">
-                <span class="exclamation-symbol">⚠️</span>
-                <h2>Arrival Requirements</h2>
-            </div>
-            <p class="main-disclaimer">All SLGP employees must complete these steps upon returning to station:</p>
-            <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Remove all trash and belongings from work van, slgp is not responsible for any lost personal items.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Make sure Van keys, Power Bank, Cable, Phone, and any other accessories are inside your van bag and given to night closer</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Complete your post trip DVIC in flex</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Record and upload your post trip fleet check video.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Turn off all headlights and hazard lights on your work vehicle.</span></label>
-                <label class="check-item"><input type="checkbox" class="arrival-check"><span>Do not leave any totes or unreturned packages inside the van.</span></label>
-            </div>
-            <div class="policy-warning">
-                All SLGP vehicles must be returned fully fueled and free of any unsanitary or foreign materials. Drivers are required to remove and properly dispose of all trash, biohazardous waste, unreturned packages, and personal belongings prior to returning the vehicle.<br><br>
-                SLGP is not responsible for any personal items left behind.<br><br>
-                Drivers must also ensure the following before leaving the lot:<br>
-                Do not leave headlights or hazard lights on. Confirm all exterior and interior lights are turned off before parking your vehicle.<br>
-                Any and all vehicle issues must be reported using the "Report Issue" feature on the Fleet Check app.<br><br>
-                For operators of EDVs, you are required to:<br>
-                Plug in the vehicle upon return<br>
-                Ensure all doors are fully closed<br>
-                Turn off all dashboard lighting and accessories<br><br>
-                Failure to follow these requirements may result in corrective action.
-            </div>
-            <div class="ack-container">
-                <label class="ack-label">DA Acknowledgment</label>
-                <input 
-                    type="text" 
-                    id="arr-name" 
-                    class="ack-input" 
-                    placeholder="Enter Full Name" 
-                    oninput="validateGate('arrival')"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="words"
-                    spellcheck="false"
-                    data-form-type="other">
-            </div>
-            <button id="arrival-submit" class="gate-btn" onclick="unlockArrival()">Confirm Arrival</button>
-        </div>
-    </div>
-
-    <!-- MAIN UI -->
-    <div id="main-ui" class="container">
-        <div class="status-bar">
-            <span>SYSTEM ONLINE</span>
-            <span id="header-version">v4.6.1</span>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Menu</a>
+        
+        <div class="header">
+            <h1>⛅ Today's Forecast</h1>
+            <div class="subtitle">Weather & Road Conditions</div>
         </div>
         
-        <div class="logo-card">
-            <img src="Final-01.jpg" alt="Strategic Logistics">
+        <div id="weather-content" class="loading">
+            Loading weather data...
         </div>
 
-        <button id="notifyBtn" class="notify-btn">Checking Connection...</button>
-
-        <div class="menu-grid">
-            <!-- Fleet Inspection -->
-            <div class="menu-card" onclick="openSecurityGate()">
-                <div class="card-image">
-                    <img src="fleet.jpg" alt="Fleet Inspection">
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Fleet Inspection Vids</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Report Issue -->
-            <a href="/report?mode=issue" class="menu-card">
-                <div class="card-image">
-                    <img src="issue.jpg" alt="Report Issue">
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Report Issue</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </a>
-
-            <!-- Accident Report -->
-            <a href="/report?mode=accident" class="menu-card">
-                <div class="card-image">
-                    <img src="accident.jpg" alt="Accident Report">
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Accident Report</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </a>
-
-            <!-- Insurance Cards -->
-            <a href="/report?mode=insurance" class="menu-card">
-                <div class="card-image">
-                    <img src="insurance.jpg" alt="Insurance Cards">
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Insurance Cards</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </a>
-
-            <!-- Route Planning -->
-            <a href="/weather" class="menu-card">
-                <div class="card-image">
-                    <img src="weather.jpg" alt="Route Planning">
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Route Planning</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </a>
-        </div>
-
-        <!-- Build Notes Section - Always Visible -->
-        <div class="build-notes-section">
-            <a href="/build-notes" class="build-notes-link">
-                <div class="build-notes-icon">
-                    <svg viewBox="0 0 24 24" width="24" height="24">
-                        <path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-                    </svg>
-                </div>
-                <div class="build-notes-content">
-                    <div class="build-notes-title">Build Notes & Updates</div>
-                    <div class="build-notes-version">v4.6.1 - Latest Changes</div>
-                </div>
-                <div class="build-notes-arrow">
-                    <svg viewBox="0 0 24 24" width="20" height="20">
-                        <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                    </svg>
-                </div>
-            </a>
-        </div>
-
-        <div class="footer">
-            Strategic Logistics Group • Fleet Management System • <span id="app-version">v4.6.1</span>
-        </div>
+        <!-- Build Notes Button -->
+        <a href="/build-notes" style="display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); color: #ffffff; background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%); text-decoration: none; font-size: var(--font-sm); font-weight: 700; padding: var(--space-md) var(--space-lg); border-radius: var(--radius); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: all 0.2s ease; margin-top: var(--space-lg); width: 100%; text-align: center;">
+            📋 Build Notes & Changelog
+        </a>
     </div>
 
     <script>
-        const GATE_COOLDOWN_MS = 5 * 60 * 1000;
+        let userLat = 33.7490;  // Default: Atlanta, GA
+        let userLon = -84.3880;
+        let locationName = "Atlanta, GA";
+        let map = null;
 
-        function openSecurityGate() {
-            const now = new Date();
-            const mins = (now.getHours() * 60) + now.getMinutes();
-            const currentTime = Date.now();
-            
-            const lastDep = localStorage.getItem('lastDepartureGate');
-            const lastArr = localStorage.getItem('lastArrivalGate');
-
-            if (mins >= 600 && mins < 1080) {
-                if (lastDep && (currentTime - lastDep < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
-                
-                document.getElementById('da-name').value = '';
-                document.querySelectorAll('.gate-check').forEach(cb => cb.checked = false);
-                validateGate('gate');
-                
-                document.getElementById('security-gate').style.display = 'flex';
-                document.getElementById('main-ui').style.display = 'none';
-            } 
-            else if (mins >= 1095 || mins < 540) {
-                if (lastArr && (currentTime - lastArr < GATE_COOLDOWN_MS)) { window.location.href = "/video"; return; }
-                
-                document.getElementById('arr-name').value = '';
-                document.querySelectorAll('.arrival-check').forEach(cb => cb.checked = false);
-                validateGate('arrival');
-                
-                document.getElementById('security-gate-arrival').style.display = 'flex';
-                document.getElementById('main-ui').style.display = 'none';
-            } 
-            else { window.location.href = "/video"; }
-        }
-
-        document.querySelectorAll('.gate-check').forEach(cb => cb.addEventListener('change', () => validateGate('gate')));
-        document.querySelectorAll('.arrival-check').forEach(cb => cb.addEventListener('change', () => validateGate('arrival')));
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const daName = document.getElementById('da-name');
-            const arrName = document.getElementById('arr-name');
-            
-            daName.addEventListener('focus', function() {
-                this.setAttribute('autocomplete', 'new-password');
-            });
-            
-            arrName.addEventListener('focus', function() {
-                this.setAttribute('autocomplete', 'new-password');
-            });
-        });
-        
-        function validateGate(type) {
-            const checks = document.querySelectorAll(type === 'gate' ? '.gate-check' : '.arrival-check');
-            const input = document.getElementById(type === 'gate' ? 'da-name' : 'arr-name');
-            const btn = document.getElementById(type === 'gate' ? 'gate-submit' : 'arrival-submit');
-            
-            const allChecked = Array.from(checks).every(cb => cb.checked);
-            
-            if (allChecked && input.value.trim().length >= 2) btn.classList.add('active');
-            else btn.classList.remove('active');
-        }
-
-        let isSubmitting = false;
-
-        async function unlockPortal() { handleSubmission('gate-submit', 'da-name', '/log-gate-check', 'lastDepartureGate'); }
-        async function unlockArrival() { handleSubmission('arrival-submit', 'arr-name', '/log-arrival-check', 'lastArrivalGate'); }
-
-        async function handleSubmission(btnId, inputId, endpoint, storageKey) {
-            const btn = document.getElementById(btnId);
-            if (!btn.classList.contains('active') || isSubmitting) return;
-            
-            isSubmitting = true;
-            btn.innerText = "PROCESSING...";
-            btn.style.opacity = "0.5";
-            btn.disabled = true;
-            
+        // Get user's actual location
+        async function getUserLocation() {
             try {
-                const response = await fetch(endpoint, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ name: document.getElementById(inputId).value.trim() }) 
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 300000
+                    });
                 });
                 
-                if (response.ok) {
-                    localStorage.setItem(storageKey, Date.now());
-                    window.location.href = "/video";
-                } else {
-                    throw new Error("Server Error");
+                userLat = position.coords.latitude;
+                userLon = position.coords.longitude;
+                
+                // Reverse geocode to get location name
+                const geoResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLon}&format=json`);
+                const geoData = await geoResponse.json();
+                
+                if (geoData.address) {
+                    const city = geoData.address.city || geoData.address.town || geoData.address.village || '';
+                    const state = geoData.address.state || '';
+                    locationName = city && state ? `${city}, ${state}` : 'Current Location';
                 }
-            } catch (e) {
-                console.error("Submission failed", e);
-                isSubmitting = false;
-                btn.innerText = "CONFIRM";
-                btn.style.opacity = "1";
-                btn.disabled = false;
+                
+                console.log('✅ Location acquired:', locationName, userLat, userLon);
+            } catch (error) {
+                console.warn('⚠️ Using default location (Atlanta, GA):', error.message);
             }
         }
 
-        const notifyBtn = document.getElementById('notifyBtn');
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(initPushUI);
-        
-        async function initPushUI() {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            notifyBtn.innerText = sub ? "⚠️ RESET NOTIFICATIONS" : "✅ ENABLE NOTIFICATIONS";
-            notifyBtn.className = sub ? "notify-btn notify-active" : "notify-btn notify-inactive";
-        }
-
-        notifyBtn.addEventListener('click', async () => {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            if (sub) { await sub.unsubscribe(); initPushUI(); } 
-            else {
-                const res = await fetch('/vapid-key');
-                const data = await res.json();
-                await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(data.publicKey) });
-                await fetch('/subscribe', { method: 'POST', body: JSON.stringify(await reg.pushManager.getSubscription()), headers: { 'content-type': 'application/json' } });
-                initPushUI();
-            }
-        });
-
-        function urlBase64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
-            return outputArray;
-        }
-    </script>
-
-    <!-- SERVICE WORKER & AUTO-UPDATE -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
+        async function fetchWeather() {
+            try {
+                // Get user's location first
+                await getUserLocation();
+                
+                // Fetch weather data
+                const weatherURL = `https://api.open-meteo.com/v1/forecast?latitude=${userLat}&longitude=${userLon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=1`;
+                
+                const weatherRes = await fetch(weatherURL);
+                const weatherData = await weatherRes.json();
+                
+                // Fetch sunset time
+                const sunsetURL = `https://api.sunrise-sunset.org/json?lat=${userLat}&lng=${userLon}&formatted=0`;
+                const sunsetRes = await fetch(sunsetURL);
+                const sunsetData = await sunsetRes.json();
+                
+                // Fetch real traffic data from TomTom
+                let trafficData = null;
                 try {
-                    const registration = await navigator.serviceWorker.register('/sw.js');
-                    console.log('✅ Service Worker registered:', registration.scope);
-                    
-                    let localVersion = null;
-                    
-                    async function checkForUpdates() {
-                        try {
-                            const res = await fetch('/version');
-                            if (res.ok) {
-                                const data = await res.json();
-                                
-                                if (!localVersion) {
-                                    localVersion = data.version;
-                                    console.log('📱 Current version:', localVersion);
-                                } else if (localVersion !== data.version) {
-                                    console.log('🔄 New version detected!', data.version);
-                                    showUpdateNotification();
-                                    setTimeout(() => {
-                                        console.log('🔄 Reloading to apply update...');
-                                        window.location.reload(true);
-                                    }, 3000);
-                                }
-                            }
-                        } catch (err) {
-                            console.error('Update check failed:', err);
-                        }
-                    }
-                    
-                    function showUpdateNotification() {
-                        const banner = document.createElement('div');
-                        banner.style.cssText = `
-                            position: fixed;
-                            top: 20px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            background: rgba(255, 255, 255, 0.95);
-                            color: #0A6CF1;
-                            padding: 15px 25px;
-                            border-radius: 16px;
-                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-                            z-index: 10000;
-                            font-weight: bold;
-                            text-align: center;
-                            animation: slideDown 0.3s ease;
-                        `;
-                        banner.innerHTML = '🔄 Update available! Reloading in 3 seconds...';
-                        document.body.appendChild(banner);
-                        
-                        const style = document.createElement('style');
-                        style.textContent = `
-                            @keyframes slideDown {
-                                from { transform: translateX(-50%) translateY(-100px); opacity: 0; }
-                                to { transform: translateX(-50%) translateY(0); opacity: 1; }
-                            }
-                        `;
-                        document.head.appendChild(style);
-                    }
-                    
-                    checkForUpdates();
-                    setInterval(checkForUpdates, 30000);
-                    
-                    registration.addEventListener('updatefound', () => {
-                        const newWorker = registration.installing;
-                        console.log('🔄 Service Worker update found');
-                        
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                console.log('✅ New Service Worker installed');
-                                newWorker.postMessage({ type: 'SKIP_WAITING' });
-                            }
-                        });
-                    });
-                    
-                    navigator.serviceWorker.addEventListener('controllerchange', () => {
-                        console.log('🔄 New Service Worker activated - reloading');
-                        window.location.reload();
-                    });
-                    
-                } catch (error) {
-                    console.error('❌ Service Worker registration failed:', error);
+                    const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
+                    const trafficURL = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${tomtomKey}&point=${userLat},${userLon}`;
+                    const trafficRes = await fetch(trafficURL);
+                    trafficData = await trafficRes.json();
+                    console.log('✅ Traffic data:', trafficData);
+                } catch (e) {
+                    console.warn('⚠️ Traffic data unavailable:', e.message);
                 }
-            });
+                
+                displayWeather(weatherData, sunsetData, trafficData);
+                
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+                document.getElementById('weather-content').innerHTML = `
+                    <div class="error-message">
+                        ⚠️ Unable to load weather data. Please try again later.
+                    </div>
+                `;
+            }
         }
-    </script>
 
+        function getWeatherIcon(code) {
+            const icons = {
+                0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+                45: '🌫️', 48: '🌫️',
+                51: '🌦️', 53: '🌦️', 55: '🌦️',
+                61: '🌧️', 63: '🌧️', 65: '🌧️',
+                71: '🌨️', 73: '🌨️', 75: '🌨️',
+                80: '🌦️', 81: '🌦️', 82: '🌧️',
+                95: '⛈️', 96: '⛈️', 99: '⛈️'
+            };
+            return icons[code] || '🌡️';
+        }
+
+        function getWeatherDescription(code) {
+            const descriptions = {
+                0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+                45: 'Foggy', 48: 'Foggy',
+                51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+                61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+                71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
+                80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
+                95: 'Thunderstorm', 96: 'Thunderstorm with Hail', 99: 'Severe Thunderstorm'
+            };
+            return descriptions[code] || 'Unknown';
+        }
+
+        function displayWeather(weather, sunset, traffic) {
+            const current = weather.current;
+            const hourly = weather.hourly;
+            const now = new Date();
+            const hour = now.getHours();
+            
+            // Parse sunset time
+            const sunsetTime = new Date(sunset.results.sunset);
+            const sunsetFormatted = sunsetTime.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit'
+            });
+            
+            // Calculate time until sunset (in minutes)
+            const minutesUntilSunset = Math.floor((sunsetTime - now) / 1000 / 60);
+            
+            // Build alerts
+            let alertsHTML = '';
+            
+            // SUNSET APPROACHING ALERT (within 60 minutes)
+            if (minutesUntilSunset > 0 && minutesUntilSunset <= 60) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌅 SUNSET APPROACHING (${minutesUntilSunset} min)</div>
+                        <div class="alert-description">Sunset at ${sunsetFormatted}. Flash detection will be active for remaining deliveries. Check camera settings and ensure flash is enabled.</div>
+                    </div>
+                `;
+            }
+            
+            // REAL TRAFFIC CONDITIONS (from TomTom API)
+            if (traffic && traffic.flowSegmentData) {
+                const currentSpeed = traffic.flowSegmentData.currentSpeed;
+                const freeFlowSpeed = traffic.flowSegmentData.freeFlowSpeed;
+                const confidence = traffic.flowSegmentData.confidence;
+                
+                if (currentSpeed && freeFlowSpeed) {
+                    const speedRatio = currentSpeed / freeFlowSpeed;
+                    
+                    // Heavy traffic: <50% of normal speed
+                    if (speedRatio < 0.5) {
+                        alertsHTML += `
+                            <div class="alert-banner">
+                                <div class="alert-title">🚨 HEAVY TRAFFIC IN YOUR AREA</div>
+                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Heavy congestion detected. Allow extra delivery time and consider alternate routes.</div>
+                            </div>
+                        `;
+                    }
+                    // Moderate traffic: 50-80% of normal speed
+                    else if (speedRatio < 0.8) {
+                        alertsHTML += `
+                            <div class="warning-banner">
+                                <div class="alert-title">⚠️ MODERATE TRAFFIC</div>
+                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Some congestion detected. Plan accordingly.</div>
+                            </div>
+                        `;
+                    }
+                    // Light traffic: >80% of normal speed
+                    else {
+                        alertsHTML += `
+                            <div class="success-banner">
+                                <div class="alert-title">✅ LIGHT TRAFFIC</div>
+                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Good traffic conditions for deliveries.</div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            // High wind alert
+            if (current.wind_speed_10m >= 25) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">💨 HIGH WIND ADVISORY</div>
+                        <div class="alert-description">Winds at ${Math.round(current.wind_speed_10m)} mph. Use caution when driving, especially with high-profile vehicles. Secure loose items.</div>
+                    </div>
+                `;
+            }
+            
+            // Temperature extreme alerts
+            if (current.temperature_2m >= 95) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌡️ EXCESSIVE HEAT WARNING</div>
+                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Stay hydrated, take breaks in air conditioning, and check vehicle cooling system.</div>
+                    </div>
+                `;
+            } else if (current.temperature_2m <= 32) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🥶 FREEZING TEMPERATURE ALERT</div>
+                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Watch for ice on roads, bridges, and overpasses. Allow extra time for vehicle warm-up.</div>
+                    </div>
+                `;
+            }
+            
+            // Severe weather alerts
+            if (current.weather_code >= 95) {
+                alertsHTML += `
+                    <div class="alert-banner">
+                        <div class="alert-title">⛈️ SEVERE WEATHER ALERT</div>
+                        <div class="alert-description">Thunderstorms expected. Exercise extreme caution while driving. Contact dispatch immediately if conditions deteriorate.</div>
+                    </div>
+                `;
+            } else if (current.weather_code >= 71 && current.weather_code <= 75) {
+                alertsHTML += `
+                    <div class="alert-banner">
+                        <div class="alert-title">❄️ WINTER WEATHER ALERT</div>
+                        <div class="alert-description">Snow conditions expected. Roads may be impassable. Drive safely and allow extra time for deliveries.</div>
+                    </div>
+                `;
+            } else if (current.weather_code >= 61 && current.weather_code <= 65) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌧️ WET ROAD CONDITIONS</div>
+                        <div class="alert-description">Rain expected today. Roads may be slippery. Increase following distance and reduce speed.</div>
+                    </div>
+                `;
+            } else if (current.weather_code >= 45 && current.weather_code <= 48) {
+                alertsHTML += `
+                    <div class="warning-banner">
+                        <div class="alert-title">🌫️ FOG / LOW VISIBILITY</div>
+                        <div class="alert-description">Foggy conditions reducing visibility. Use low-beam headlights, reduce speed, and increase following distance.</div>
+                    </div>
+                `;
+            }
+            
+            // Early morning optimal conditions
+            if (hour >= 5 && hour < 7) {
+                alertsHTML += `
+                    <div class="success-banner">
+                        <div class="alert-title">🌅 EARLY MORNING - OPTIMAL CONDITIONS</div>
+                        <div class="alert-description">Light traffic and good visibility. Excellent time for deliveries.</div>
+                    </div>
+                `;
+            }
+            
+            // Build hourly forecast (next 12 hours)
+            let hourlyHTML = '';
+            const currentHour = now.getHours();
+            
+            for (let i = 0; i < 12; i++) {
+                const hourIndex = currentHour + i;
+                if (hourIndex >= hourly.time.length) break;
+                
+                const time = new Date(hourly.time[hourIndex]);
+                const temp = Math.round(hourly.temperature_2m[hourIndex]);
+                const pop = hourly.precipitation_probability[hourIndex];
+                const code = hourly.weather_code[hourIndex];
+                
+                hourlyHTML += `
+                    <div class="hourly-item">
+                        <div class="hourly-time">${time.getHours() === currentHour ? 'Now' : time.toLocaleTimeString('en-US', {hour: 'numeric'})}</div>
+                        <div class="hourly-icon">${getWeatherIcon(code)}</div>
+                        <div class="hourly-temp">${temp}°</div>
+                        ${pop > 0 ? `<div class="hourly-pop">💧 ${pop}%</div>` : ''}
+                    </div>
+                `;
+            }
+            
+            document.getElementById('weather-content').innerHTML = `
+                ${alertsHTML}
+                
+                <div class="current-weather">
+                    <div style="font-size: 48px;">${getWeatherIcon(current.weather_code)}</div>
+                    <div class="temp-display">${Math.round(current.temperature_2m)}°F</div>
+                    <div class="condition">${getWeatherDescription(current.weather_code)}</div>
+                    <div class="feels-like">Feels like ${Math.round(current.apparent_temperature)}°F</div>
+                    
+                    <div class="weather-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Humidity</div>
+                            <div class="detail-value">${current.relative_humidity_2m}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Wind</div>
+                            <div class="detail-value">${Math.round(current.wind_speed_10m)} mph</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Precipitation</div>
+                            <div class="detail-value">${current.precipitation}"</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Location</div>
+                            <div class="detail-value">${locationName}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-title">📅 Hourly Forecast</div>
+                <div class="hourly-forecast">
+                    ${hourlyHTML}
+                </div>
+                
+                <div class="sunset-info">
+                    <div class="sunset-label">🌅 Sunset Today</div>
+                    <div class="sunset-time">${sunsetFormatted}</div>
+                </div>
+                
+                <div class="section-title">🗺️ Your Location & Area Map</div>
+                
+                <div class="map-container">
+                    <div id="traffic-map"></div>
+                </div>
+                
+                <div class="legend">
+                    <div class="legend-title">🗺️ Map Legend</div>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div style="width: 20px; height: 20px; background: #1E88E5; border-radius: 50%; margin-right: 8px;"></div>
+                            <span>📍 Your Location</span>
+                        </div>
+                        <div class="legend-item">
+                            <div style="width: 20px; height: 4px; background: #42A5F5; border-radius: 2px; margin-right: 8px; opacity: 0.5;"></div>
+                            <span>Delivery Area</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div class="legend-title" style="margin-top: 0;">🚦 Traffic Flow (when enabled)</div>
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <div style="width: 30px; height: 4px; background: #10B981; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Light (>80% normal speed)</span>
+                            </div>
+                            <div class="legend-item">
+                                <div style="width: 30px; height: 4px; background: #F59E0B; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Moderate (50-80%)</span>
+                            </div>
+                            <div class="legend-item">
+                                <div style="width: 30px; height: 4px; background: #EF4444; border-radius: 2px; margin-right: 8px;"></div>
+                                <span>Heavy (<50%)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="safety-reminders">
+                    <div class="legend-title">⚠️ Safety Reminders</div>
+                    <ul class="reminder-list">
+                        <li>Check GPS for real-time traffic updates before each route</li>
+                        <li>Allow extra time during peak hours and adverse weather</li>
+                        <li>Reduce speed in wet or icy conditions</li>
+                        <li>Report any road hazards or closures via the app</li>
+                        <li>Contact dispatch immediately for impassable roads</li>
+                    </ul>
+                </div>
+                
+                <div class="coverage-area">
+                    <div class="legend-title">📍 Primary Delivery Zones</div>
+                    <div class="area-grid">
+                        <div class="area-item">Atlanta</div>
+                        <div class="area-item">Peachtree City</div>
+                        <div class="area-item">Fayetteville</div>
+                        <div class="area-item">McDonough</div>
+                        <div class="area-item">Stockbridge</div>
+                        <div class="area-item">Hampton</div>
+                        <div class="area-item">Jonesboro</div>
+                        <div class="area-item">Riverdale</div>
+                        <div class="area-item">Union City</div>
+                        <div class="area-item">Newnan</div>
+                        <div class="area-item">Senoia</div>
+                        <div class="area-item">Sharpsburg</div>
+                        <div class="area-item">Moreland</div>
+                        <div class="area-item">Grantville</div>
+                        <div class="area-item">Hogansville</div>
+                        <div class="area-item">Luthersville</div>
+                        <div class="area-item">Greenville</div>
+                        <div class="area-item">Griffin</div>
+                        <div class="area-item">LaGrange</div>
+                    </div>
+                </div>
+                
+                <div class="last-updated">
+                    Last updated: ${now.toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: 'numeric', 
+                        minute: '2-digit' 
+                    })}
+                </div>
+            `;
+            
+            // Initialize the map
+            initializeMap();
+        }
+
+        function initializeMap() {
+            setTimeout(() => {
+                if (map) {
+                    map.remove();
+                }
+                
+                map = L.map('traffic-map', {
+                    center: [userLat, userLon],
+                    zoom: 12,
+                    zoomControl: true,
+                    scrollWheelZoom: true
+                });
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Add blue marker for user's location
+                const userIcon = L.divIcon({
+                    className: 'custom-marker',
+                    html: '<div style="background: #1E88E5; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                });
+                
+                L.marker([userLat, userLon], { icon: userIcon }).addTo(map)
+                    .bindPopup(`<b>📍 Your Location</b><br>${locationName}`);
+                
+                // Add TomTom traffic layer
+                const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
+                L.tileLayer(`https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${tomtomKey}`, {
+                    opacity: 0.7,
+                    maxZoom: 19
+                }).addTo(map);
+                
+                map.invalidateSize();
+            }, 100);
+        }
+
+        // Auto-refresh every 60 minutes
+        fetchWeather();
+        setInterval(fetchWeather, 60 * 60 * 1000);
+    </script>
 </body>
 </html>
