@@ -197,125 +197,40 @@
             text-align: left;
         }
 
-        /* --- CATEGORY TABS --- */
-        .tabs {
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: var(--space-xs); 
-            margin-bottom: var(--space-lg);
+        /* AI INFO BOX */
+        .ai-info-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(109, 40, 217, 0.15) 100%);
+            border: 2px solid #8b5cf6;
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-xl);
+            text-align: center;
         }
-        .tab-btn {
-            background: linear-gradient(135deg, #1A1F2E 0%, #151925 100%);
-            border: 2px solid rgba(255, 255, 255, 0.1); 
-            color: #94A3B8;
-            padding: var(--space-sm); 
-            border-radius: clamp(10px, 2.5vw, 12px);
-            font-size: var(--font-xs); 
+        .ai-info-box .ai-icon {
+            font-size: 32px;
+            margin-bottom: var(--space-sm);
+        }
+        .ai-info-box .ai-title {
+            color: #c4b5fd;
+            font-size: var(--font-md);
             font-weight: 800;
-            text-transform: uppercase; 
-            cursor: pointer; 
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: var(--min-touch);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            text-transform: uppercase;
             letter-spacing: 0.5px;
+            margin-bottom: var(--space-sm);
         }
-        .tab-btn:hover {
-            background: linear-gradient(135deg, #242938 0%, #1e2330 100%);
-            border-color: rgba(30, 136, 229, 0.3);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-        .tab-btn.active {
-            background: var(--primary-gradient);
-            border: 2px solid var(--primary-blue-light); 
-            color: white;
-            box-shadow: 0 4px 16px rgba(30, 136, 229, 0.4);
-            transform: translateY(-2px);
+        .ai-info-box .ai-description {
+            color: #e9d5ff;
+            font-size: var(--font-sm);
+            line-height: 1.6;
         }
 
-        /* --- LIST BUTTONS --- */
-        .section { display: none; }
-        .section.active { display: block; }
-        .list-options { 
-            display: flex; 
-            flex-direction: column; 
-            gap: var(--space-sm); 
+        /* ISSUE DESCRIPTION TEXTAREA */
+        #issueDescription {
+            min-height: 120px;
+            font-size: 16px;
+            line-height: 1.5;
+            resize: vertical;
         }
-
-        .list-btn {
-            width: 100%; 
-            display: flex; 
-            align-items: center; 
-            gap: var(--space-md); 
-            text-align: left;
-            background: linear-gradient(135deg, #1A1F2E 0%, #151925 100%);
-            border: 2px solid rgba(255, 255, 255, 0.08); 
-            color: #E2E8F0;
-            padding: var(--space-md) var(--space-lg); 
-            border-radius: clamp(12px, 3vw, 16px);
-            font-size: var(--font-sm); 
-            font-weight: 600; 
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
-            position: relative;
-            min-height: var(--min-touch);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-        .list-btn:hover { 
-            border-color: rgba(30, 136, 229, 0.3); 
-            background: linear-gradient(135deg, #242938 0%, #1e2330 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-        }
-        .list-btn.selected {
-            background: var(--primary-gradient);
-            border: 2px solid var(--primary-blue-light);
-            color: white; 
-            box-shadow: 0 6px 20px rgba(30, 136, 229, 0.4); 
-            transform: translateY(-2px);
-        }
-        .list-btn.selected::before {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            border-radius: clamp(12px, 3vw, 16px);
-            padding: 2px;
-            background: linear-gradient(135deg, var(--primary-blue-light), var(--primary-blue), #1565C0);
-            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            -webkit-mask-composite: xor;
-            mask-composite: exclude;
-            opacity: 0.6;
-            animation: borderGlow 2s ease-in-out infinite;
-        }
-        @keyframes borderGlow {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 1; }
-        }
-        .list-btn.selected::after { 
-            content: "✓"; 
-            position: absolute; 
-            right: var(--space-lg); 
-            font-weight: bold;
-            font-size: var(--font-lg);
-            text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-        }
-
-        /* Icons */
-        .opt-icon { 
-            width: clamp(20px, 5vw, 24px); 
-            height: clamp(20px, 5vw, 24px); 
-            object-fit: contain; 
-            flex-shrink: 0; 
-            fill: #64748B;
-            transition: all 0.3s ease;
-        }
-        .list-btn:hover .opt-icon { 
-            fill: #94A3B8; 
-        }
-        .list-btn.selected .opt-icon { 
-            fill: white;
-            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
-        } 
 
         /* --- CAMERA BOX --- */
         .camera-box {
@@ -345,16 +260,6 @@
             z-index: 10; 
         }
         
-        /* VIDEO PREVIEW FOR FLASHLIGHT */
-        #photo-preview-video {
-            position: absolute; 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            display: none; 
-            z-index: 5;
-        }
-
         .camera-icon { 
             width: clamp(32px, 9vw, 40px); 
             height: clamp(32px, 9vw, 40px); 
@@ -377,11 +282,6 @@
             text-transform: uppercase; 
             letter-spacing: 0.5px; 
             z-index: 6; 
-        }
-
-        /* --- HIDDEN NOTES --- */
-        #otherNotesContainer { 
-            margin-top: var(--space-lg); 
         }
 
         /* --- SUBMIT --- */
@@ -447,7 +347,7 @@
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
     
-    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.0</div>
+    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.1</div>
     
     <img src="./Final-01.jpg" alt="Strategic Logistics Logo" class="logo-header">
     <div class="timestamp" id="ts">Loading...</div>
@@ -478,69 +378,20 @@
         ⚠️ <strong>WARNING:</strong> Accessing customer driveways is strictly prohibited. For customers with long driveways, the Call-Text-Call procedure must be followed without exception. Any towing assistance required resulting from a violation of this policy will be at the driver's expense.
     </div>
 
-    <label>Issue Category</label>
-    <div class="tabs">
-        <button class="tab-btn active" id="tab-high">High Priority</button>
-        <button class="tab-btn" id="tab-edv">EDV / Electric</button>
-        <button class="tab-btn" id="tab-low">Low Priority</button>
-    </div>
-
-    <div id="high" class="section active">
-        <div class="list-options">
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg> Brakes Squealing / Grinding</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> Tire Blowout / Extreme Wear</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2c-5.52 0-10 4.48-10 10s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M11 7h2v6h-2zM11 15h2v2h-2z"/></svg> Steering Column Loose</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg> Vehicle Will Not Start</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 22c4.97 0 9-4.03 9-9-4.5 0-9-7.5-9-13-4.5 7.5-9 13-9 13 0 4.97 4.03 9 9 9z"/></svg> Burning Smell / Fluid Leak</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/></svg> Sliding / Rear Door Stuck</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg> Headlight / Taillight Out</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg> Backup Camera No Image</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg> Low DEF Light On</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M20 8h-3V4H3v16h17v-4h3zM5 6h10v2H5zm10 10H5v-2h10z"/></svg> Flat Tire / Battery Dead</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M20 3H4v18h16V3zM6 5h12v14H6V5z"/></svg> Missing Plate / Tag</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg> Other (See Notes)</button>
-        </div>
-    </div>
-
-    <div id="edv" class="section">
-        <div class="list-options">
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg> Key Fob Battery Low</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg> Vehicle Not Charging</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg> Warning Light On</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M5 3h14v18H5V3zm2 2v14h10V5H7z"/></svg> Bulkhead Door Issue</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M13 13v8h8v-8h-8zM3 21h8v-8H3v8zM3 3v8h8V3H3zm13.66-1.31L11 7.34 16.66 13l5.66-5.66-5.66-5.65z"/></svg> Severe Body Damage</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg> Broken Mirror / Glass</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg> Other (See Notes)</button>
-        </div>
-    </div>
-
-    <div id="low" class="section">
-        <div class="list-options">
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg> Light Scratches</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg> Interior Dirty</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> Door Sensor Error</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M4 18v3h3v-3h10v3h3v-6H4v3zm15-8h3v3h-3v-3zM2 10h3v3H2v-3zm15 3H7V5c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2v8z"/></svg> Seat Adjustment Stuck</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z"/></svg> Radio / Audio Issue</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h2v2h-2v-2zm-2 2h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2z"/></svg> QR Code Faded</button>
-            <button class="list-btn"><svg class="opt-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg> Other (See Notes)</button>
-        </div>
-    </div>
-
-    <div class="form-group" id="otherNotesContainer" style="margin-top: 25px;">
-        <label>Detailed Description (REQUIRED)</label>
-        <textarea id="notes" rows="3" placeholder="Describe the specific issue in detail..." required></textarea>
+    <div class="form-group">
+        <label>Describe the Issue (1-2 sentences)</label>
+        <textarea id="issueDescription" placeholder="Example: 'The brakes are making a loud grinding noise when I press them' or 'The vehicle won't start and the battery light is on'" required></textarea>
     </div>
 
     <div class="form-group" style="margin-top: 25px;">
-        <label>LIVE CAMERA (VIDEO REQUIRED)</label>
+        <label>LIVE CAMERA (PHOTO/VIDEO REQUIRED)</label>
         <div class="camera-box">
-            <input type="file" id="photoInput" accept="video/*" capture="environment">
-            <video id="photo-preview-video" playsinline autoplay muted></video> 
+            <input type="file" id="photoInput" accept="video/*,image/*" capture="environment" multiple>
             <svg class="camera-icon" viewBox="0 0 24 24">
                 <path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
             </svg>
-            <div class="camera-title">TAP TO RECORD VIDEO</div>
-            <div class="camera-sub">VIDEO DOCUMENTATION REQUIRED</div>
+            <div class="camera-title">TAP TO CAPTURE</div>
+            <div class="camera-sub">PHOTO/VIDEO REQUIRED</div>
         </div>
     </div>
 
@@ -595,7 +446,6 @@ const vinDatabase = {
 };
 
 // --- GLOBAL VARIABLES ---
-let activeTab = 'high';
 let photos = [];
 let isSubmitting = false;
 
@@ -603,31 +453,14 @@ let isSubmitting = false;
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ts').innerText = new Date().toLocaleString();
     document.getElementById('vinInput').addEventListener('keyup', checkVin);
-    document.getElementById('tab-high').addEventListener('click', () => setTab('high'));
-    document.getElementById('tab-edv').addEventListener('click', () => setTab('edv'));
-    document.getElementById('tab-low').addEventListener('click', () => setTab('low'));
-
-    document.querySelectorAll('.list-btn').forEach(btn => {
-        btn.addEventListener('click', function() { 
-            this.classList.toggle('selected');
-        });
-    });
 
     const photoInput = document.getElementById('photoInput');
-    
-    document.querySelector('.camera-box').addEventListener('click', async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            const track = stream.getVideoTracks()[0];
-            await track.applyConstraints({ advanced: [{ torch: true }] });
-        } catch(e) { console.log("Flash prep skipped"); }
-    });
 
     photoInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
         if(files.length > 0) {
-            const videoCount = files.length;
-            document.querySelector('.camera-title').innerText = videoCount === 1 ? `VIDEO CAPTURED` : `${videoCount} VIDEOS CAPTURED`;
+            const fileCount = files.length;
+            document.querySelector('.camera-title').innerText = fileCount === 1 ? `FILE CAPTURED` : `${fileCount} FILES CAPTURED`;
             document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
             document.querySelector('.camera-sub').style.color = "#4ade80"; 
             document.querySelector('.camera-icon').style.fill = '#4ade80';
@@ -650,11 +483,6 @@ function checkVin() {
     const towBox = document.getElementById('towStatus');
     const warningBox = document.getElementById('towWarning');
 
-    // Get tab elements
-    const tabHigh = document.getElementById('tab-high');
-    const tabEdv = document.getElementById('tab-edv');
-    const tabLow = document.getElementById('tab-low');
-
     typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
     towBox.classList.remove('tow-yes', 'tow-no');
     warningBox.style.display = 'none'; 
@@ -664,34 +492,17 @@ function checkVin() {
         if (vin.startsWith("W")) { 
             typeBox.value = "Mercedes (Diesel)"; typeBox.classList.add('diesel-mode');
             towBox.value = "Tow Assistance Active"; towBox.classList.add('tow-yes');
-            // Show only High/Low for non-EDV
-            tabHigh.style.display = 'block';
-            tabLow.style.display = 'block';
-            tabEdv.style.display = 'none';
-            setTab('high');
             return; 
         }
         if (found) {
             typeBox.value = found.type; 
             
             if (found.fuel === 'electric') {
-                // EDV vehicle - show ONLY EDV tab
                 typeBox.classList.add('electric-mode');
-                tabEdv.style.display = 'block';
-                tabHigh.style.display = 'none';
-                tabLow.style.display = 'none';
-                setTab('edv');
-            } else {
-                // Non-EDV (gas/diesel) - show ONLY High/Low tabs
-                if (found.fuel === 'diesel') { 
-                    typeBox.classList.add('diesel-mode'); 
-                } else { 
-                    typeBox.classList.add('gas-mode'); 
-                }
-                tabHigh.style.display = 'block';
-                tabLow.style.display = 'block';
-                tabEdv.style.display = 'none';
-                setTab('high');
+            } else if (found.fuel === 'diesel') { 
+                typeBox.classList.add('diesel-mode'); 
+            } else { 
+                typeBox.classList.add('gas-mode'); 
             }
 
             if (found.hasTow) { 
@@ -705,31 +516,11 @@ function checkVin() {
         } else {
             typeBox.value = "Unknown Vehicle"; 
             towBox.value = "Unknown Status";
-            // Show all tabs for unknown VIN
-            tabHigh.style.display = 'block';
-            tabLow.style.display = 'block';
-            tabEdv.style.display = 'block';
         }
     } else { 
         typeBox.value = ""; 
         towBox.value = "";
-        // Show all tabs when no VIN entered
-        tabHigh.style.display = 'block';
-        tabLow.style.display = 'block';
-        tabEdv.style.display = 'block';
     }
-}
-
-function setTab(id) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    
-    if(id === 'high') document.getElementById('tab-high').classList.add('active');
-    if(id === 'edv') document.getElementById('tab-edv').classList.add('active');
-    if(id === 'low') document.getElementById('tab-low').classList.add('active');
-
-    document.getElementById(id).classList.add('active');
-    activeTab = id;
 }
 
 async function submitForm() {
@@ -738,49 +529,37 @@ async function submitForm() {
     const driverName = document.getElementById('driverName').value;
     const vin = document.getElementById('vinInput').value;
     const vehicleType = document.getElementById('vehicleType').value;
-    const notes = document.getElementById('notes').value;
-    let selectedTags = [];
-    
-    let reportType = "General Issue";
-    if (activeTab === 'high') reportType = "High Priority Issue";
-    else if (activeTab === 'edv') reportType = "Electric Vehicle Issue";
-    else if (activeTab === 'low') reportType = "Low Priority Issue";
-
-    const activeSection = document.getElementById(activeTab);
-    activeSection.querySelectorAll('.list-btn.selected').forEach(btn => {
-        selectedTags.push(btn.innerText.replace('✓', '').trim());
-    });
+    const issueDescription = document.getElementById('issueDescription').value;
 
     if(!driverName) { alert("Please enter Driver Name"); return; }
     if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
-    if(selectedTags.length === 0) { alert("Please select at least one issue."); return; }
-    
-    // REQUIRED: Notes must be filled
-    if(!notes || notes.trim().length === 0) { alert("Detailed Description is required. Please describe the issue."); return; }
-    
-    // REQUIRED: At least 1 video must be uploaded
-    if(photos.length === 0) { alert("Video documentation is required. Please record a video of the issue."); return; }
+    if(!issueDescription || issueDescription.trim().length === 0) { 
+        alert("Please describe the issue in 1-2 sentences."); 
+        return; 
+    }
+    if(photos.length === 0) { 
+        alert("Photo or video documentation is required."); 
+        return; 
+    }
 
     isSubmitting = true;
     const btn = document.querySelector('.submit-btn');
-    btn.innerText = "UPLOADING...";
+    btn.innerText = "SUBMITTING...";
     btn.style.opacity = "0.7";
     btn.disabled = true;
 
     const payload = {
-        reportType: reportType,
         driverName: driverName,
         vinLast4: vin,
         vehicleType: vehicleType,
-        tags: selectedTags,
-        otherDescription: notes,
+        issueDescription: issueDescription,
         date: new Date().toLocaleDateString(),
         time: new Date().toLocaleTimeString(),
         photos: photos
     };
 
     try {
-        const res = await fetch('/submit-report', {
+        const res = await fetch('/submit-issue-ai', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
