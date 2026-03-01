@@ -419,14 +419,6 @@
             transform: scale(1.05);
         }
 
-        /* Build Notes card special image */
-        .build-notes-image {
-            background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
         .card-icon {
             width: clamp(48px, 12vw, 64px);
             height: clamp(48px, 12vw, 64px);
@@ -469,6 +461,76 @@
         }
 
         /* FOOTER */
+        /* Build Notes Section - Always Visible */
+        .build-notes-section {
+            margin: clamp(20px, 4vw, 30px) auto;
+            max-width: 800px;
+            padding: 0 clamp(16px, 4vw, 24px);
+        }
+
+        .build-notes-link {
+            display: flex;
+            align-items: center;
+            gap: clamp(12px, 3vw, 16px);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: clamp(12px, 3vw, 16px);
+            padding: clamp(14px, 3.5vw, 18px) clamp(16px, 4vw, 20px);
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .build-notes-link:active {
+            transform: scale(0.98);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
+        }
+
+        .build-notes-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: clamp(40px, 10vw, 48px);
+            height: clamp(40px, 10vw, 48px);
+            background: linear-gradient(135deg, #00A8E1, #0084b4);
+            border-radius: clamp(10px, 2.5vw, 12px);
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .build-notes-icon svg {
+            width: clamp(20px, 5vw, 24px);
+            height: clamp(20px, 5vw, 24px);
+        }
+
+        .build-notes-content {
+            flex: 1;
+        }
+
+        .build-notes-title {
+            font-size: clamp(14px, 3.5vw, 16px);
+            font-weight: 600;
+            color: #FFFFFF;
+            margin-bottom: 2px;
+        }
+
+        .build-notes-version {
+            font-size: clamp(11px, 2.8vw, 13px);
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .build-notes-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.4);
+            flex-shrink: 0;
+        }
+
+        .build-notes-arrow svg {
+            width: clamp(18px, 4.5vw, 20px);
+            height: clamp(18px, 4.5vw, 20px);
+        }
+
         .footer {
             margin-top: var(--space-xl);
             padding-top: var(--space-lg);
@@ -597,7 +659,7 @@
     <div id="main-ui" class="container">
         <div class="status-bar">
             <span>SYSTEM ONLINE</span>
-            <span id="header-version">v4.6.0</span>
+            <span id="header-version">v4.6.1</span>
         </div>
         
         <div class="logo-card">
@@ -667,30 +729,13 @@
                 </div>
             </a>
 
-            <!-- Build Notes -->
-            <a href="/build-notes" class="menu-card">
-                <div class="card-image build-notes-image">
-                    <svg class="card-icon" viewBox="0 0 24 24">
-                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-                    </svg>
-                </div>
-                <div class="card-content">
-                    <span class="card-label">Build Notes</span>
-                    <div class="card-arrow">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                        </svg>
-                    </div>
-                </div>
-            </a>
-
-            <!-- Today's Forecast & Road Conditions -->
+            <!-- Route Planning -->
             <a href="/weather" class="menu-card">
                 <div class="card-image">
-                    <img src="weather.jpg" alt="Today's Forecast">
+                    <img src="weather.jpg" alt="Route Planning">
                 </div>
                 <div class="card-content">
-                    <span class="card-label">Today's Forecast</span>
+                    <span class="card-label">Route Planning</span>
                     <div class="card-arrow">
                         <svg viewBox="0 0 24 24">
                             <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
@@ -700,8 +745,28 @@
             </a>
         </div>
 
+        <!-- Build Notes Section - Always Visible -->
+        <div class="build-notes-section">
+            <a href="/build-notes" class="build-notes-link">
+                <div class="build-notes-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                </div>
+                <div class="build-notes-content">
+                    <div class="build-notes-title">Build Notes & Updates</div>
+                    <div class="build-notes-version">v4.6.1 - Latest Changes</div>
+                </div>
+                <div class="build-notes-arrow">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+
         <div class="footer">
-            Strategic Logistics Group • Fleet Management System • <span id="app-version">v4.6.0</span>
+            Strategic Logistics Group • Fleet Management System • <span id="app-version">v4.6.1</span>
         </div>
     </div>
 
