@@ -447,6 +447,11 @@
         <div id="weather-content" class="loading">
             Loading weather data...
         </div>
+
+        <!-- Build Notes Button -->
+        <a href="/build-notes" style="display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); color: #ffffff; background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%); text-decoration: none; font-size: var(--font-sm); font-weight: 700; padding: var(--space-md) var(--space-lg); border-radius: var(--radius); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: all 0.2s ease; margin-top: var(--space-lg); width: 100%; text-align: center;">
+            📋 Build Notes & Changelog
+        </a>
     </div>
 
     <script>
@@ -501,19 +506,10 @@
                 const sunsetRes = await fetch(sunsetURL);
                 const sunsetData = await sunsetRes.json();
                 
-                // Fetch real traffic data from TomTom
-                let trafficData = null;
-                try {
-                    const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
-                    const trafficURL = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${tomtomKey}&point=${userLat},${userLon}`;
-                    const trafficRes = await fetch(trafficURL);
-                    trafficData = await trafficRes.json();
-                    console.log('✅ Traffic data:', trafficData);
-                } catch (e) {
-                    console.warn('⚠️ Traffic data unavailable:', e.message);
-                }
+                // Fetch traffic data for major corridors
+                let corridorTraffic = await fetchCorridorTraffic();
                 
-                displayWeather(weatherData, sunsetData, trafficData);
+                displayWeather(weatherData, sunsetData, corridorTraffic);
                 
             } catch (error) {
                 console.error('Weather fetch error:', error);
@@ -523,6 +519,55 @@
                     </div>
                 `;
             }
+        }
+
+        // Fetch traffic for major corridors in Atlanta metro
+        async function fetchCorridorTraffic() {
+            const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
+            
+            // Major corridors in delivery area
+            const corridors = [
+                { name: 'I-75 South', lat: 33.6405, lon: -84.4194, direction: 'southbound' },
+                { name: 'I-75 North', lat: 33.7701, lon: -84.3944, direction: 'northbound' },
+                { name: 'I-85 South', lat: 33.6890, lon: -84.2960, direction: 'southbound' },
+                { name: 'I-85 North', lat: 33.7756, lon: -84.3863, direction: 'northbound' },
+                { name: 'I-285 Perimeter', lat: 33.7490, lon: -84.3880, direction: 'loop' },
+                { name: 'US-19/41 Southbound', lat: 33.6850, lon: -84.4450, direction: 'southbound' },
+                { name: 'SR-74 West', lat: 33.3866, lon: -84.5755, direction: 'westbound' },
+                { name: 'US-29 South', lat: 33.3826, lon: -84.7938, direction: 'southbound' }
+            ];
+            
+            let results = [];
+            
+            for (let corridor of corridors) {
+                try {
+                    const trafficURL = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${tomtomKey}&point=${corridor.lat},${corridor.lon}`;
+                    const response = await fetch(trafficURL);
+                    const data = await response.json();
+                    
+                    if (data.flowSegmentData) {
+                        const currentSpeed = data.flowSegmentData.currentSpeed || 0;
+                        const freeFlowSpeed = data.flowSegmentData.freeFlowSpeed || 60;
+                        const speedRatio = currentSpeed / freeFlowSpeed;
+                        
+                        results.push({
+                            name: corridor.name,
+                            direction: corridor.direction,
+                            currentSpeed: Math.round(currentSpeed),
+                            normalSpeed: Math.round(freeFlowSpeed),
+                            ratio: speedRatio,
+                            status: speedRatio >= 0.8 ? 'clear' : speedRatio >= 0.5 ? 'moderate' : 'heavy'
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch traffic for ${corridor.name}:`, e.message);
+                }
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            return results;
         }
 
         function getWeatherIcon(code) {
@@ -580,42 +625,51 @@
                 `;
             }
             
-            // REAL TRAFFIC CONDITIONS (from TomTom API)
-            if (traffic && traffic.flowSegmentData) {
-                const currentSpeed = traffic.flowSegmentData.currentSpeed;
-                const freeFlowSpeed = traffic.flowSegmentData.freeFlowSpeed;
-                const confidence = traffic.flowSegmentData.confidence;
+            // CORRIDOR TRAFFIC ALERTS (Major Highways)
+            if (traffic && traffic.length > 0) {
+                // Find problem corridors
+                const heavyCorridors = traffic.filter(c => c.status === 'heavy');
+                const moderateCorridors = traffic.filter(c => c.status === 'moderate');
+                const clearCorridors = traffic.filter(c => c.status === 'clear');
                 
-                if (currentSpeed && freeFlowSpeed) {
-                    const speedRatio = currentSpeed / freeFlowSpeed;
+                // Show heavy traffic alerts first
+                if (heavyCorridors.length > 0) {
+                    let corridorList = heavyCorridors.map(c => 
+                        `<strong>${c.name}</strong>: ${c.currentSpeed} mph (${Math.round(c.ratio * 100)}% normal)`
+                    ).join('<br>');
                     
-                    // Heavy traffic: <50% of normal speed
-                    if (speedRatio < 0.5) {
-                        alertsHTML += `
-                            <div class="alert-banner">
-                                <div class="alert-title">🚨 HEAVY TRAFFIC IN YOUR AREA</div>
-                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Heavy congestion detected. Allow extra delivery time and consider alternate routes.</div>
-                            </div>
-                        `;
-                    }
-                    // Moderate traffic: 50-80% of normal speed
-                    else if (speedRatio < 0.8) {
-                        alertsHTML += `
-                            <div class="warning-banner">
-                                <div class="alert-title">⚠️ MODERATE TRAFFIC</div>
-                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Some congestion detected. Plan accordingly.</div>
-                            </div>
-                        `;
-                    }
-                    // Light traffic: >80% of normal speed
-                    else {
-                        alertsHTML += `
-                            <div class="success-banner">
-                                <div class="alert-title">✅ LIGHT TRAFFIC</div>
-                                <div class="alert-description">Current speed: ${Math.round(currentSpeed)} mph (${Math.round(speedRatio * 100)}% of normal). Good traffic conditions for deliveries.</div>
-                            </div>
-                        `;
-                    }
+                    let alternatives = clearCorridors.length > 0 
+                        ? `<br><br>💡 <strong>Alternative Routes:</strong><br>${clearCorridors.slice(0, 2).map(c => `${c.name}: ${Math.round(c.ratio * 100)}% normal speed`).join('<br>')}`
+                        : '';
+                    
+                    alertsHTML += `
+                        <div class="alert-banner">
+                            <div class="alert-title">🚨 HEAVY TRAFFIC ON MAJOR ROUTES</div>
+                            <div class="alert-description">${corridorList}${alternatives}<br><br>⚠️ Allow extra 20-30 minutes for affected routes. Check GPS for real-time detours.</div>
+                        </div>
+                    `;
+                }
+                // Show moderate traffic as warning
+                else if (moderateCorridors.length > 0) {
+                    let corridorList = moderateCorridors.slice(0, 3).map(c => 
+                        `${c.name}: ${c.currentSpeed} mph (${Math.round(c.ratio * 100)}% normal)`
+                    ).join(' • ');
+                    
+                    alertsHTML += `
+                        <div class="warning-banner">
+                            <div class="alert-title">⚠️ MODERATE TRAFFIC CONDITIONS</div>
+                            <div class="alert-description">${corridorList}<br>Some slowdowns expected. Monitor conditions and allow extra time.</div>
+                        </div>
+                    `;
+                }
+                // All clear - show positive message
+                else if (clearCorridors.length >= traffic.length * 0.7) {
+                    alertsHTML += `
+                        <div class="success-banner">
+                            <div class="alert-title">✅ CLEAR TRAFFIC CONDITIONS</div>
+                            <div class="alert-description">All major routes flowing well (${Math.round(traffic.reduce((sum, c) => sum + c.ratio, 0) / traffic.length * 100)}% average). Good conditions for deliveries.</div>
+                        </div>
+                    `;
                 }
             }
             
@@ -786,6 +840,32 @@
                     </div>
                 </div>
                 
+                <div class="section-title">🚦 Major Route Conditions</div>
+                <div class="legend">
+                    <div class="legend-title">Current Traffic on Major Corridors</div>
+                    ${traffic && traffic.length > 0 ? traffic.map(corridor => {
+                        let statusColor = corridor.status === 'clear' ? '#10B981' : 
+                                        corridor.status === 'moderate' ? '#F59E0B' : '#EF4444';
+                        let statusIcon = corridor.status === 'clear' ? '✅' : 
+                                       corridor.status === 'moderate' ? '⚠️' : '🚨';
+                        let statusText = corridor.status === 'clear' ? 'Clear' : 
+                                       corridor.status === 'moderate' ? 'Moderate' : 'Heavy';
+                        
+                        return `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md); background: rgba(255,255,255,0.03); border-radius: calc(var(--radius) * 0.7); margin-bottom: var(--space-sm); border-left: 4px solid ${statusColor};">
+                                <div style="flex: 1;">
+                                    <div style="font-size: var(--font-sm); font-weight: 700; color: #ffffff; margin-bottom: 4px;">${statusIcon} ${corridor.name}</div>
+                                    <div style="font-size: var(--font-xs); color: var(--text-gray);">${corridor.currentSpeed} mph current • ${corridor.normalSpeed} mph normal</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: var(--font-md); font-weight: 800; color: ${statusColor};">${Math.round(corridor.ratio * 100)}%</div>
+                                    <div style="font-size: var(--font-xs); color: var(--text-gray);">${statusText}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') : '<div style="color: var(--text-gray); text-align: center; padding: var(--space-md);">Traffic data loading...</div>'}
+                </div>
+                
                 <div class="safety-reminders">
                     <div class="legend-title">⚠️ Safety Reminders</div>
                     <ul class="reminder-list">
@@ -810,6 +890,13 @@
                         <div class="area-item">Riverdale</div>
                         <div class="area-item">Union City</div>
                         <div class="area-item">Newnan</div>
+                        <div class="area-item">Senoia</div>
+                        <div class="area-item">Sharpsburg</div>
+                        <div class="area-item">Moreland</div>
+                        <div class="area-item">Grantville</div>
+                        <div class="area-item">Hogansville</div>
+                        <div class="area-item">Luthersville</div>
+                        <div class="area-item">Greenville</div>
                         <div class="area-item">Griffin</div>
                         <div class="area-item">LaGrange</div>
                     </div>
