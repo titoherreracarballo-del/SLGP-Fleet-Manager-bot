@@ -1192,9 +1192,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 .videoFilters([
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
                     'unsharp=5:5:1.0:5:5:0.5',
-                    'nlmeans=s=3.0:p=7:r=15',
-                    'hqdn3d=4:3:6:4.5'
-                ])
+                    ])
                 .videoBitrate('20M')
                 .videoCodec('libx264')
                 .outputOptions([
