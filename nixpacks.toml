@@ -1,8 +1,5 @@
-# Railway Nixpacks Configuration
-# This tells Railway to install FFmpeg for video processing
-
 [phases.setup]
-nixPkgs = ['ffmpeg']    ← ONLY FFmpeg (Railway handles Node.js)
+nixPkgs = ['ffmpeg']
 
 [phases.install]
 dependsOn = ['setup']
