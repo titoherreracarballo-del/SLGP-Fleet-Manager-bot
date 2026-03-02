@@ -2,48 +2,51 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Today's Forecast - SLGP Fleet</title>
-    
-    <!-- Leaflet CSS for OpenStreetMap -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Notes & Updates</title>
     <style>
+        /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
             --bg-body: #0A6CF1;
             --bg-card: #1C1C1E;
             --bg-section: #2C2C2E;
             --primary-blue: #1976D2;
             --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            --text-label: #1976D2;
             --text-white: #ffffff;
             --text-primary: #FFFFFF;
             --text-gray: #8E8E93;
+            --text-green: #4CAF50;
+            --text-orange: #FF9800;
+            --text-red: #EF4444;
+            --text-on-blue: #FFFFFF;
             --border-color: rgba(255, 255, 255, 0.1);
             
+            /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
             --space-sm: clamp(6px, 1.5vw, 10px);
             --space-md: clamp(10px, 2.5vw, 15px);
             --space-lg: clamp(15px, 3.5vw, 20px);
             --space-xl: clamp(20px, 4.5vw, 30px);
             
+            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
             --font-md: clamp(16px, 3.6vw, 18px);
             --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
-            --font-xxl: clamp(32px, 8vw, 48px);
+            --font-xxl: clamp(26px, 6vw, 30px);
             
+            /* FLUID RADIUS */
             --radius: clamp(12px, 3vw, 16px);
+            
+            /* MIN TOUCH TARGET */
             --min-touch: 44px;
         }
 
         * {
             -webkit-tap-highlight-color: transparent;
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
         }
 
         body {
@@ -74,9 +77,9 @@
             display: inline-flex;
             align-items: center;
             gap: var(--space-sm);
-            color: #ffffff;
+            color: #ffffff; 
             background: var(--primary-gradient);
-            text-decoration: none;
+            text-decoration: none; 
             font-size: var(--font-md);
             font-weight: 700;
             padding: var(--space-md) var(--space-lg);
@@ -91,6 +94,10 @@
             box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
             transform: translateY(-2px);
         }
+        .back-link:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
+        }
 
         .header {
             text-align: center;
@@ -98,867 +105,531 @@
         }
 
         h1 {
-            font-size: var(--font-xl);
-            font-weight: 900;
-            color: #ffffff;
-            margin-bottom: var(--space-sm);
-            letter-spacing: -0.03em;
-        }
-
-        .subtitle {
-            color: var(--text-gray);
-            font-size: var(--font-sm);
-            font-weight: 600;
-        }
-
-        .current-weather {
-            background: linear-gradient(135deg, #2C2C2E 0%, #1C1C1E 100%);
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            text-align: center;
-            margin-bottom: var(--space-lg);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .temp-display {
+            color: var(--text-label);
             font-size: var(--font-xxl);
-            font-weight: 800;
-            color: #ffffff;
-            margin: var(--space-sm) 0;
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        .condition {
-            font-size: var(--font-lg);
-            color: rgba(255, 255, 255, 0.95);
-            font-weight: 700;
-            margin-bottom: var(--space-xs);
-        }
-
-        .feels-like {
-            color: var(--text-gray);
-            font-size: var(--font-sm);
-            font-weight: 600;
-        }
-
-        .weather-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
-            gap: var(--space-md);
-            margin-top: var(--space-lg);
-        }
-
-        .detail-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: var(--space-md);
-            border-radius: calc(var(--radius) * 0.7);
-            text-align: center;
-        }
-
-        .detail-label {
-            color: var(--text-gray);
-            font-size: var(--font-xs);
-            text-transform: uppercase;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            margin-bottom: var(--space-xs);
-        }
-
-        .detail-value {
-            color: #ffffff;
-            font-size: var(--font-md);
-            font-weight: 800;
-        }
-
-        .alert-banner {
-            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-            border-radius: var(--radius);
-            padding: var(--space-md);
-            margin-bottom: var(--space-md);
-            border: 2px solid #F87171;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .warning-banner {
-            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-            border-radius: var(--radius);
-            padding: var(--space-md);
-            margin-bottom: var(--space-md);
-            border: 2px solid #FBBF24;
-        }
-
-        .info-banner {
-            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-            border-radius: var(--radius);
-            padding: var(--space-md);
-            margin-bottom: var(--space-md);
-            border: 2px solid #60A5FA;
-        }
-
-        .success-banner {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            border-radius: var(--radius);
-            padding: var(--space-md);
-            margin-bottom: var(--space-md);
-            border: 2px solid #34d399;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.95; transform: scale(1.01); }
-        }
-
-        .alert-title {
-            font-size: var(--font-md);
-            font-weight: 800;
-            margin-bottom: var(--space-xs);
-            text-transform: uppercase;
-            color: #1C1C1E;
-        }
-
-        .alert-description {
-            font-size: var(--font-sm);
-            line-height: 1.5;
-            color: #1C1C1E;
-        }
-
-        .section-title {
-            font-size: var(--font-lg);
-            font-weight: 800;
-            color: #ffffff;
-            margin: var(--space-lg) 0 var(--space-md) 0;
-            display: flex;
-            align-items: center;
-            gap: var(--space-sm);
-        }
-
-        .hourly-forecast {
-            display: flex;
-            gap: var(--space-md);
-            overflow-x: auto;
-            padding: var(--space-md) 0;
-            margin-bottom: var(--space-lg);
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-        }
-        .hourly-forecast::-webkit-scrollbar { display: none; }
-
-        .hourly-item {
-            flex: 0 0 auto;
-            background: var(--bg-section);
-            border-radius: var(--radius);
-            padding: var(--space-md);
-            text-align: center;
-            min-width: min(90px, 25vw);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .hourly-time {
-            font-size: var(--font-xs);
-            color: var(--text-gray);
-            font-weight: 700;
-            margin-bottom: var(--space-xs);
-        }
-
-        .hourly-icon {
-            font-size: clamp(24px, 6vw, 32px);
-            margin: var(--space-xs) 0;
-        }
-
-        .hourly-temp {
-            font-size: var(--font-md);
-            font-weight: 800;
-            color: #ffffff;
-            margin-bottom: var(--space-xs);
-        }
-
-        .hourly-pop {
-            font-size: var(--font-xs);
-            color: #60A5FA;
-            font-weight: 700;
-        }
-
-        .sunset-info {
-            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            text-align: center;
-            margin-bottom: var(--space-lg);
-            border: 2px solid #FBBF24;
-        }
-
-        .sunset-label {
-            font-size: var(--font-sm);
-            color: #1C1C1E;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: var(--space-sm);
-        }
-
-        .sunset-time {
-            font-size: var(--font-xl);
             font-weight: 900;
-            color: #1C1C1E;
+            text-transform: uppercase;
+            margin: 0 0 var(--space-xs) 0;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
 
-        .map-container {
+        .version {
+            color: var(--text-green);
+            font-size: var(--font-sm);
+            font-weight: 700;
+        }
+
+        .build-section {
             background: var(--bg-section);
+            border: 1px solid var(--border-color);
             border-radius: var(--radius);
-            overflow: hidden;
+            padding: var(--space-md);
             margin-bottom: var(--space-lg);
-            border: 2px solid rgba(255, 255, 255, 0.1);
         }
 
-        #traffic-map {
-            width: 100%;
-            height: 300px;
-        }
-
-        .legend {
-            background: var(--bg-section);
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            margin-bottom: var(--space-lg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .legend-title {
-            font-size: var(--font-md);
-            font-weight: 800;
-            color: #ffffff;
-            margin-bottom: var(--space-md);
-        }
-
-        .legend-items {
+        .build-header {
             display: flex;
-            flex-direction: column;
-            gap: var(--space-sm);
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-sm);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--border-color);
         }
 
-        .legend-item {
+        .build-date {
+            color: var(--text-label);
+            font-size: var(--font-md);
+            font-weight: 900;
+        }
+
+        .build-version {
+            background: var(--primary-blue);
+            color: white;
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: clamp(6px, 1.5vw, 8px);
+            font-size: var(--font-xs);
+            font-weight: 700;
+        }
+
+        .category {
+            margin-top: var(--space-md);
+        }
+
+        .category-title {
+            color: var(--text-green);
+            font-size: var(--font-sm);
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: var(--space-xs);
             display: flex;
             align-items: center;
-            font-size: var(--font-sm);
-            color: rgba(255, 255, 255, 0.9);
-            font-weight: 600;
+            gap: var(--space-xs);
         }
 
-        .safety-reminders {
-            background: var(--bg-section);
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            margin-bottom: var(--space-lg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
+        .category-title.new { color: var(--text-green); }
+        .category-title.fix { color: var(--text-orange); }
+        .category-title.optimize { color: var(--text-label); }
+        .category-title.remove { color: var(--text-red); }
 
-        .reminder-list {
+        .change-list {
             list-style: none;
             padding: 0;
             margin: 0;
         }
 
-        .reminder-list li {
-            padding: var(--space-sm) 0;
-            color: rgba(255, 255, 255, 0.9);
+        .change-item {
+            color: var(--text-gray);
             font-size: var(--font-sm);
             line-height: 1.6;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-weight: 500;
+            padding-left: var(--space-md);
+            position: relative;
+            margin-bottom: var(--space-xs);
         }
 
-        .reminder-list li:last-child {
-            border-bottom: none;
+        .change-item::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--text-label);
+            font-weight: 900;
         }
 
-        .reminder-list li::before {
-            content: "✓ ";
-            color: #10b981;
-            font-weight: 800;
-            margin-right: var(--space-sm);
+        .highlight {
+            color: var(--text-white);
+            font-weight: 700;
         }
 
-        .coverage-area {
-            background: var(--bg-section);
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            margin-bottom: var(--space-lg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .area-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
-            gap: var(--space-sm);
-            margin-top: var(--space-md);
-        }
-
-        .area-item {
+        .code {
             background: rgba(255, 255, 255, 0.05);
-            padding: var(--space-sm);
-            border-radius: calc(var(--radius) * 0.6);
-            font-size: var(--font-sm);
-            color: rgba(255, 255, 255, 0.9);
-            font-weight: 600;
-            text-align: center;
-        }
-
-        .last-updated {
-            text-align: center;
-            color: var(--text-gray);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
             font-size: var(--font-xs);
-            margin-top: var(--space-lg);
-            font-weight: 600;
+            color: var(--text-green);
         }
 
-        .loading {
-            text-align: center;
-            padding: var(--space-xl);
-            color: rgba(255, 255, 255, 0.7);
-            font-size: var(--font-md);
+        /* --- RESPONSIVE BREAKPOINTS --- */
+        @media (max-width: 340px) {
+            body { padding: 8px; }
+            .container { padding: 12px; }
         }
 
-        .error-message {
-            background: rgba(239, 68, 68, 0.1);
-            border: 2px solid #EF4444;
-            border-radius: var(--radius);
-            padding: var(--space-lg);
-            text-align: center;
-            color: #FCA5A5;
-            font-weight: 600;
+        @media (min-width: 768px) {
+            :root {
+                --font-xs: 12px;
+                --font-sm: 13px;
+                --font-base: 15px;
+                --font-md: 16px;
+                --font-lg: 18px;
+                --font-xl: 24px;
+                --font-xxl: 28px;
+            }
         }
 
-        @media (max-width: 480px) {
-            .area-grid {
-                grid-template-columns: repeat(2, 1fr);
+        /* iOS-specific fix */
+        @supports (-webkit-touch-callout: none) {
+            input, textarea, select {
+                font-size: 16px !important;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <a href="/" class="back-link">← Back to Menu</a>
-        
-        <div class="header">
-            <h1>⛅ Today's Forecast</h1>
-            <div class="subtitle">Weather & Road Conditions</div>
-        </div>
-        
-        <div id="weather-content" class="loading">
-            Loading weather data...
-        </div>
 
-        <!-- Build Notes Button -->
-        <a href="/build-notes" style="display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); color: #ffffff; background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%); text-decoration: none; font-size: var(--font-sm); font-weight: 700; padding: var(--space-md) var(--space-lg); border-radius: var(--radius); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: all 0.2s ease; margin-top: var(--space-lg); width: 100%; text-align: center;">
-            📋 Build Notes & Changelog
-        </a>
+<div class="container">
+    <a href="/" class="back-link">← Back to Menu</a>
+    
+    <div class="header">
+        <h1>Build Notes</h1>
+        <div class="version">Current Version: 4.6.3</div>
     </div>
 
-    <script>
-        let userLat = 33.7490;  // Default: Atlanta, GA
-        let userLon = -84.3880;
-        let locationName = "Atlanta, GA";
-        let map = null;
+    <!-- BUILD v4.6.3 - March 2, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 2, 2026</div>
+            <div class="build-version">v4.6.3</div>
+        </div>
 
-        // Get user's actual location
-        async function getUserLocation() {
-            try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 300000
-                    });
-                });
-                
-                userLat = position.coords.latitude;
-                userLon = position.coords.longitude;
-                
-                // Reverse geocode to get location name
-                const geoResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLon}&format=json`);
-                const geoData = await geoResponse.json();
-                
-                if (geoData.address) {
-                    const city = geoData.address.city || geoData.address.town || geoData.address.village || '';
-                    const state = geoData.address.state || '';
-                    locationName = city && state ? `${city}, ${state}` : 'Current Location';
-                }
-                
-                console.log('✅ Location acquired:', locationName, userLat, userLon);
-            } catch (error) {
-                console.warn('⚠️ Using default location (Atlanta, GA):', error.message);
-            }
-        }
+        <div class="category">
+            <div class="category-title new">🚦 GPS-BASED SPEED LIMIT READER</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Real-Time Speed Limits:</span> Automatic GPS-based speed limit detection for driver's current location</li>
+                <li class="change-item"><span class="highlight">Live Speed Monitoring:</span> Displays driver's current speed vs posted limit with visual alerts</li>
+                <li class="change-item"><span class="highlight">Violation Warnings:</span> Color-coded alerts (Green=Safe, Yellow=Caution, Red=Speeding)</li>
+                <li class="change-item"><span class="highlight">Known Violation Zones:</span> Pre-loaded database of high-risk areas with enforcement cameras</li>
+                <li class="change-item"><span class="highlight">Reduces Tickets:</span> Helps drivers stay compliant and avoid speeding violations</li>
+            </ul>
+        </div>
 
-        async function fetchWeather() {
-            try {
-                // Get user's location first
-                await getUserLocation();
-                
-                // Fetch weather data
-                const weatherURL = `https://api.open-meteo.com/v1/forecast?latitude=${userLat}&longitude=${userLon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=1`;
-                
-                const weatherRes = await fetch(weatherURL);
-                const weatherData = await weatherRes.json();
-                
-                // Fetch sunset time
-                const sunsetURL = `https://api.sunrise-sunset.org/json?lat=${userLat}&lng=${userLon}&formatted=0`;
-                const sunsetRes = await fetch(sunsetURL);
-                const sunsetData = await sunsetRes.json();
-                
-                // Fetch traffic data for major corridors
-                let corridorTraffic = await fetchCorridorTraffic();
-                
-                displayWeather(weatherData, sunsetData, corridorTraffic);
-                
-            } catch (error) {
-                console.error('Weather fetch error:', error);
-                document.getElementById('weather-content').innerHTML = `
-                    <div class="error-message">
-                        ⚠️ Unable to load weather data. Please try again later.
-                    </div>
-                `;
-            }
-        }
+        <div class="category">
+            <div class="category-title new">📊 USAGE TRACKING & EMAIL ALERTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">API Monitoring:</span> Tracks TomTom API requests to stay within free tier (2,500/day)</li>
+                <li class="change-item"><span class="highlight">Email Alerts:</span> Automatic notifications at 80%, 90%, and 95% of daily limit</li>
+                <li class="change-item"><span class="highlight">Hard Limit:</span> Prevents overages by blocking requests at 2,500/day</li>
+                <li class="change-item"><span class="highlight">Daily Reset:</span> Counters reset automatically at midnight</li>
+            </ul>
+        </div>
 
-        // Fetch traffic for major corridors in Atlanta metro
-        async function fetchCorridorTraffic() {
-            const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
-            
-            // Major corridors in delivery area
-            const corridors = [
-                { name: 'I-75 South', lat: 33.6405, lon: -84.4194, direction: 'southbound' },
-                { name: 'I-75 North', lat: 33.7701, lon: -84.3944, direction: 'northbound' },
-                { name: 'I-85 South', lat: 33.6890, lon: -84.2960, direction: 'southbound' },
-                { name: 'I-85 North', lat: 33.7756, lon: -84.3863, direction: 'northbound' },
-                { name: 'I-285 Perimeter', lat: 33.7490, lon: -84.3880, direction: 'loop' },
-                { name: 'US-19/41 Southbound', lat: 33.6850, lon: -84.4450, direction: 'southbound' },
-                { name: 'SR-74 West', lat: 33.3866, lon: -84.5755, direction: 'westbound' },
-                { name: 'US-29 South', lat: 33.3826, lon: -84.7938, direction: 'southbound' }
-            ];
-            
-            let results = [];
-            
-            for (let corridor of corridors) {
-                try {
-                    const trafficURL = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${tomtomKey}&point=${corridor.lat},${corridor.lon}`;
-                    const response = await fetch(trafficURL);
-                    const data = await response.json();
-                    
-                    if (data.flowSegmentData) {
-                        const currentSpeed = data.flowSegmentData.currentSpeed || 0;
-                        const freeFlowSpeed = data.flowSegmentData.freeFlowSpeed || 60;
-                        const speedRatio = currentSpeed / freeFlowSpeed;
-                        
-                        results.push({
-                            name: corridor.name,
-                            direction: corridor.direction,
-                            currentSpeed: Math.round(currentSpeed),
-                            normalSpeed: Math.round(freeFlowSpeed),
-                            ratio: speedRatio,
-                            status: speedRatio >= 0.8 ? 'clear' : speedRatio >= 0.5 ? 'moderate' : 'heavy'
-                        });
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch traffic for ${corridor.name}:`, e.message);
-                }
-                
-                // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            return results;
-        }
+        <div class="category">
+            <div class="category-title optimize">💾 SMART CACHING SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">3-Tier Lookup:</span> Database → Cache → TomTom API (minimizes costs)</li>
+                <li class="change-item"><span class="highlight">24-Hour Cache:</span> Speed limits cached per GPS location</li>
+                <li class="change-item"><span class="highlight">90% Reduction:</span> Smart caching reduces API calls from 3,600 to 370/day</li>
+                <li class="change-item"><span class="highlight">Free Forever:</span> Can scale to 300+ drivers and stay FREE</li>
+            </ul>
+        </div>
 
-        function getWeatherIcon(code) {
-            const icons = {
-                0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
-                45: '🌫️', 48: '🌫️',
-                51: '🌦️', 53: '🌦️', 55: '🌦️',
-                61: '🌧️', 63: '🌧️', 65: '🌧️',
-                71: '🌨️', 73: '🌨️', 75: '🌨️',
-                80: '🌦️', 81: '🌦️', 82: '🌧️',
-                95: '⛈️', 96: '⛈️', 99: '⛈️'
-            };
-            return icons[code] || '🌡️';
-        }
+        <div class="category">
+            <div class="category-title optimize">💰 COST PROTECTION</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">40 Drivers:</span> ~370 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">100 Drivers:</span> ~900 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">300 Drivers:</span> ~2,400 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">Email Warnings:</span> Get notified before hitting limits</li>
+            </ul>
+        </div>
 
-        function getWeatherDescription(code) {
-            const descriptions = {
-                0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
-                45: 'Foggy', 48: 'Foggy',
-                51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
-                61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
-                71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
-                80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
-                95: 'Thunderstorm', 96: 'Thunderstorm with Hail', 99: 'Severe Thunderstorm'
-            };
-            return descriptions[code] || 'Unknown';
-        }
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">speed-limits.html</span> - NEW GPS speed limit reader</li>
+                <li class="change-item"><span class="code">index.js</span> - Usage tracking, caching, API endpoint</li>
+                <li class="change-item"><span class="code">menu.html</span> - Added Speed Limits button</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated</li>
+            </ul>
+        </div>
+    </div>
 
-        function displayWeather(weather, sunset, traffic) {
-            const current = weather.current;
-            const hourly = weather.hourly;
-            const now = new Date();
-            const hour = now.getHours();
-            
-            // Parse sunset time
-            const sunsetTime = new Date(sunset.results.sunset);
-            const sunsetFormatted = sunsetTime.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit'
-            });
-            
-            // Calculate time until sunset (in minutes)
-            const minutesUntilSunset = Math.floor((sunsetTime - now) / 1000 / 60);
-            
-            // Build alerts
-            let alertsHTML = '';
-            
-            // SUNSET APPROACHING ALERT (within 60 minutes)
-            if (minutesUntilSunset > 0 && minutesUntilSunset <= 60) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">🌅 SUNSET APPROACHING (${minutesUntilSunset} min)</div>
-                        <div class="alert-description">Sunset at ${sunsetFormatted}. Flash detection will be active for remaining deliveries. Check camera settings and ensure flash is enabled.</div>
-                    </div>
-                `;
-            }
-            
-            // CORRIDOR TRAFFIC ALERTS (Major Highways)
-            if (traffic && traffic.length > 0) {
-                // Find problem corridors
-                const heavyCorridors = traffic.filter(c => c.status === 'heavy');
-                const moderateCorridors = traffic.filter(c => c.status === 'moderate');
-                const clearCorridors = traffic.filter(c => c.status === 'clear');
-                
-                // Show heavy traffic alerts first
-                if (heavyCorridors.length > 0) {
-                    let corridorList = heavyCorridors.map(c => 
-                        `<strong>${c.name}</strong>: ${c.currentSpeed} mph (${Math.round(c.ratio * 100)}% normal)`
-                    ).join('<br>');
-                    
-                    let alternatives = clearCorridors.length > 0 
-                        ? `<br><br>💡 <strong>Alternative Routes:</strong><br>${clearCorridors.slice(0, 2).map(c => `${c.name}: ${Math.round(c.ratio * 100)}% normal speed`).join('<br>')}`
-                        : '';
-                    
-                    alertsHTML += `
-                        <div class="alert-banner">
-                            <div class="alert-title">🚨 HEAVY TRAFFIC ON MAJOR ROUTES</div>
-                            <div class="alert-description">${corridorList}${alternatives}<br><br>⚠️ Allow extra 20-30 minutes for affected routes. Check GPS for real-time detours.</div>
-                        </div>
-                    `;
-                }
-                // Show moderate traffic as warning
-                else if (moderateCorridors.length > 0) {
-                    let corridorList = moderateCorridors.slice(0, 3).map(c => 
-                        `${c.name}: ${c.currentSpeed} mph (${Math.round(c.ratio * 100)}% normal)`
-                    ).join(' • ');
-                    
-                    alertsHTML += `
-                        <div class="warning-banner">
-                            <div class="alert-title">⚠️ MODERATE TRAFFIC CONDITIONS</div>
-                            <div class="alert-description">${corridorList}<br>Some slowdowns expected. Monitor conditions and allow extra time.</div>
-                        </div>
-                    `;
-                }
-                // All clear - show positive message
-                else if (clearCorridors.length >= traffic.length * 0.7) {
-                    alertsHTML += `
-                        <div class="success-banner">
-                            <div class="alert-title">✅ CLEAR TRAFFIC CONDITIONS</div>
-                            <div class="alert-description">All major routes flowing well (${Math.round(traffic.reduce((sum, c) => sum + c.ratio, 0) / traffic.length * 100)}% average). Good conditions for deliveries.</div>
-                        </div>
-                    `;
-                }
-            }
-            
-            // High wind alert
-            if (current.wind_speed_10m >= 25) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">💨 HIGH WIND ADVISORY</div>
-                        <div class="alert-description">Winds at ${Math.round(current.wind_speed_10m)} mph. Use caution when driving, especially with high-profile vehicles. Secure loose items.</div>
-                    </div>
-                `;
-            }
-            
-            // Temperature extreme alerts
-            if (current.temperature_2m >= 95) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">🌡️ EXCESSIVE HEAT WARNING</div>
-                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Stay hydrated, take breaks in air conditioning, and check vehicle cooling system.</div>
-                    </div>
-                `;
-            } else if (current.temperature_2m <= 32) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">🥶 FREEZING TEMPERATURE ALERT</div>
-                        <div class="alert-description">Temperature at ${Math.round(current.temperature_2m)}°F. Watch for ice on roads, bridges, and overpasses. Allow extra time for vehicle warm-up.</div>
-                    </div>
-                `;
-            }
-            
-            // Severe weather alerts
-            if (current.weather_code >= 95) {
-                alertsHTML += `
-                    <div class="alert-banner">
-                        <div class="alert-title">⛈️ SEVERE WEATHER ALERT</div>
-                        <div class="alert-description">Thunderstorms expected. Exercise extreme caution while driving. Contact dispatch immediately if conditions deteriorate.</div>
-                    </div>
-                `;
-            } else if (current.weather_code >= 71 && current.weather_code <= 75) {
-                alertsHTML += `
-                    <div class="alert-banner">
-                        <div class="alert-title">❄️ WINTER WEATHER ALERT</div>
-                        <div class="alert-description">Snow conditions expected. Roads may be impassable. Drive safely and allow extra time for deliveries.</div>
-                    </div>
-                `;
-            } else if (current.weather_code >= 61 && current.weather_code <= 65) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">🌧️ WET ROAD CONDITIONS</div>
-                        <div class="alert-description">Rain expected today. Roads may be slippery. Increase following distance and reduce speed.</div>
-                    </div>
-                `;
-            } else if (current.weather_code >= 45 && current.weather_code <= 48) {
-                alertsHTML += `
-                    <div class="warning-banner">
-                        <div class="alert-title">🌫️ FOG / LOW VISIBILITY</div>
-                        <div class="alert-description">Foggy conditions reducing visibility. Use low-beam headlights, reduce speed, and increase following distance.</div>
-                    </div>
-                `;
-            }
-            
-            // Early morning optimal conditions
-            if (hour >= 5 && hour < 7) {
-                alertsHTML += `
-                    <div class="success-banner">
-                        <div class="alert-title">🌅 EARLY MORNING - OPTIMAL CONDITIONS</div>
-                        <div class="alert-description">Light traffic and good visibility. Excellent time for deliveries.</div>
-                    </div>
-                `;
-            }
-            
-            // Build hourly forecast (next 12 hours)
-            let hourlyHTML = '';
-            const currentHour = now.getHours();
-            
-            for (let i = 0; i < 12; i++) {
-                const hourIndex = currentHour + i;
-                if (hourIndex >= hourly.time.length) break;
-                
-                const time = new Date(hourly.time[hourIndex]);
-                const temp = Math.round(hourly.temperature_2m[hourIndex]);
-                const pop = hourly.precipitation_probability[hourIndex];
-                const code = hourly.weather_code[hourIndex];
-                
-                hourlyHTML += `
-                    <div class="hourly-item">
-                        <div class="hourly-time">${time.getHours() === currentHour ? 'Now' : time.toLocaleTimeString('en-US', {hour: 'numeric'})}</div>
-                        <div class="hourly-icon">${getWeatherIcon(code)}</div>
-                        <div class="hourly-temp">${temp}°</div>
-                        ${pop > 0 ? `<div class="hourly-pop">💧 ${pop}%</div>` : ''}
-                    </div>
-                `;
-            }
-            
-            document.getElementById('weather-content').innerHTML = `
-                ${alertsHTML}
-                
-                <div class="current-weather">
-                    <div style="font-size: 48px;">${getWeatherIcon(current.weather_code)}</div>
-                    <div class="temp-display">${Math.round(current.temperature_2m)}°F</div>
-                    <div class="condition">${getWeatherDescription(current.weather_code)}</div>
-                    <div class="feels-like">Feels like ${Math.round(current.apparent_temperature)}°F</div>
-                    
-                    <div class="weather-details">
-                        <div class="detail-item">
-                            <div class="detail-label">Humidity</div>
-                            <div class="detail-value">${current.relative_humidity_2m}%</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Wind</div>
-                            <div class="detail-value">${Math.round(current.wind_speed_10m)} mph</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Precipitation</div>
-                            <div class="detail-value">${current.precipitation}"</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Location</div>
-                            <div class="detail-value">${locationName}</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="section-title">📅 Hourly Forecast</div>
-                <div class="hourly-forecast">
-                    ${hourlyHTML}
-                </div>
-                
-                <div class="sunset-info">
-                    <div class="sunset-label">🌅 Sunset Today</div>
-                    <div class="sunset-time">${sunsetFormatted}</div>
-                </div>
-                
-                <div class="section-title">🗺️ Your Location & Area Map</div>
-                
-                <div class="map-container">
-                    <div id="traffic-map"></div>
-                </div>
-                
-                <div class="legend">
-                    <div class="legend-title">🗺️ Map Legend</div>
-                    <div class="legend-items">
-                        <div class="legend-item">
-                            <div style="width: 20px; height: 20px; background: #1E88E5; border-radius: 50%; margin-right: 8px;"></div>
-                            <span>📍 Your Location</span>
-                        </div>
-                        <div class="legend-item">
-                            <div style="width: 20px; height: 4px; background: #42A5F5; border-radius: 2px; margin-right: 8px; opacity: 0.5;"></div>
-                            <span>Delivery Area</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid rgba(255,255,255,0.1);">
-                        <div class="legend-title" style="margin-top: 0;">🚦 Traffic Flow (when enabled)</div>
-                        <div class="legend-items">
-                            <div class="legend-item">
-                                <div style="width: 30px; height: 4px; background: #10B981; border-radius: 2px; margin-right: 8px;"></div>
-                                <span>Light (>80% normal speed)</span>
-                            </div>
-                            <div class="legend-item">
-                                <div style="width: 30px; height: 4px; background: #F59E0B; border-radius: 2px; margin-right: 8px;"></div>
-                                <span>Moderate (50-80%)</span>
-                            </div>
-                            <div class="legend-item">
-                                <div style="width: 30px; height: 4px; background: #EF4444; border-radius: 2px; margin-right: 8px;"></div>
-                                <span>Heavy (<50%)</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="section-title">🚦 Major Route Conditions</div>
-                <div class="legend">
-                    <div class="legend-title">Current Traffic on Major Corridors</div>
-                    ${traffic && traffic.length > 0 ? traffic.map(corridor => {
-                        let statusColor = corridor.status === 'clear' ? '#10B981' : 
-                                        corridor.status === 'moderate' ? '#F59E0B' : '#EF4444';
-                        let statusIcon = corridor.status === 'clear' ? '✅' : 
-                                       corridor.status === 'moderate' ? '⚠️' : '🚨';
-                        let statusText = corridor.status === 'clear' ? 'Clear' : 
-                                       corridor.status === 'moderate' ? 'Moderate' : 'Heavy';
-                        
-                        return `
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md); background: rgba(255,255,255,0.03); border-radius: calc(var(--radius) * 0.7); margin-bottom: var(--space-sm); border-left: 4px solid ${statusColor};">
-                                <div style="flex: 1;">
-                                    <div style="font-size: var(--font-sm); font-weight: 700; color: #ffffff; margin-bottom: 4px;">${statusIcon} ${corridor.name}</div>
-                                    <div style="font-size: var(--font-xs); color: var(--text-gray);">${corridor.currentSpeed} mph current • ${corridor.normalSpeed} mph normal</div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div style="font-size: var(--font-md); font-weight: 800; color: ${statusColor};">${Math.round(corridor.ratio * 100)}%</div>
-                                    <div style="font-size: var(--font-xs); color: var(--text-gray);">${statusText}</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('') : '<div style="color: var(--text-gray); text-align: center; padding: var(--space-md);">Traffic data loading...</div>'}
-                </div>
-                
-                <div class="safety-reminders">
-                    <div class="legend-title">⚠️ Safety Reminders</div>
-                    <ul class="reminder-list">
-                        <li>Check GPS for real-time traffic updates before each route</li>
-                        <li>Allow extra time during peak hours and adverse weather</li>
-                        <li>Reduce speed in wet or icy conditions</li>
-                        <li>Report any road hazards or closures via the app</li>
-                        <li>Contact dispatch immediately for impassable roads</li>
-                    </ul>
-                </div>
-                
-                <div class="coverage-area">
-                    <div class="legend-title">📍 Primary Delivery Zones</div>
-                    <div class="area-grid">
-                        <div class="area-item">Atlanta</div>
-                        <div class="area-item">Peachtree City</div>
-                        <div class="area-item">Fayetteville</div>
-                        <div class="area-item">McDonough</div>
-                        <div class="area-item">Stockbridge</div>
-                        <div class="area-item">Hampton</div>
-                        <div class="area-item">Jonesboro</div>
-                        <div class="area-item">Riverdale</div>
-                        <div class="area-item">Union City</div>
-                        <div class="area-item">Newnan</div>
-                        <div class="area-item">Senoia</div>
-                        <div class="area-item">Sharpsburg</div>
-                        <div class="area-item">Moreland</div>
-                        <div class="area-item">Grantville</div>
-                        <div class="area-item">Hogansville</div>
-                        <div class="area-item">Luthersville</div>
-                        <div class="area-item">Greenville</div>
-                        <div class="area-item">Griffin</div>
-                        <div class="area-item">LaGrange</div>
-                    </div>
-                </div>
-                
-                <div class="last-updated">
-                    Last updated: ${now.toLocaleString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        hour: 'numeric', 
-                        minute: '2-digit' 
-                    })}
-                </div>
-            `;
-            
-            // Initialize the map
-            initializeMap();
-        }
+    <!-- BUILD v4.6.2 - March 1, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 1, 2026</div>
+            <div class="build-version">v4.6.2</div>
+        </div>
 
-        function initializeMap() {
-            setTimeout(() => {
-                if (map) {
-                    map.remove();
-                }
-                
-                map = L.map('traffic-map', {
-                    center: [userLat, userLon],
-                    zoom: 12,
-                    zoomControl: true,
-                    scrollWheelZoom: true
-                });
-                
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
-                    maxZoom: 19
-                }).addTo(map);
-                
-                // Add blue marker for user's location
-                const userIcon = L.divIcon({
-                    className: 'custom-marker',
-                    html: '<div style="background: #1E88E5; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>',
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                });
-                
-                L.marker([userLat, userLon], { icon: userIcon }).addTo(map)
-                    .bindPopup(`<b>📍 Your Location</b><br>${locationName}`);
-                
-                // Add TomTom traffic layer
-                const tomtomKey = 'lpdiXsgvIHDW7f4aTxBt17XEW30a4uNW';
-                L.tileLayer(`https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${tomtomKey}`, {
-                    opacity: 0.7,
-                    maxZoom: 19
-                }).addTo(map);
-                
-                map.invalidateSize();
-            }, 100);
-        }
+        <div class="category">
+            <div class="category-title new">🧠 SILENT LEARNING AI SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Invisible Classification:</span> AI analyzes issues in background - drivers never see it working</li>
+                <li class="change-item"><span class="highlight">Continuous Learning:</span> System remembers every classification and improves over time</li>
+                <li class="change-item"><span class="highlight">Fleet Knowledge Base:</span> Builds database of common issues specific to SLGP fleet</li>
+                <li class="change-item"><span class="highlight">Historical Context:</span> AI references similar past issues when classifying new reports</li>
+                <li class="change-item"><span class="highlight">Pattern Recognition:</span> Tracks issue frequency and adapts to fleet-specific problems</li>
+            </ul>
+        </div>
 
-        // Auto-refresh every 60 minutes
-        fetchWeather();
-        setInterval(fetchWeather, 60 * 60 * 1000);
-    </script>
-</body>
-</html>
+        <div class="category">
+            <div class="category-title new">📚 LEARNING DATABASE SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Issue History Database:</span> Stores all classifications with descriptions, confidence scores, and reasoning</li>
+                <li class="change-item"><span class="highlight">Knowledge Base:</span> Pre-seeded with common vehicle issues and learns fleet-specific patterns</li>
+                <li class="change-item"><span class="highlight">Frequency Tracking:</span> Counts how often each issue occurs in the fleet</li>
+                <li class="change-item"><span class="highlight">Vehicle-Specific Learning:</span> Adapts to Rivian EDV, diesel, and gas vehicle differences</li>
+                <li class="change-item"><span class="highlight">Admin API:</span> View knowledge base and learning statistics at /api/knowledge-base?key=slgp-admin-2026</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">📧 EMAIL ATTACHMENT SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Photos/Videos in Email:</span> All media files attached directly to email (no Google Drive)</li>
+                <li class="change-item"><span class="highlight">Instant Access:</span> Fleet managers receive everything in one email</li>
+                <li class="change-item"><span class="highlight">Multiple Files Supported:</span> Accept both photos and videos in single submission</li>
+                <li class="change-item"><span class="highlight">Auto-Cleanup:</span> Temporary files deleted after email sent</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🎨 UI IMPROVEMENTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">No AI Branding:</span> Drivers see simple, clean issue reporting form</li>
+                <li class="change-item"><span class="highlight">Natural Language:</span> Just describe the issue - no categories to select</li>
+                <li class="change-item"><span class="highlight">Simplified Form:</span> Fewer clicks, faster reporting</li>
+                <li class="change-item"><span class="highlight">Standard Submit Button:</span> No mention of AI or automation</li>
+                <li class="change-item"><span class="highlight">Removed Tow Assistance:</span> Not needed for issue reporting (kept in accident form)</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📊 TECHNICAL IMPLEMENTATION</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">Learning Files:</span> issue_history.json and fleet_knowledge_base.json</li>
+                <li class="change-item"><span class="code">Claude API:</span> Uses claude-sonnet-4-20250514 with historical context</li>
+                <li class="change-item"><span class="code">Adaptive Prompts:</span> Includes recent similar issues and fleet patterns</li>
+                <li class="change-item"><span class="code">Auto-Initialize:</span> Creates knowledge base on first run with common issues</li>
+                <li class="change-item"><span class="code">History Limit:</span> Keeps last 500 classifications to prevent database bloat</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🔍 HOW LEARNING WORKS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Step 1:</span> Driver submits issue description</li>
+                <li class="change-item"><span class="highlight">Step 2:</span> AI loads historical data and fleet knowledge</li>
+                <li class="change-item"><span class="highlight">Step 3:</span> AI finds similar past issues for context</li>
+                <li class="change-item"><span class="highlight">Step 4:</span> AI classifies using learned patterns</li>
+                <li class="change-item"><span class="highlight">Step 5:</span> Classification saved to database for future learning</li>
+                <li class="change-item"><span class="highlight">Step 6:</span> Knowledge base updated with new patterns</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">report-issue.html</span> - Removed AI branding, natural input form, v4.6.2</li>
+                <li class="change-item"><span class="code">index.js</span> - Learning AI system, knowledge base, history tracking, v4.6.2</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.2</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.6.1 - March 1, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 1, 2026</div>
+            <div class="build-version">v4.6.1</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🚦 CORRIDOR TRAFFIC ALERTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Major Route Monitoring:</span> Real-time traffic on 8 major corridors (I-75, I-85, I-285, US-19/41, SR-74, US-29)</li>
+                <li class="change-item"><span class="highlight">Smart Suggestions:</span> Automatic alternative route suggestions when heavy traffic detected</li>
+                <li class="change-item"><span class="highlight">Corridor Status:</span> Detailed breakdown showing current vs normal speed for each route</li>
+                <li class="change-item"><span class="highlight">Traffic-Aware Alerts:</span> Clear/Moderate/Heavy status with percentage indicators</li>
+                <li class="change-item"><span class="highlight">Zero Extra Cost:</span> Uses existing TomTom Traffic Flow API (no routing charges)</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 WEATHER SYSTEM IMPROVEMENTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Removed Inaccurate Logic:</span> Eliminated weekend traffic assumption (was not data-driven)</li>
+                <li class="change-item"><span class="highlight">Sunset Alert:</span> Added alert when sunset is approaching within 60 minutes</li>
+                <li class="change-item"><span class="highlight">Speed Ratio Display:</span> Shows current speed vs normal speed (e.g., "72% of normal")</li>
+                <li class="change-item"><span class="highlight">Expanded Coverage:</span> Added 7 new delivery zones (Senoia, Sharpsburg, Moreland, Grantville, Hogansville, Luthersville, Greenville)</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🗺️ ROUTE PLANNING FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Renamed Feature:</span> "Today's Forecast" → "Route Planning" (better describes functionality)</li>
+                <li class="change-item"><span class="highlight">Corridor View:</span> See all major highways at a glance with color-coded status</li>
+                <li class="change-item"><span class="highlight">Alternative Routes:</span> System suggests clear routes when heavy traffic detected</li>
+                <li class="change-item"><span class="highlight">Real-Time Updates:</span> Traffic data refreshes every 60 minutes automatically</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📊 TECHNICAL CHANGES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">fetchCorridorTraffic():</span> New function checks 8 major corridors in delivery area</li>
+                <li class="change-item"><span class="code">Smart Delays:</span> 100ms delay between API calls to avoid rate limiting</li>
+                <li class="change-item"><span class="code">Status Algorithm:</span> <80% = clear, 50-80% = moderate, <50% = heavy</li>
+                <li class="change-item"><span class="code">Alternative Logic:</span> Automatically suggests top 2 clear routes when congestion found</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">weather.html</span> - Corridor alerts, route suggestions, expanded zones, v4.6.1</li>
+                <li class="change-item"><span class="code">menu.html</span> - Renamed to "Route Planning", v4.6.1</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.1</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.6.0 - February 28, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 28, 2026</div>
+            <div class="build-version">v4.6.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ COMPLETE UI REDESIGN</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Modern Blue Theme:</span> Vibrant blue background (#0A6CF1) inspired by modern delivery apps</li>
+                <li class="change-item"><span class="highlight">Dark Containers:</span> All cards now use dark theme (#1C1C1E) for professional appearance</li>
+                <li class="change-item"><span class="highlight">SF Pro Display Fonts:</span> Upgraded to Apple's SF Pro Display typography system</li>
+                <li class="change-item"><span class="highlight">Sunset Flash Detection:</span> Camera automatically enables flash after sunset using real-time API</li>
+                <li class="change-item"><span class="highlight">Smart Fallback:</span> Time-based flash (6 PM - 6 AM) if sunset API unavailable</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🎨 DESIGN IMPROVEMENTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Color Consistency:</span> Blue gradients (#1E88E5 → #42A5F5) across all buttons</li>
+                <li class="change-item"><span class="highlight">White Text:</span> All text now white (#FFFFFF) on dark containers for better readability</li>
+                <li class="change-item"><span class="highlight">Subtle Borders:</span> White borders (opacity 0.1) replace harsh dark borders</li>
+                <li class="change-item"><span class="highlight">Deeper Shadows:</span> Enhanced depth with rgba(0,0,0,0.3) shadows</li>
+                <li class="change-item"><span class="highlight">Input Fields:</span> Dark gray (#2C2C2E) backgrounds with white text</li>
+                <li class="change-item"><span class="highlight">Font Smoothing:</span> Antialiased rendering for crisp text on all devices</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🌅 SUNSET FLASH SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">API Integration:</span> Uses sunrise-sunset.org API for Ashburn, VA location</li>
+                <li class="change-item"><span class="highlight">Daily Updates:</span> Sunset time automatically fetched each day</li>
+                <li class="change-item"><span class="highlight">Auto-Enable:</span> Flash turns ON automatically after sunset or before sunrise</li>
+                <li class="change-item"><span class="highlight">Smart Detection:</span> Checks current time vs actual sunset (not fixed hours)</li>
+                <li class="change-item"><span class="highlight">Reliable Fallback:</span> Uses 6 PM - 6 AM schedule if API fails</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">menu.html</span> - Blue background, dark cards, SF Pro fonts, v4.6.0</li>
+                <li class="change-item"><span class="code">report-issue.html</span> - Dark theme, blue gradients, v4.6.0</li>
+                <li class="change-item"><span class="code">accident-report.html</span> - Dark containers, updated styling, v4.6.0</li>
+                <li class="change-item"><span class="code">video.html</span> - Sunset flash detection, dark theme, v4.6.0</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Dark theme, changelog updated, v4.6.0</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.5.0 - February 27, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 27, 2026</div>
+            <div class="build-version">v4.5.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ NEW FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Build Notes Page:</span> Added comprehensive changelog to track all system updates</li>
+                <li class="change-item"><span class="highlight">Video Requirement:</span> Report Issue now requires video documentation instead of photos</li>
+                <li class="change-item"><span class="highlight">Mandatory Notes:</span> Detailed description now required for all issue reports</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Auto-Scaling Design:</span> All forms now use fluid responsive CSS with <span class="code">clamp()</span> functions</li>
+                <li class="change-item"><span class="highlight">Mobile UX:</span> Touch targets meet 44px minimum (Apple/Google guidelines)</li>
+                <li class="change-item"><span class="highlight">Adaptive Typography:</span> Fonts scale 10-28px based on screen size</li>
+                <li class="change-item"><span class="highlight">Adaptive Spacing:</span> Padding/margins scale 4-30px automatically</li>
+                <li class="change-item"><span class="highlight">iOS Zoom Prevention:</span> Input fields fixed at 16px to prevent zoom</li>
+                <li class="change-item"><span class="highlight">Proportional Scaling:</span> All elements scale smoothly across device sizes</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 DATABASE UPDATES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Rivian VINs Corrected:</span> Removed incorrect VINs (2866, 2860, 2863, 2859, 2857)</li>
+                <li class="change-item"><span class="highlight">New Rivians Added:</span> 8125, 8084, 7918, 7898</li>
+                <li class="change-item"><span class="highlight">Tow Policy Update:</span> All Rivian vehicles set to NO tow assistance</li>
+                <li class="change-item"><span class="highlight">Total Rivian Fleet:</span> 14 vehicles verified and active</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">accident-report.html</span> - Auto-scaling applied, VIN database updated</li>
+                <li class="change-item"><span class="code">index.html</span> - Auto-scaling applied, build notes link added</li>
+                <li class="change-item"><span class="code">report-issue.html</span> - Auto-scaling applied, video requirement, notes mandatory</li>
+                <li class="change-item"><span class="code">video-inspection.html</span> - Auto-scaling applied, VIN database updated</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.3.0 - February 25, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 25, 2026</div>
+            <div class="build-version">v4.3.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title fix">🔧 BUG FIXES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Google Drive Upload:</span> Fixed quota error by sharing folder with service account</li>
+                <li class="change-item"><span class="highlight">Service Account:</span> <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="9af7ffe9f2b7f8f5eeb7efeaf6f5fbfeffe8dae9f6fdeab7f7ffe9f2b7e9ffe8ecffe8b4f3fbf7b4fde9ffe8ecf3f9fffbf9f9f5eff4eeb4f9f5f7">[email&#160;protected]</a> configured</li>
+                <li class="change-item"><span class="highlight">Photo Upload:</span> Accident reports now successfully upload to Google Drive</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Photo Compression:</span> Images auto-compressed to 1024x1024 at 70% quality</li>
+                <li class="change-item"><span class="highlight">Upload Speed:</span> Smaller file sizes = faster uploads on mobile networks</li>
+                <li class="change-item"><span class="highlight">Storage Efficiency:</span> Reduced Google Drive storage usage</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.2.0 - February 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">February 2026</div>
+            <div class="build-version">v4.2.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Security Gates:</span> Mandatory checklists before departure/arrival</li>
+                <li class="change-item"><span class="highlight">Time-Based Routing:</span> Automatic Pre/Post-trip selection based on time</li>
+                <li class="change-item"><span class="highlight">Tow Warnings:</span> Modal alerts for vehicles without tow coverage</li>
+                <li class="change-item"><span class="highlight">VIN Database:</span> Auto-detect vehicle type and tow status</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">🎨 UI/UX</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Dark Theme:</span> Professional dark mode across all pages</li>
+                <li class="change-item"><span class="highlight">Touch Optimization:</span> Larger buttons and inputs for mobile</li>
+                <li class="change-item"><span class="highlight">Visual Feedback:</span> Color-coded status indicators</li>
+                <li class="change-item"><span class="highlight">Progressive Forms:</span> Step-by-step validation</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- BUILD v4.0.0 - January 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">January 2026</div>
+            <div class="build-version">v4.0.0</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">✨ CORE FEATURES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Accident Report System:</span> Photo documentation, GPS, signature capture</li>
+                <li class="change-item"><span class="highlight">Video Inspection:</span> High-quality video recording (1080p @ 10Mbps)</li>
+                <li class="change-item"><span class="highlight">Issue Reporting:</span> Categorized issue tracking with GPS</li>
+                <li class="change-item"><span class="highlight">Insurance Cards:</span> Digital access to fleet insurance</li>
+                <li class="change-item"><span class="highlight">Push Notifications:</span> Service worker for instant alerts</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">⚡ PERFORMANCE</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Auto-Updates:</span> Version checking every 30 seconds</li>
+                <li class="change-item"><span class="highlight">Wake Lock:</span> Prevent screen sleep during recording</li>
+                <li class="change-item"><span class="highlight">Retry Logic:</span> Auto-retry failed uploads (3 attempts)</li>
+                <li class="change-item"><span class="highlight">Flash Detection:</span> Auto-enable flash in low light</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="text-align: center; color: var(--text-gray); font-size: var(--font-xs); margin-top: var(--space-xl); padding-top: var(--space-lg); border-top: 1px solid var(--border-color);">
+        <p>SLGP Flee
