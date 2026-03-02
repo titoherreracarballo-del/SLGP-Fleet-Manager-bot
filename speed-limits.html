@@ -337,9 +337,57 @@
         .retry-btn:active {
             transform: translateY(2px);
         }
+
+        /* FULL SCREEN FLASHER */
+        .speed-flasher {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .speed-flasher.active {
+            animation: flash-screen 0.8s infinite;
+        }
+
+        @keyframes flash-screen {
+            0%, 100% {
+                background: rgba(239, 68, 68, 0);
+                opacity: 0;
+            }
+            50% {
+                background: rgba(239, 68, 68, 0.4);
+                opacity: 1;
+                box-shadow: inset 0 0 100px rgba(239, 68, 68, 0.8);
+            }
+        }
+
+        /* FLASHING BORDER ON SPEED DISPLAY */
+        .current-speed-section.danger {
+            border: 5px solid transparent;
+            animation: flash-border 0.6s infinite, pulse-bg 1s infinite;
+        }
+
+        @keyframes flash-border {
+            0%, 100% {
+                border-color: transparent;
+            }
+            50% {
+                border-color: var(--danger);
+                box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), inset 0 0 30px rgba(239, 68, 68, 0.3);
+            }
+        }
     </style>
 </head>
 <body>
+
+<!-- FULL SCREEN FLASHER FOR SPEEDING -->
+<div class="speed-flasher" id="speedFlasher"></div>
 
 <div class="container">
     <div class="header-bar">
@@ -481,6 +529,7 @@ function updateSpeedDisplay() {
     const currentSpeedEl = document.getElementById('currentSpeedValue');
     const statusEl = document.getElementById('speedStatus');
     const sectionEl = document.getElementById('currentSpeedSection');
+    const flasher = document.getElementById('speedFlasher');
     
     if (!currentSpeedEl || !statusEl || !sectionEl) return;
     
@@ -496,14 +545,25 @@ function updateSpeedDisplay() {
             statusEl.textContent = '✅ SAFE SPEED';
             statusEl.className = 'speed-status status-safe';
             sectionEl.classList.add('safe');
+            
+            // Turn off flasher
+            if (flasher) flasher.classList.remove('active');
+            
         } else if (currentSpeed <= speedLimit + 5) {
             statusEl.textContent = '⚠️ SLOW DOWN';
             statusEl.className = 'speed-status status-warning';
             sectionEl.classList.add('warning');
+            
+            // Turn off flasher (just warning, not speeding yet)
+            if (flasher) flasher.classList.remove('active');
+            
         } else {
             statusEl.textContent = '🚨 SPEEDING!';
             statusEl.className = 'speed-status status-danger';
             sectionEl.classList.add('danger');
+            
+            // ACTIVATE SCREEN FLASHER!
+            if (flasher) flasher.classList.add('active');
             
             // Vibrate on speeding (if supported)
             if (navigator.vibrate) {
@@ -514,6 +574,9 @@ function updateSpeedDisplay() {
         statusEl.textContent = 'Waiting for GPS...';
         statusEl.className = 'speed-status status-safe';
         sectionEl.classList.add('safe');
+        
+        // Turn off flasher
+        if (flasher) flasher.classList.remove('active');
     }
 }
 
