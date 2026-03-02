@@ -17,7 +17,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.2';
+const VERSION_STRING = '4.6.3';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -1444,6 +1444,379 @@ app.get('/api/knowledge-base', (req, res) => {
 });
 
 // ============================================
+// USAGE TRACKING SYSTEM WITH EMAIL ALERTS
+// ============================================
+const USAGE_TRACKING_FILE = path.join(VOLUME_PATH, 'api_usage_tracking.json');
+const DAILY_LIMIT = 2500;
+const ALERT_THRESHOLDS = [0.80, 0.90, 0.95]; // 80%, 90%, 95%
+
+// Initialize usage tracking
+function initializeUsageTracking() {
+    if (!fs.existsSync(USAGE_TRACKING_FILE)) {
+        const initialTracking = {
+            date: new Date().toDateString(),
+            requests: 0,
+            alerts_sent: [],
+            last_reset: new Date().toISOString()
+        };
+        fs.writeFileSync(USAGE_TRACKING_FILE, JSON.stringify(initialTracking, null, 2));
+        console.log('✅ Usage tracking initialized');
+    }
+}
+
+initializeUsageTracking();
+
+// Track API request
+async function trackAPIRequest(apiName = 'TomTom') {
+    try {
+        let tracking = JSON.parse(fs.readFileSync(USAGE_TRACKING_FILE, 'utf8'));
+        
+        // Reset counter if new day
+        const today = new Date().toDateString();
+        if (tracking.date !== today) {
+            tracking = {
+                date: today,
+                requests: 0,
+                alerts_sent: [],
+                last_reset: new Date().toISOString()
+            };
+        }
+        
+        tracking.requests++;
+        
+        // Check alert thresholds
+        const usagePercent = tracking.requests / DAILY_LIMIT;
+        for (const threshold of ALERT_THRESHOLDS) {
+            const thresholdKey = `${(threshold * 100).toFixed(0)}%`;
+            
+            if (usagePercent >= threshold && !tracking.alerts_sent.includes(thresholdKey)) {
+                tracking.alerts_sent.push(thresholdKey);
+                await sendUsageAlert(tracking.requests, threshold);
+            }
+        }
+        
+        fs.writeFileSync(USAGE_TRACKING_FILE, JSON.stringify(tracking, null, 2));
+        
+        console.log(`📊 ${apiName} API Usage: ${tracking.requests}/${DAILY_LIMIT} (${(usagePercent * 100).toFixed(1)}%)`);
+        
+        // Enforce hard limit
+        if (tracking.requests >= DAILY_LIMIT) {
+            throw new Error('Daily API limit reached. Using cached data only.');
+        }
+        
+        return tracking.requests;
+    } catch (error) {
+        if (error.message.includes('Daily API limit reached')) {
+            throw error;
+        }
+        console.error('Usage tracking error:', error);
+        return 0;
+    }
+}
+
+// Send email alert
+async function sendUsageAlert(currentUsage, threshold) {
+    try {
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
+        
+        const percent = (threshold * 100).toFixed(0);
+        const remaining = DAILY_LIMIT - currentUsage;
+        
+        let urgency = '⚠️ WARNING';
+        let action = 'Monitor usage closely';
+        
+        if (threshold >= 0.95) {
+            urgency = '🚨 CRITICAL';
+            action = 'IMMEDIATE ACTION REQUIRED - Consider enabling caching or wait until tomorrow';
+        } else if (threshold >= 0.90) {
+            urgency = '🔴 URGENT';
+            action = 'Review usage and enable caching if not already active';
+        }
+        
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: [process.env.EMAIL_USER, 'slgpfleetmanager@gmail.com'],
+            subject: `${urgency}: TomTom API ${percent}% Limit Reached`,
+            html: `
+                <div style="font-family: Arial; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
+                    <div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                        <h1 style="color: white; margin: 0;">${urgency}</h1>
+                        <p style="color: white; margin: 10px 0 0 0;">TomTom API Usage Alert</p>
+                    </div>
+                    <div style="background: white; padding: 20px; border-radius: 0 0 12px 12px;">
+                        <h2 style="color: #1f2937; margin: 0 0 15px 0;">Usage Status</h2>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                            <tr style="background: #f3f4f6;">
+                                <td style="padding: 12px; font-weight: bold;">Current Usage:</td>
+                                <td style="padding: 12px; color: #DC2626; font-weight: bold;">${currentUsage} / ${DAILY_LIMIT} requests</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px; font-weight: bold;">Threshold:</td>
+                                <td style="padding: 12px;">${percent}%</td>
+                            </tr>
+                            <tr style="background: #f3f4f6;">
+                                <td style="padding: 12px; font-weight: bold;">Remaining:</td>
+                                <td style="padding: 12px;">${remaining} requests</td>
+                            </tr>
+                        </table>
+                        <div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 4px;">
+                            <h3 style="color: #DC2626; margin: 0 0 10px 0;">Action Required</h3>
+                            <p style="margin: 0; color: #991b1b;">${action}</p>
+                        </div>
+                        <div style="margin-top: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                            <p style="margin: 0; font-size: 13px; color: #4b5563;">
+                                <strong>Next Steps:</strong><br>
+                                1. Check usage dashboard: <a href="https://developer.tomtom.com/dashboard">TomTom Dashboard</a><br>
+                                2. Review caching settings<br>
+                                3. Consider limiting non-essential requests
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `
+        });
+        
+        console.log(`📧 Usage alert sent: ${percent}% threshold reached`);
+    } catch (error) {
+        console.error('Failed to send usage alert:', error);
+    }
+}
+
+// ============================================
+// SPEED LIMIT DATABASE & CACHING
+// ============================================
+const SPEED_LIMIT_CACHE_FILE = path.join(VOLUME_PATH, 'speed_limit_cache.json');
+
+// Your verified road database
+const speedLimitDatabase = {
+    "sr74_west": {
+        speed_limit: 55,
+        road_name: "SR-74 West",
+        city: "Peachtree City, GA",
+        notes: "ENFORCEMENT CAMERA - Drivers often think 65 MPH",
+        bounds: {
+            lat_min: 33.38, lat_max: 33.40,
+            lng_min: -84.58, lng_max: -84.56
+        }
+    },
+    "peachtree_pkwy": {
+        speed_limit: 45,
+        road_name: "Peachtree Parkway",
+        city: "Peachtree City, GA",
+        notes: "Main delivery corridor",
+        bounds: {
+            lat_min: 33.37, lat_max: 33.42,
+            lng_min: -84.59, lng_max: -84.55
+        }
+    },
+    "downtown_ptc": {
+        speed_limit: 35,
+        road_name: "Downtown Peachtree City",
+        city: "Peachtree City, GA",
+        notes: "School zones 25 MPH (7AM-4PM Mon-Fri)",
+        bounds: {
+            lat_min: 33.38, lat_max: 33.40,
+            lng_min: -84.57, lng_max: -84.55
+        }
+    }
+    // ADD MORE ROADS FROM YOUR GOOGLE MAPS VERIFICATION HERE
+};
+
+// Initialize speed limit cache
+function initializeSpeedLimitCache() {
+    if (!fs.existsSync(SPEED_LIMIT_CACHE_FILE)) {
+        fs.writeFileSync(SPEED_LIMIT_CACHE_FILE, JSON.stringify({}, null, 2));
+        console.log('✅ Speed limit cache initialized');
+    }
+}
+
+initializeSpeedLimitCache();
+
+// Check local database first
+function checkLocalDatabase(lat, lng) {
+    for (const [key, data] of Object.entries(speedLimitDatabase)) {
+        if (lat >= data.bounds.lat_min && lat <= data.bounds.lat_max &&
+            lng >= data.bounds.lng_min && lng <= data.bounds.lng_max) {
+            console.log(`✅ Speed limit found in local database: ${data.road_name}`);
+            return {
+                speedLimit: data.speed_limit,
+                roadName: data.road_name,
+                location: data.city,
+                notes: data.notes,
+                source: 'database'
+            };
+        }
+    }
+    return null;
+}
+
+// Check cache
+function checkSpeedLimitCache(lat, lng) {
+    try {
+        const cache = JSON.parse(fs.readFileSync(SPEED_LIMIT_CACHE_FILE, 'utf8'));
+        const key = `${lat.toFixed(3)},${lng.toFixed(3)}`; // Round to ~100m
+        
+        if (cache[key]) {
+            const age = Date.now() - cache[key].timestamp;
+            const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+            
+            if (age < MAX_AGE) {
+                console.log(`✅ Speed limit found in cache: ${cache[key].roadName}`);
+                return cache[key];
+            }
+        }
+    } catch (e) {
+        console.error('Cache read error:', e);
+    }
+    return null;
+}
+
+// Save to cache
+function saveToSpeedLimitCache(lat, lng, data) {
+    try {
+        const cache = JSON.parse(fs.readFileSync(SPEED_LIMIT_CACHE_FILE, 'utf8'));
+        const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+        
+        cache[key] = {
+            ...data,
+            timestamp: Date.now()
+        };
+        
+        // Keep only last 500 entries
+        const entries = Object.entries(cache);
+        if (entries.length > 500) {
+            const sorted = entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+            const newCache = Object.fromEntries(sorted.slice(0, 500));
+            fs.writeFileSync(SPEED_LIMIT_CACHE_FILE, JSON.stringify(newCache, null, 2));
+        } else {
+            fs.writeFileSync(SPEED_LIMIT_CACHE_FILE, JSON.stringify(cache, null, 2));
+        }
+    } catch (e) {
+        console.error('Cache write error:', e);
+    }
+}
+
+// ============================================
+// SPEED LIMIT API ENDPOINT
+// ============================================
+app.get('/api/speed-limit', async (req, res) => {
+    try {
+        const { lat, lng } = req.query;
+        
+        if (!lat || !lng) {
+            return res.status(400).json({ success: false, error: 'Missing GPS coordinates' });
+        }
+        
+        const latitude = parseFloat(lat);
+        const longitude = parseFloat(lng);
+        
+        console.log(`\n🚦 Speed limit request: ${latitude}, ${longitude}`);
+        
+        // TIER 1: Check local database (FREE)
+        const localResult = checkLocalDatabase(latitude, longitude);
+        if (localResult) {
+            return res.json({ success: true, ...localResult });
+        }
+        
+        // TIER 2: Check cache (FREE)
+        const cachedResult = checkSpeedLimitCache(latitude, longitude);
+        if (cachedResult) {
+            return res.json({ success: true, ...cachedResult });
+        }
+        
+        // TIER 3: TomTom API (counts toward quota)
+        try {
+            await trackAPIRequest('TomTom Speed Limit');
+            
+            // Try Traffic Flow API first (might include speed limit)
+            const trafficResponse = await fetch(
+                `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?point=${latitude},${longitude}&key=${process.env.TOMTOM_API_KEY}`
+            );
+            
+            if (trafficResponse.ok) {
+                const trafficData = await trafficResponse.json();
+                const flowSegment = trafficData.flowSegmentData;
+                
+                // Sometimes TomTom Traffic includes speed limit
+                if (flowSegment && flowSegment.speedLimit) {
+                    const result = {
+                        speedLimit: Math.round(flowSegment.speedLimit * 0.621371), // km/h to mph
+                        roadName: flowSegment.roadName || 'Unknown Road',
+                        location: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+                        source: 'tomtom_traffic'
+                    };
+                    
+                    saveToSpeedLimitCache(latitude, longitude, result);
+                    return res.json({ success: true, ...result });
+                }
+            }
+            
+            // Fallback: Reverse Geocoding API
+            const geocodeResponse = await fetch(
+                `https://api.tomtom.com/search/2/reverseGeocode/${latitude},${longitude}.json?key=${process.env.TOMTOM_API_KEY}`
+            );
+            
+            if (geocodeResponse.ok) {
+                const geocodeData = await geocodeResponse.json();
+                const address = geocodeData.addresses[0];
+                
+                if (address) {
+                    // TomTom doesn't always return speed limits via geocoding
+                    // Use typical defaults based on road type
+                    let speedLimit = 45; // Default urban road
+                    const roadType = address.address.roadType || '';
+                    
+                    if (roadType.includes('highway') || roadType.includes('motorway')) {
+                        speedLimit = 65;
+                    } else if (roadType.includes('arterial')) {
+                        speedLimit = 45;
+                    } else if (roadType.includes('local')) {
+                        speedLimit = 35;
+                    }
+                    
+                    const result = {
+                        speedLimit: speedLimit,
+                        roadName: address.address.street || 'Unknown Road',
+                        location: address.address.freeformAddress || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+                        source: 'tomtom_estimate',
+                        note: 'Estimated based on road type - verify with posted signs'
+                    };
+                    
+                    saveToSpeedLimitCache(latitude, longitude, result);
+                    return res.json({ success: true, ...result });
+                }
+            }
+        } catch (apiError) {
+            if (apiError.message.includes('Daily API limit reached')) {
+                return res.status(429).json({
+                    success: false,
+                    error: 'Daily API limit reached. Speed limit data unavailable until tomorrow.',
+                    useCache: true
+                });
+            }
+            console.error('TomTom API error:', apiError);
+        }
+        
+        // If all else fails, return a safe default
+        res.json({
+            success: true,
+            speedLimit: 45,
+            roadName: 'Unknown Road',
+            location: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+            source: 'default',
+            note: 'Unable to determine speed limit. Using safe default. Verify with posted signs.'
+        });
+        
+    } catch (error) {
+        console.error('Speed limit API error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
 // VIDEO UPLOAD WITH DIRECT STREAMING
 // ============================================
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
@@ -1763,6 +2136,10 @@ app.get('/weather', (req, res) => {
     res.sendFile(path.join(__dirname, 'weather.html'));
 });
 
+app.get('/speed-limits', (req, res) => {
+    res.sendFile(path.join(__dirname, 'speed-limits.html'));
+});
+
 app.get('/success', (req, res) => {
     res.sendFile(path.join(__dirname, 'success.html'));
 });
@@ -1884,7 +2261,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.2 - LEARNING AI                    ║
+║  v4.6.3 - SPEED LIMITS                   ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1896,16 +2273,25 @@ ${driveClient ? '✅ Google Drive connected' : '⚠️  Google Drive offline'}
 ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 ✅ Learning AI initialized
 ✅ Knowledge base loaded
+✅ Speed limit system ready
+✅ Usage tracking active
 
-📝 NEW FEATURES v4.6.2:
-   🧠 Silent learning AI (invisible to drivers)
-   📚 Issue history database (continuous learning)
-   🎯 Fleet-specific pattern recognition
+📝 NEW FEATURES v4.6.3:
+   🚦 GPS-based speed limit reader
+   📊 Real-time speed monitoring
+   ⚠️  Known violation zone warnings
+   🔔 API usage alerts (80%, 90%, 95%)
+   💾 Smart caching (stays FREE with 300+ drivers)
+   🗺️  TomTom API integration with fallback
+
+📝 FEATURES v4.6.2:
+   🧠 Silent learning AI classification
+   📚 Continuous learning database
    📧 Photos/videos in email (not Drive)
-   🔍 Historical context in classifications
 
 🌐 Ready at: http://localhost:${PORT}
-🚦 Route Planning: http://localhost:${PORT}/weather
+🚦 Speed Limits: http://localhost:${PORT}/speed-limits
+🗺️  Route Planning: http://localhost:${PORT}/weather
 📋 Build Notes: http://localhost:${PORT}/build-notes
 🧠 Knowledge Base: http://localhost:${PORT}/api/knowledge-base?key=slgp-admin-2026
     `);
