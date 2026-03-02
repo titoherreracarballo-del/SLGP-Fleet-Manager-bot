@@ -709,6 +709,7 @@
         <div id="camera-status">Initializing...</div>
         <div id="timer-display">00:00</div>
         <div id="current-camera-label">REAR</div>
+        <div id="stab-indicator" style="position:absolute;bottom:clamp(130px,35vw,150px);right:var(--space-sm);background:rgba(0,0,0,0.8);padding:var(--space-xs) var(--space-sm);border-radius:clamp(16px,4vw,20px);font-size:var(--font-xs);font-weight:700;color:#4ade80;z-index:5;border:1px solid #4ade80;cursor:pointer;" onclick="toggleStabilizer()">⚖️ STAB ON</div>
         <button id="flash-toggle" onclick="toggleFlash()">💡</button>
         
         <div id="camera-repair-overlay">
@@ -723,7 +724,10 @@
             <button class="repair-btn secondary" onclick="closeCameraRepair()">✓ CONTINUE WITH FRONT</button>
         </div>
         
-        <video id="preview" autoplay playsinline muted></video>
+        <!-- Hidden raw camera feed -->
+        <video id="preview-raw" autoplay playsinline muted style="display:none;"></video>
+        <!-- Stabilized canvas preview -->
+        <canvas id="preview" style="width:100%;height:100%;object-fit:cover;"></canvas>
         <video id="playback" controls style="display:none;"></video>
         
         <div class="controls">
@@ -813,6 +817,20 @@
     let currentVideoTrack = null;
     let flashEnabled = false;
     let isRecording = false; // FIX 2: Global flag for recording state
+
+    // ========================================
+    // IMAGE STABILIZATION SYSTEM
+    // ========================================
+    let stabEnabled = true;
+    let stabAnimFrame = null;
+    let stabCanvas = null;
+    let stabCtx = null;
+    let stabStream = null;          // canvas.captureStream() - what we record
+    let prevFrameData = null;
+    let smoothX = 0, smoothY = 0;  // smoothed correction offsets
+    const STAB_ZOOM = 1.08;        // 8% zoom-in to give crop room
+    const STAB_SMOOTH = 0.85;      // smoothing factor (higher = more stable, less responsive)
+    const STAB_MAX_SHIFT = 0.04;   // max 4% shift per axis
     const REAR_CAMERA_ONLY = "environment";
     let brightnessCheckInterval = null;
 
@@ -872,7 +890,7 @@
     }
 
     function detectBrightness() {
-        const video = document.getElementById('preview');
+        const video = document.getElementById('preview-raw');
         if (!video.srcObject || video.readyState < 2) return;
         try {
             const canvas = document.createElement('canvas');
@@ -957,6 +975,150 @@
         }
     }
 
+
+    // ========================================
+    // STABILIZATION ENGINE
+    // ========================================
+    function initStabilizer() {
+        stabCanvas = document.getElementById('preview');
+        stabCtx = stabCanvas.getContext('2d', { willReadFrequently: true });
+        console.log('📐 Stabilizer initialized');
+    }
+
+    function detectMotion(currentCtx, w, h) {
+        // Sample a 16x9 grid of points at low res to detect global motion
+        const sampleW = 32, sampleH = 18;
+        const currentData = currentCtx.getImageData(0, 0, sampleW, sampleH).data;
+        
+        if (!prevFrameData || prevFrameData.length !== currentData.length) {
+            prevFrameData = currentData;
+            return { dx: 0, dy: 0 };
+        }
+
+        let sumDx = 0, sumDy = 0, count = 0;
+        const blockSize = 4; // compare 4px blocks
+
+        for (let y = blockSize; y < sampleH - blockSize; y += blockSize) {
+            for (let x = blockSize; x < sampleW - blockSize; x += blockSize) {
+                const idx = (y * sampleW + x) * 4;
+                const prevBright = prevFrameData[idx] * 0.299 + prevFrameData[idx+1] * 0.587 + prevFrameData[idx+2] * 0.114;
+                
+                let bestDx = 0, bestDy = 0, bestDiff = Infinity;
+                
+                // Search ±2 pixels for best match
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= sampleW || ny >= sampleH) continue;
+                        const nIdx = (ny * sampleW + nx) * 4;
+                        const currBright = currentData[nIdx] * 0.299 + currentData[nIdx+1] * 0.587 + currentData[nIdx+2] * 0.114;
+                        const diff = Math.abs(currBright - prevBright);
+                        if (diff < bestDiff) { bestDiff = diff; bestDx = dx; bestDy = dy; }
+                    }
+                }
+                
+                if (bestDiff < 30) { // Only count confident matches
+                    sumDx += bestDx;
+                    sumDy += bestDy;
+                    count++;
+                }
+            }
+        }
+
+        prevFrameData = currentData;
+        
+        if (count < 3) return { dx: 0, dy: 0 };
+        
+        // Normalize to -1..1 range
+        return {
+            dx: (sumDx / count) / sampleW,
+            dy: (sumDy / count) / sampleH
+        };
+    }
+
+    function stabFrame() {
+        const rawVideo = document.getElementById('preview-raw');
+        if (!stabCtx || !rawVideo || rawVideo.readyState < 2) {
+            stabAnimFrame = requestAnimationFrame(stabFrame);
+            return;
+        }
+
+        const vw = rawVideo.videoWidth || 1920;
+        const vh = rawVideo.videoHeight || 1080;
+
+        // Set canvas to video resolution for recording quality
+        if (stabCanvas.width !== vw || stabCanvas.height !== vh) {
+            stabCanvas.width = vw;
+            stabCanvas.height = vh;
+        }
+
+        if (stabEnabled) {
+            // Draw scaled-down version for motion detection
+            const detectCanvas = document.createElement('canvas');
+            detectCanvas.width = 32;
+            detectCanvas.height = 18;
+            const dCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
+            dCtx.drawImage(rawVideo, 0, 0, 32, 18);
+
+            const motion = detectMotion(dCtx, 32, 18);
+
+            // Clamp motion to max shift
+            const clampedDx = Math.max(-STAB_MAX_SHIFT, Math.min(STAB_MAX_SHIFT, motion.dx));
+            const clampedDy = Math.max(-STAB_MAX_SHIFT, Math.min(STAB_MAX_SHIFT, motion.dy));
+
+            // Accumulate correction (inverse of motion)
+            smoothX = smoothX * STAB_SMOOTH - clampedDx * (1 - STAB_SMOOTH) * vw;
+            smoothY = smoothY * STAB_SMOOTH - clampedDy * (1 - STAB_SMOOTH) * vh;
+
+            // Clamp correction to zoom budget
+            const maxPx = vw * (STAB_ZOOM - 1) / 2;
+            const maxPy = vh * (STAB_ZOOM - 1) / 2;
+            smoothX = Math.max(-maxPx, Math.min(maxPx, smoothX));
+            smoothY = Math.max(-maxPy, Math.min(maxPy, smoothY));
+
+            // Draw zoomed + shifted frame
+            const drawW = vw * STAB_ZOOM;
+            const drawH = vh * STAB_ZOOM;
+            const offsetX = -(drawW - vw) / 2 + smoothX;
+            const offsetY = -(drawH - vh) / 2 + smoothY;
+
+            stabCtx.drawImage(rawVideo, offsetX, offsetY, drawW, drawH);
+        } else {
+            stabCtx.drawImage(rawVideo, 0, 0, vw, vh);
+        }
+
+        stabAnimFrame = requestAnimationFrame(stabFrame);
+    }
+
+    function startStabilizer() {
+        if (stabAnimFrame) cancelAnimationFrame(stabAnimFrame);
+        smoothX = 0;
+        smoothY = 0;
+        prevFrameData = null;
+        initStabilizer();
+
+        // Capture stream from canvas for recording (+ original audio)
+        stabStream = stabCanvas.captureStream(30);
+
+        // Add audio tracks from camera stream
+        if (currentStream) {
+            currentStream.getAudioTracks().forEach(track => stabStream.addTrack(track));
+        }
+
+        stabFrame();
+        console.log('🎯 Stabilizer active');
+    }
+
+    function stopStabilizer() {
+        if (stabAnimFrame) {
+            cancelAnimationFrame(stabAnimFrame);
+            stabAnimFrame = null;
+        }
+        stabStream = null;
+        prevFrameData = null;
+        console.log('⏹️  Stabilizer stopped');
+    }
+
     async function startCamera() {
         const preview = document.getElementById('preview');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -974,9 +1136,10 @@
             currentStream = null;
             currentVideoTrack = null;
         }
-        if (preview.srcObject) {
-            preview.srcObject.getTracks().forEach(track => track.stop());
-            preview.srcObject = null;
+        const rawPreview = document.getElementById('preview-raw');
+        if (rawPreview && rawPreview.srcObject) {
+            rawPreview.srcObject.getTracks().forEach(track => track.stop());
+            rawPreview.srcObject = null;
         }
 
         try {
@@ -1000,19 +1163,24 @@
             console.log(`Camera active: ${settings.width}x${settings.height}`);
             console.log(`Facing mode: ${settings.facingMode || 'rear (environment)'}`);
             
-            preview.srcObject = currentStream;
+            // Feed raw stream to hidden video, canvas shows stabilized output
+            const rawVideo = document.getElementById('preview-raw');
+            rawVideo.srcObject = currentStream;
             
             try {
                 await new Promise((resolve, reject) => {
                     const loadTimeout = setTimeout(() => { resolve(); }, 15000);
-                    preview.onloadedmetadata = () => {
-                        preview.play().then(() => { clearTimeout(loadTimeout); resolve(); }).catch(err => { clearTimeout(loadTimeout); resolve(); });
+                    rawVideo.onloadedmetadata = () => {
+                        rawVideo.play().then(() => { clearTimeout(loadTimeout); resolve(); }).catch(err => { clearTimeout(loadTimeout); resolve(); });
                     };
-                    if (preview.readyState >= 2) { preview.play().catch(console.error); }
+                    if (rawVideo.readyState >= 2) { rawVideo.play().catch(console.error); }
                 });
             } catch (e) {
                 console.warn('Video load promise failed:', e);
             }
+            
+            // Start stabilized canvas rendering
+            startStabilizer();
             
             try {
                 const capabilities = currentVideoTrack.getCapabilities();
@@ -1093,10 +1261,10 @@
                 currentStream = null;
                 currentVideoTrack = null;
             }
-            const preview = document.getElementById('preview');
-            if (preview && preview.srcObject) {
-                preview.srcObject.getTracks().forEach(track => track.stop());
-                preview.srcObject = null;
+            const rawPrev = document.getElementById('preview-raw');
+            if (rawPrev && rawPrev.srcObject) {
+                rawPrev.srcObject.getTracks().forEach(track => track.stop());
+                rawPrev.srcObject = null;
             }
             
             await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1120,8 +1288,9 @@
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
-                    preview.srcObject = currentStream;
-                    await preview.play();
+                    document.getElementById('preview-raw').srcObject = currentStream;
+                    await document.getElementById('preview-raw').play();
+                    startStabilizer();
                     repairSuccess = true;
                 } catch (e) { console.log('Attempt 1 failed:', e.message); }
             }
@@ -1133,8 +1302,9 @@
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
-                    preview.srcObject = currentStream;
-                    await preview.play();
+                    document.getElementById('preview-raw').srcObject = currentStream;
+                    await document.getElementById('preview-raw').play();
+                    startStabilizer();
                     repairSuccess = true;
                 } catch (e) { console.log('Attempt 2 failed:', e.message); }
             }
@@ -1238,13 +1408,15 @@
         `;
         
         stopBrightnessMonitoring();
+        stopStabilizer();
         if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
         if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
         if (currentVideoTrack) { try { currentVideoTrack.stop(); } catch (e) {} currentVideoTrack = null; }
         
+        const rawVid2 = document.getElementById('preview-raw');
         const preview = document.getElementById('preview');
         const playback = document.getElementById('playback');
-        if (preview && preview.srcObject) { preview.srcObject.getTracks().forEach(t => t.stop()); preview.srcObject = null; }
+        if (rawVid2 && rawVid2.srcObject) { rawVid2.srcObject.getTracks().forEach(t => t.stop()); rawVid2.srcObject = null; }
         preview.style.display = 'block';
         if (playback) { playback.style.display = 'none'; playback.src = ''; }
         document.getElementById('btn-record').style.display = 'flex';
@@ -1261,8 +1433,10 @@
                 audio: true
             });
             currentVideoTrack = currentStream.getVideoTracks()[0];
-            preview.srcObject = currentStream;
-            await preview.play();
+            const rawVid = document.getElementById('preview-raw');
+            rawVid.srcObject = currentStream;
+            await rawVid.play();
+            startStabilizer();
             const settings = currentVideoTrack.getSettings();
             overlay.innerHTML = `
                 <div class="repair-warning">✅</div>
@@ -1305,10 +1479,12 @@
         stopBrightnessMonitoring();
         if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
         if (currentVideoTrack) { try { currentVideoTrack.stop(); } catch (e) {} currentVideoTrack = null; }
-        const preview = document.getElementById("preview");
-        if (preview && preview.srcObject) { preview.srcObject.getTracks().forEach(t => t.stop()); preview.srcObject = null; }
+        stopStabilizer();
+        const rawVideo = document.getElementById("preview-raw");
+        if (rawVideo && rawVideo.srcObject) { rawVideo.srcObject.getTracks().forEach(t => t.stop()); rawVideo.srcObject = null; }
+        const stabCanvasEl = document.getElementById("preview");
         const playback = document.getElementById("playback");
-        if (preview) preview.style.display = "block";
+        if (stabCanvasEl) stabCanvasEl.style.display = "block";
         if (playback) { playback.style.display = "none"; playback.src = ""; }
         document.getElementById("btn-record").style.display = "flex";
         document.getElementById("btn-stop").style.display = "none";
@@ -1420,7 +1596,9 @@
             console.log(`🎥 Recording with: ${selectedOption.name} @ ${(CONFIG.VIDEO_BITRATE / 1000000).toFixed(1)} Mbps`);
 
             try {
-                mediaRecorder = new MediaRecorder(currentStream, {
+                // Record from stabilized canvas stream (with original audio)
+                const recordStream = stabStream || currentStream;
+                mediaRecorder = new MediaRecorder(recordStream, {
                     mimeType: selectedOption.mimeType,
                     videoBitsPerSecond: CONFIG.VIDEO_BITRATE
                 });
@@ -1438,11 +1616,14 @@
                     videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
                     console.log(`✅ Recording complete: ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB`);
                     
-                    const preview = document.getElementById('preview');
+                    const rawVideo = document.getElementById('preview-raw');
+                    const stabCanvasEl = document.getElementById('preview');
                     const playback = document.getElementById('playback');
-                    preview.style.display = 'none';
+                    rawVideo.style.display = 'none';
+                    stabCanvasEl.style.display = 'none';
                     playback.style.display = 'block';
                     playback.src = URL.createObjectURL(videoBlob);
+                    stopStabilizer();
                     
                     document.getElementById('btn-record').style.display = 'none';
                     document.getElementById('btn-stop').style.display = 'none';
@@ -1477,6 +1658,25 @@
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
             document.getElementById('btn-record').classList.remove('recording');
+        }
+    }
+
+    function toggleStabilizer() {
+        stabEnabled = !stabEnabled;
+        const indicator = document.getElementById('stab-indicator');
+        if (stabEnabled) {
+            indicator.innerText = '⚖️ STAB ON';
+            indicator.style.color = '#4ade80';
+            indicator.style.borderColor = '#4ade80';
+            smoothX = 0;
+            smoothY = 0;
+            prevFrameData = null;
+            console.log('✅ Stabilizer ON');
+        } else {
+            indicator.innerText = '⚖️ STAB OFF';
+            indicator.style.color = '#6b7280';
+            indicator.style.borderColor = '#6b7280';
+            console.log('⏸️  Stabilizer OFF');
         }
     }
 
@@ -1589,6 +1789,7 @@
     
     window.addEventListener('beforeunload', () => {
         stopBrightnessMonitoring();
+        stopStabilizer();
         if (currentStream) currentStream.getTracks().forEach(t => t.stop());
         if (wakeLock) wakeLock.release();
     });
