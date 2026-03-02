@@ -2378,6 +2378,8 @@ app.get('/api/speed-limit', async (req, res) => {
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
     let videoPath = null;
+    let enhancedVideoPath = null;
+    
     try {
         console.log('📹 Video upload initiated');
         if (!driveClient) throw new Error('Google Drive not initialized');
@@ -2391,10 +2393,68 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
         
         console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
+        console.log('🎨 Starting video enhancement...');
         
-        const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        // ========================================
+        // VIDEO ENHANCEMENT WITH FFMPEG
+        // ========================================
+        const ffmpeg = require('fluent-ffmpeg');
+        enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
         
-        console.log('☁️  Starting Google Drive upload...');
+        await new Promise((resolve, reject) => {
+            ffmpeg(videoPath)
+                .videoFilters([
+                    'eq=brightness=0.05:contrast=1.08:saturation=1.1',  // Brightness/Contrast/Saturation
+                    'unsharp=5:5:1.0:5:5:0.5',                         // Sharpness filter
+                    'nlmeans=s=3.0:p=7:r=15',                          // Noise reduction
+                    'hqdn3d=4:3:6:4.5'                                 // Additional denoising
+                ])
+                .videoBitrate('20M')                                    // 20 Mbps bitrate
+                .videoCodec('libx264')                                  // H.264 codec
+                .outputOptions([
+                    '-preset slow',                                     // High quality encoding
+                    '-crf 18',                                          // Quality level (18 = visually lossless)
+                    '-profile:v high',                                  // H.264 High Profile
+                    '-level 4.2',                                       // H.264 Level 4.2
+                    '-movflags +faststart',                             // Optimize for streaming
+                    '-pix_fmt yuv420p'                                  // Color format compatibility
+                ])
+                .audioCodec('aac')                                      // AAC audio
+                .audioBitrate('128k')                                   // Audio quality
+                .output(enhancedVideoPath)
+                .on('start', (cmd) => {
+                    console.log('🎬 FFmpeg command:', cmd);
+                })
+                .on('progress', (progress) => {
+                    console.log(`⏳ Processing: ${progress.percent?.toFixed(1) || 0}% complete`);
+                })
+                .on('end', () => {
+                    const enhancedStats = fs.statSync(enhancedVideoPath);
+                    const enhancedSizeMB = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                    console.log(`✅ Enhancement complete!`);
+                    console.log(`   Original: ${fileSizeMB}MB → Enhanced: ${enhancedSizeMB}MB`);
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error('❌ FFmpeg error:', err.message);
+                    reject(err);
+                })
+                .run();
+        });
+        
+        // Use enhanced video for upload
+        const finalVideoPath = enhancedVideoPath;
+        const finalFileStats = fs.statSync(finalVideoPath);
+        const finalFileSizeMB = (finalFileStats.size / 1024 / 1024).toFixed(2);
+        
+        console.log(`📹 Final video size: ${finalFileSizeMB}MB (enhanced)`);
+        
+        // ========================================
+        // UPLOAD ENHANCED VIDEO TO GOOGLE DRIVE
+        // ========================================
+        const fileName = `${driverName}_${vin}_${inspectionType}_ENHANCED_${Date.now()}.mp4`;
+        
+        console.log('☁️  Starting Google Drive upload (enhanced video)...');
         
         const fileMetadata = {
             name: fileName,
@@ -2405,16 +2465,19 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 vin: vin,
                 inspectionType: inspectionType,
                 uploadDate: new Date().toISOString(),
-                codec: 'H.265/HEVC',
+                codec: 'H.264 Enhanced',
                 resolution: '1920x1080',
+                bitrate: '20Mbps',
+                enhanced: 'true',
+                enhancements: 'brightness+contrast+saturation+sharpness+denoising',
                 downloadPreferred: 'true'
             },
-            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
+            description: `Fleet Video Inspection - ENHANCED ${inspectionType} for VIN ${vin} by ${driverName}`
         };
         
-        const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
+        const media = { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) };
         
-        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
+        const uploadType = finalFileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
         console.log(`📤 Using ${uploadType} upload method`);
         
         const driveResponse = await driveClient.files.create({
@@ -2430,20 +2493,31 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const videoMetadata = driveResponse.data.videoMediaMetadata || {};
         const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
         
-        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
+        console.log(`✅ Enhanced video uploaded to Google Drive in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
-        console.log(`   Size uploaded: ${fileSizeMB}MB`);
+        console.log(`   Size uploaded: ${finalFileSizeMB}MB`);
+        console.log(`   Enhancements: Brightness, Contrast, Saturation, Sharpness, Denoising`);
 
         await appendLog(PERFORMANCE_LOG, {
             type: 'performance',
-            action: 'video_upload',
+            action: 'video_upload_enhanced',
             duration: Date.now() - startTime,
             success: true,
-            fileSize: fileStats.size,
-            details: `${driverName} - ${vin} - ${inspectionType}`,
+            originalSize: fileStats.size,
+            enhancedSize: finalFileStats.size,
+            details: `${driverName} - ${vin} - ${inspectionType} - ENHANCED`,
             userAgent: req.get('user-agent'),
             ip: req.ip
         });
+        
+        // Clean up temporary files
+        try {
+            if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+            if (enhancedVideoPath && fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
+            console.log('🧹 Temporary files cleaned up');
+        } catch (cleanupError) {
+            console.error('⚠️  Cleanup warning:', cleanupError.message);
+        }
         
         try {
             await driveClient.permissions.create({
