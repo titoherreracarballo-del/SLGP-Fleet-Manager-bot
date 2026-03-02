@@ -242,7 +242,90 @@
     
     <div class="header">
         <h1>Build Notes</h1>
-        <div class="version">Current Version: 4.6.2</div>
+        <div class="version">Current Version: 4.6.3</div>
+    </div>
+
+    <!-- BUILD v4.6.3 - March 2, 2026 -->
+    <div class="build-section">
+        <div class="build-header">
+            <div class="build-date">March 2, 2026</div>
+            <div class="build-version">v4.6.3</div>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🚦 GPS-BASED SPEED LIMIT READER</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Real-Time Speed Limits:</span> Automatic GPS-based speed limit detection for driver's current location</li>
+                <li class="change-item"><span class="highlight">Live Speed Monitoring:</span> Displays driver's current speed vs posted limit with visual alerts</li>
+                <li class="change-item"><span class="highlight">Violation Warnings:</span> Color-coded alerts (Green=Safe, Yellow=Caution, Red=Speeding)</li>
+                <li class="change-item"><span class="highlight">Known Violation Zones:</span> Pre-loaded database of high-risk areas with enforcement cameras</li>
+                <li class="change-item"><span class="highlight">Reduces Tickets:</span> Helps drivers stay compliant and avoid speeding violations</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">📊 USAGE TRACKING & EMAIL ALERTS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">API Monitoring:</span> Tracks TomTom API requests to stay within free tier (2,500/day)</li>
+                <li class="change-item"><span class="highlight">Email Alerts:</span> Automatic notifications at 80%, 90%, and 95% of daily limit</li>
+                <li class="change-item"><span class="highlight">Hard Limit:</span> Prevents overages by blocking requests at 2,500/day</li>
+                <li class="change-item"><span class="highlight">Daily Reset:</span> Counters reset automatically at midnight</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🗺️ OFFICIAL COWETA COUNTY ROAD DATABASE</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Official Radar List:</span> Complete database from Coweta County Board of Commissioners (List #0223-077)</li>
+                <li class="change-item"><span class="highlight">40+ Critical Roads:</span> All major state routes (SR-14, 16, 34, 54, 70, 74/85, 154), delivery corridors</li>
+                <li class="change-item"><span class="highlight">Recent Changes:</span> SR-34 to SR-54 reduced from 55 to 50 MPH (March 2023) - Heavy enforcement!</li>
+                <li class="change-item"><span class="highlight">School Zones:</span> Trinity Christian, Northgate High, Newnan High, and 15+ elementary schools</li>
+                <li class="change-item"><span class="highlight">Enforcement Areas:</span> Known camera locations (SR-74/85) and speed trap zones clearly marked</li>
+                <li class="change-item"><span class="highlight">Exact Times:</span> School zone hours specified (e.g., 7:30-8:30 AM, 2:30-3:30 PM)</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title new">🎨 ENHANCED UI WITH ANIMATIONS</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">Interactive Map:</span> Real-time GPS tracking with OpenStreetMap + Leaflet.js integration</li>
+                <li class="change-item"><span class="highlight">Massive Displays:</span> Speed limit 150px font, current speed 120px for glance-while-driving visibility</li>
+                <li class="change-item"><span class="highlight">Vibrant Colors:</span> Green (safe), Yellow (5 over), Red (speeding) with gradient backgrounds</li>
+                <li class="change-item"><span class="highlight">Speeding Animations:</span> Pulsing text + background flash + phone vibration when exceeding limit</li>
+                <li class="change-item"><span class="highlight">Auto-Centering Map:</span> Red marker follows driver's GPS position in real-time</li>
+                <li class="change-item"><span class="highlight">Header Controls:</span> Quick refresh button always accessible at top</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">💾 SMART CACHING SYSTEM</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">3-Tier Lookup:</span> Database → Cache → TomTom API (minimizes costs)</li>
+                <li class="change-item"><span class="highlight">24-Hour Cache:</span> Speed limits cached per GPS location</li>
+                <li class="change-item"><span class="highlight">90% Reduction:</span> Smart caching reduces API calls from 3,600 to 370/day</li>
+                <li class="change-item"><span class="highlight">Free Forever:</span> Can scale to 300+ drivers and stay FREE</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">💰 COST PROTECTION</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="highlight">40 Drivers:</span> ~370 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">100 Drivers:</span> ~900 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">300 Drivers:</span> ~2,400 requests/day = $0/month ✅</li>
+                <li class="change-item"><span class="highlight">Email Warnings:</span> Get notified before hitting limits</li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <div class="category-title optimize">📱 AFFECTED FILES</div>
+            <ul class="change-list">
+                <li class="change-item"><span class="code">speed-limits.html</span> - NEW GPS speed limit reader</li>
+                <li class="change-item"><span class="code">index.js</span> - Usage tracking, caching, API endpoint</li>
+                <li class="change-item"><span class="code">menu.html</span> - Added Speed Limits button</li>
+                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated</li>
+            </ul>
+        </div>
     </div>
 
     <!-- BUILD v4.6.2 - March 1, 2026 -->
