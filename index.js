@@ -1136,6 +1136,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         if (!req.file) throw new Error('No video file received');
 
         videoPath = req.file.path;
+        // Rename temp file to add .mp4 extension so FFmpeg can read it
+        const videoPathMp4 = videoPath + '.mp4';
+        fs.renameSync(videoPath, videoPathMp4);
+        videoPath = videoPathMp4;
         const { driverName, vin, inspectionType } = req.body;
         if (!driverName || !vin || !inspectionType) throw new Error('Missing required fields');
 
@@ -1188,13 +1192,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         }
 
         await new Promise((resolve, reject) => {
-            ffmpeg()
-                .input(videoPath)
-                .inputFormat('mp4')  
-                .videoFilters([
-                    'eq=brightness=0.05:contrast=1.08:saturation=1.1',
-                    'unsharp=5:5:1.0:5:5:0.5'
-                    ])
+            ffmpeg(videoPath)
+            .videoFilters([
                 .videoBitrate('20M')
                 .videoCodec('libx264')
                 .outputOptions([
