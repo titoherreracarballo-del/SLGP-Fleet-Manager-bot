@@ -25,7 +25,8 @@
     "morgan": "^1.10.0",
     "pdf-lib": "^1.17.1",
     "discord.js": "^14.14.1",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "fluent-ffmpeg": "^2.1.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
