@@ -2399,11 +2399,45 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         // VIDEO ENHANCEMENT WITH FFMPEG
         // ========================================
         const ffmpeg = require('fluent-ffmpeg');
-        // Set FFmpeg binary paths for Railway deployment
-        ffmpeg.setFfmpegPath('/usr/bin/ffmpeg');
-        ffmpeg.setFfprobePath('/usr/bin/ffprobe');
-        console.log('✅ FFmpeg paths configured for Railway');
-        enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
+        const { execSync } = require('child_process');
+
+        console.log('🔍 Detecting FFmpeg installation...');
+        const possiblePaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/bin/ffmpeg', 'ffmpeg'];
+        let ffmpegPath = null;
+        let ffprobePath = null;
+
+        for (const testPath of possiblePaths) {
+            try {
+                execSync(`${testPath} -version`, { stdio: 'pipe' });
+                ffmpegPath = testPath;
+                ffprobePath = testPath.replace('ffmpeg', 'ffprobe');
+                console.log(`✅ FFmpeg found at: ${testPath}`);
+                break;
+            } catch (e) {}
+}
+
+if (!ffmpegPath) {
+    try {
+        ffmpegPath = execSync('which ffmpeg', { encoding: 'utf8' }).trim();
+        ffprobePath = execSync('which ffprobe', { encoding: 'utf8' }).trim();
+        console.log(`✅ FFmpeg detected via which: ${ffmpegPath}`);
+    } catch (e) {
+        console.error('❌ CRITICAL: FFmpeg not found! Video enhancement will fail.');
+    }
+}
+
+if (ffmpegPath && ffprobePath) {
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffprobePath);
+    console.log('✅ FFmpeg configured');
+}
+
+enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
+```
+
+After deploying, your Railway logs will show something like:
+```
+✅ FFmpeg found at: /usr/local/bin/ffmpeg
         
         await new Promise((resolve, reject) => {
             ffmpeg(videoPath)
