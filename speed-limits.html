@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Limits</title>
+    <style>
+        :root {
+            --bg-body: #0A6CF1;
+            --bg-card: #1C1C1E;
+            --bg-input: #2C2C2E;
+            --primary-blue: #1976D2;
+            --text-white: #ffffff;
+            --text-gray: #8E8E93;
+            --success: #4ade80;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            color: var(--text-white);
+            min-height: 100vh;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            background: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 12px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
+            margin-bottom: 20px;
+        }
+
+        .version {
+            text-align: center;
+            color: var(--text-gray);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 10px;
+        }
+
+        .logo {
+            display: block;
+            margin: 0 auto 15px;
+            max-width: 280px;
+            width: 100%;
+            height: auto;
+        }
+
+        h1 {
+            color: var(--primary-blue);
+            text-align: center;
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 30px;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Speed Display */
+        .speed-display {
+            background: linear-gradient(135deg, #1A1F2E 0%, #151925 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .speed-limit-label {
+            color: var(--text-gray);
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .speed-limit-value {
+            font-size: 80px;
+            font-weight: 900;
+            line-height: 1;
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+
+        .speed-limit-unit {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-gray);
+        }
+
+        .road-name {
+            color: var(--text-gray);
+            font-size: 16px;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+
+        /* Current Speed */
+        .current-speed {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .current-speed-label {
+            color: var(--text-gray);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .current-speed-value {
+            font-size: 48px;
+            font-weight: 800;
+        }
+
+        .speed-status {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-top: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+
+        .status-safe {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+            border: 2px solid var(--success);
+        }
+
+        .status-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+            border: 2px solid var(--warning);
+        }
+
+        .status-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 2px solid var(--danger);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Location */
+        .location-info {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .location-label {
+            color: var(--text-gray);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .location-value {
+            color: white;
+            font-weight: 500;
+        }
+
+        /* Violation Zones */
+        .violation-zones {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .violation-zones h2 {
+            color: var(--danger);
+            font-size: 16px;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .zone-item {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 4px solid var(--danger);
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+        }
+
+        .zone-name {
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .zone-details {
+            font-size: 12px;
+            color: var(--text-gray);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-gray);
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid var(--primary-blue);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error */
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 2px solid var(--danger);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .error-message {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Refresh Button */
+        .refresh-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 16px;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 6px 24px rgba(30, 136, 229, 0.4);
+            margin-top: 20px;
+        }
+
+        .refresh-btn:active {
+            transform: translateY(2px);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <a href="/" class="back-link">← Back to Menu</a>
+    
+    <div class="version">v4.6.2</div>
+    
+    <img src="./Final-01.jpg" alt="Strategic Logistics Logo" class="logo">
+    
+    <h1>🚦 Speed Limits</h1>
+
+    <div id="content">
+        <div class="loading">
+            <div class="spinner"></div>
+            <div>Detecting your location...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+let watchId = null;
+let currentSpeed = 0;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    if (!navigator.geolocation) {
+        showError('GPS not supported on this device');
+        return;
+    }
+    
+    startTracking();
+});
+
+function startTracking() {
+    // Get initial position
+    navigator.geolocation.getCurrentPosition(
+        position => fetchSpeedLimit(position.coords.latitude, position.coords.longitude),
+        error => showError('Unable to access GPS. Please enable location services.'),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+    
+    // Watch for speed changes
+    watchId = navigator.geolocation.watchPosition(
+        position => {
+            currentSpeed = position.coords.speed ? Math.round(position.coords.speed * 2.23694) : 0; // m/s to mph
+            updateSpeedDisplay();
+        },
+        null,
+        { enableHighAccuracy: true, maximumAge: 1000 }
+    );
+}
+
+async function fetchSpeedLimit(lat, lng) {
+    try {
+        const response = await fetch(`/api/speed-limit?lat=${lat}&lng=${lng}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displaySpeedLimit(data);
+        } else {
+            showError(data.error || 'Unable to determine speed limit');
+        }
+    } catch (error) {
+        showError('Connection error. Please check your internet connection.');
+    }
+}
+
+function displaySpeedLimit(data) {
+    const speedLimit = data.speedLimit;
+    const roadName = data.roadName || 'Unknown Road';
+    const location = data.location || '';
+    const source = data.source || 'database';
+    
+    const html = `
+        <div class="speed-display">
+            <div class="speed-limit-label">Posted Speed Limit</div>
+            <div class="speed-limit-value" id="speedLimitValue">${speedLimit}</div>
+            <div class="speed-limit-unit">MPH</div>
+            <div class="road-name">${roadName}</div>
+        </div>
+        
+        <div class="current-speed">
+            <div class="current-speed-label">Your Current Speed</div>
+            <div class="current-speed-value" id="currentSpeedValue">--</div>
+            <div class="speed-limit-unit">MPH</div>
+            <div class="speed-status status-safe" id="speedStatus">Checking...</div>
+        </div>
+        
+        <div class="location-info">
+            <div class="location-label">📍 Current Location</div>
+            <div class="location-value" id="locationValue">${location}</div>
+        </div>
+        
+        ${renderViolationZones()}
+        
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Location</button>
+    `;
+    
+    document.getElementById('content').innerHTML = html;
+    
+    // Start updating current speed
+    updateSpeedDisplay();
+}
+
+function updateSpeedDisplay() {
+    const speedLimitEl = document.getElementById('speedLimitValue');
+    const currentSpeedEl = document.getElementById('currentSpeedValue');
+    const statusEl = document.getElementById('speedStatus');
+    
+    if (!speedLimitEl || !currentSpeedEl || !statusEl) return;
+    
+    const speedLimit = parseInt(speedLimitEl.textContent);
+    
+    // Update current speed display
+    currentSpeedEl.textContent = currentSpeed || '--';
+    
+    if (currentSpeed > 0) {
+        // Determine status
+        if (currentSpeed <= speedLimit) {
+            statusEl.textContent = '✅ SAFE';
+            statusEl.className = 'speed-status status-safe';
+            currentSpeedEl.style.color = 'var(--success)';
+        } else if (currentSpeed <= speedLimit + 5) {
+            statusEl.textContent = '⚠️ CAUTION';
+            statusEl.className = 'speed-status status-warning';
+            currentSpeedEl.style.color = 'var(--warning)';
+        } else {
+            statusEl.textContent = '🚨 SPEEDING!';
+            statusEl.className = 'speed-status status-danger';
+            currentSpeedEl.style.color = 'var(--danger)';
+        }
+    } else {
+        statusEl.textContent = 'Waiting for GPS...';
+        statusEl.className = 'speed-status status-safe';
+        currentSpeedEl.style.color = 'var(--text-gray)';
+    }
+}
+
+function renderViolationZones() {
+    return `
+        <div class="violation-zones">
+            <h2>⚠️ Known Violation Zones</h2>
+            <div class="zone-item">
+                <div class="zone-name">SR-74 West</div>
+                <div class="zone-details">Posted: 55 MPH • ENFORCEMENT CAMERA • Drivers often mistake for 65 MPH</div>
+            </div>
+            <div class="zone-item">
+                <div class="zone-name">Peachtree Parkway</div>
+                <div class="zone-details">Posted: 45 MPH • Heavy patrol during peak hours</div>
+            </div>
+            <div class="zone-item">
+                <div class="zone-name">Downtown Peachtree City</div>
+                <div class="zone-details">Posted: 35 MPH • School zones 25 MPH (7AM-4PM)</div>
+            </div>
+        </div>
+    `;
+}
+
+function showError(message) {
+    document.getElementById('content').innerHTML = `
+        <div class="error">
+            <div class="error-icon">⚠️</div>
+            <div class="error-message">${message}</div>
+        </div>
+        <button class="refresh-btn" onclick="location.reload()">Try Again</button>
+    `;
+}
+
+// Cleanup
+window.addEventListener('beforeunload', () => {
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+    }
+});
+</script>
+
+<script src="/auto-refresh.js"></script>
+
+</body>
+</html>
