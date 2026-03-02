@@ -2,7 +2,10 @@
 # This tells Railway to install FFmpeg for video processing
 
 [phases.setup]
-nixPkgs = ['nodejs', 'ffmpeg']
+nixPkgs = ['ffmpeg']    ← ONLY FFmpeg (Railway handles Node.js)
+
+[phases.install]
+dependsOn = ['setup']
 
 [start]
 cmd = 'npm start'
