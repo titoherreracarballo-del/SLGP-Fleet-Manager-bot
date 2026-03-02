@@ -1188,10 +1188,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         }
 
         await new Promise((resolve, reject) => {
-            ffmpeg(videoPath)
+            ffmpeg()
+                .input(videoPath)
+                .inputFormat('mp4')  
                 .videoFilters([
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
-                    'unsharp=5:5:1.0:5:5:0.5',
+                    'unsharp=5:5:1.0:5:5:0.5'
                     ])
                 .videoBitrate('20M')
                 .videoCodec('libx264')
