@@ -1130,148 +1130,72 @@ app.get('/api/speed-limit', async (req, res) => {
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
     let videoPath = null;
-    let enhancedVideoPath = null;
-
     try {
         console.log('📹 Video upload initiated');
         if (!driveClient) throw new Error('Google Drive not initialized');
         if (!req.file) throw new Error('No video file received');
 
         videoPath = req.file.path;
-
-        // Rename temp file to add .mp4 extension so FFmpeg can read it
-        const videoPathMp4 = videoPath + '.mp4';
-        fs.renameSync(videoPath, videoPathMp4);
-        videoPath = videoPathMp4;
-
         const { driverName, vin, inspectionType } = req.body;
         if (!driverName || !vin || !inspectionType) throw new Error('Missing required fields');
 
         const fileStats = fs.statSync(videoPath);
         const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+
         console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
-        console.log('🎨 Starting video enhancement...');
 
-        // ========================================
-        // VIDEO ENHANCEMENT WITH FFMPEG - AUTO-DETECT PATH
-        // ========================================
-        const ffmpeg = require('fluent-ffmpeg');
-        const { execSync } = require('child_process');
+        const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
 
-        console.log('🔍 Detecting FFmpeg installation...');
-        const possiblePaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/bin/ffmpeg', 'ffmpeg'];
-        let ffmpegPath = null;
-        let ffprobePath = null;
-
-        for (const testPath of possiblePaths) {
-            try {
-                execSync(`${testPath} -version`, { stdio: 'pipe' });
-                ffmpegPath = testPath;
-                ffprobePath = testPath.replace('ffmpeg', 'ffprobe');
-                console.log(`✅ FFmpeg found at: ${testPath}`);
-                break;
-            } catch (e) {}
-        }
-
-        if (!ffmpegPath) {
-            try {
-                ffmpegPath = execSync('which ffmpeg', { encoding: 'utf8' }).trim();
-                ffprobePath = execSync('which ffprobe', { encoding: 'utf8' }).trim();
-                console.log(`✅ FFmpeg detected via which: ${ffmpegPath}`);
-            } catch (e) {
-                console.error('❌ CRITICAL: FFmpeg not found! Video enhancement will fail.');
-            }
-        }
-
-        if (ffmpegPath && ffprobePath) {
-            ffmpeg.setFfmpegPath(ffmpegPath);
-            ffmpeg.setFfprobePath(ffprobePath);
-            console.log('✅ FFmpeg configured');
-        }
-
-        enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
-
-        await new Promise((resolve, reject) => {
-            ffmpeg(videoPath)
-                .videoFilters([
-                    'eq=brightness=0.05:contrast=1.08:saturation=1.1',
-                    'unsharp=5:5:1.0:5:5:0.5'
-                ])
-                .videoBitrate('20M')
-                .videoCodec('libx264')
-                .outputOptions([
-                    '-preset slow',
-                    '-crf 18',
-                    '-profile:v high',
-                    '-level 4.2',
-                    '-movflags +faststart',
-                    '-pix_fmt yuv420p'
-                ])
-                .audioCodec('aac')
-                .audioBitrate('128k')
-                .output(enhancedVideoPath)
-                .on('start', (cmd) => { console.log('🎬 FFmpeg command:', cmd); })
-                .on('progress', (progress) => { console.log(`⏳ Processing: ${progress.percent?.toFixed(1) || 0}% complete`); })
-                .on('end', () => {
-                    const enhancedStats = fs.statSync(enhancedVideoPath);
-                    const enhancedSizeMB = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                    console.log(`✅ Enhancement complete! Original: ${fileSizeMB}MB → Enhanced: ${enhancedSizeMB}MB`);
-                    resolve();
-                })
-                .on('error', (err) => { console.error('❌ FFmpeg error:', err.message); reject(err); })
-                .run();
-        });
-
-        const finalVideoPath = enhancedVideoPath;
-        const finalFileStats = fs.statSync(finalVideoPath);
-        const finalFileSizeMB = (finalFileStats.size / 1024 / 1024).toFixed(2);
-        console.log(`📹 Final video size: ${finalFileSizeMB}MB (enhanced)`);
-
-        const fileName = `${driverName}_${vin}_${inspectionType}_ENHANCED_${Date.now()}.mp4`;
-        console.log('☁️  Starting Google Drive upload (enhanced video)...');
+        console.log('☁️  Starting Google Drive upload...');
 
         const fileMetadata = {
             name: fileName,
             parents: [VIDEO_DRIVE_ID],
             mimeType: 'video/mp4',
             properties: {
-                driver: driverName, vin: vin, inspectionType: inspectionType,
-                uploadDate: new Date().toISOString(), codec: 'H.264 Enhanced',
-                resolution: '1920x1080', bitrate: '20Mbps', enhanced: 'true',
-                enhancements: 'brightness+contrast+saturation+sharpness+denoising',
+                driver: driverName,
+                vin: vin,
+                inspectionType: inspectionType,
+                uploadDate: new Date().toISOString(),
+                codec: 'H.265/HEVC',
+                resolution: '1920x1080',
                 downloadPreferred: 'true'
             },
-            description: `Fleet Video Inspection - ENHANCED ${inspectionType} for VIN ${vin} by ${driverName}`
+            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
         };
 
-        const media = { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) };
+        const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
+
+        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
+        console.log(`📤 Using ${uploadType} upload method`);
+
         const driveResponse = await driveClient.files.create({
-            requestBody: fileMetadata, media: media,
+            requestBody: fileMetadata,
+            media: media,
             fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
             supportsAllDrives: true
         });
 
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
+
         const videoMetadata = driveResponse.data.videoMediaMetadata || {};
         const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
 
-        console.log(`✅ Enhanced video uploaded to Google Drive in ${uploadTime}s`);
+        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
+        console.log(`   Size uploaded: ${fileSizeMB}MB`);
 
         await appendLog(PERFORMANCE_LOG, {
-            type: 'performance', action: 'video_upload_enhanced',
-            duration: Date.now() - startTime, success: true,
-            originalSize: fileStats.size, enhancedSize: finalFileStats.size,
-            details: `${driverName} - ${vin} - ${inspectionType} - ENHANCED`,
-            userAgent: req.get('user-agent'), ip: req.ip
+            type: 'performance',
+            action: 'video_upload',
+            duration: Date.now() - startTime,
+            success: true,
+            fileSize: fileStats.size,
+            details: `${driverName} - ${vin} - ${inspectionType}`,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
         });
-
-        try {
-            if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-            if (enhancedVideoPath && fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-            console.log('🧹 Temporary files cleaned up');
-        } catch (cleanupError) { console.error('⚠️  Cleanup warning:', cleanupError.message); }
 
         try {
             await driveClient.permissions.create({
@@ -1280,41 +1204,135 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 supportsAllDrives: true
             });
             console.log('✅ File permissions set (viewable via link)');
-        } catch (permError) { console.warn('⚠️  Could not set permissions:', permError.message); }
+        } catch (permError) {
+            console.warn('⚠️  Could not set permissions:', permError.message);
+        }
 
         const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
         const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
         const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
         const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
 
+        console.log('📥 Generated access links:');
+        console.log(`   View Link: ${viewLink}`);
+
         try {
-            const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+            });
+
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: ['slgpfleetmanager@gmail.com'],
                 subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
-                html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;"><div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1><p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p></div><div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2><table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;"><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr></table><div style="text-align: center; margin: 25px 0;"><a href="${viewLink}" style="display: inline-block; background: #10b981; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">📱 OPEN IN DRIVE</a><a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">⬇️ DOWNLOAD 1080p</a></div></div></div>`
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
+                            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
+                        </div>
+                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td></tr>
+                            </table>
+                            <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
+                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">📹 FULL QUALITY 1080p VIDEO</h3>
+                                <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
+                                    <strong>✅ Video uploaded successfully!</strong><br>
+                                    H.265/HEVC codec - Superior quality in smaller file size.<br>
+                                    Choose your preferred viewing method below:
+                                </p>
+                            </div>
+                            <div style="text-align: center; margin: 25px 0;">
+                                <a href="${viewLink}" style="display: inline-block; background: #10b981; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
+                                    📱 OPEN IN DRIVE
+                                </a>
+                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
+                                    ⬇️ DOWNLOAD 1080p
+                                </a>
+                            </div>
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
+                                    <strong>💡 BEST VIEWING:</strong> Click <strong>"OPEN IN DRIVE"</strong> to watch in the Google Drive app or browser. 
+                                    For offline viewing or archiving, click <strong>"DOWNLOAD 1080p"</strong> to save the full quality file.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `
             });
             console.log('✅ Email notification sent to slgpfleetmanager@gmail.com');
         } catch (emailError) {
             console.error('⚠️  Email notification failed:', emailError.message);
-            await appendLog(ERROR_LOG, { type: 'server_error', severity: 'warning', message: 'Video notification email failed', stack: emailError.stack, source: 'upload-to-google-drive-email' });
+            await appendLog(ERROR_LOG, {
+                type: 'server_error',
+                severity: 'warning',
+                message: 'Video notification email failed',
+                stack: emailError.stack,
+                source: 'upload-to-google-drive-email'
+            });
         }
 
-        if (fs.existsSync(videoPath)) { try { fs.unlinkSync(videoPath); } catch(e) {} }
+        if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+            console.log('✅ Temporary file cleaned up');
+        }
 
         res.json({
-            success: true, fileId, fileName, fileSize: fileSizeMB, uploadTime,
-            viewLink, downloadLink: directDownloadLink, embedLink, thumbnailLink,
-            metadata: videoMetadata, createdTime: driveResponse.data.createdTime
+            success: true,
+            fileId: fileId,
+            fileName: fileName,
+            fileSize: fileSizeMB,
+            uploadTime: uploadTime,
+            viewLink: viewLink,
+            downloadLink: directDownloadLink,
+            embedLink: embedLink,
+            thumbnailLink: thumbnailLink,
+            metadata: videoMetadata,
+            createdTime: driveResponse.data.createdTime
         });
-
     } catch (error) {
         console.error('❌ Video upload error:', error);
-        await appendLog(ERROR_LOG, { type: 'server_error', severity: 'error', message: 'Video upload failed', stack: error.stack, source: 'upload-to-google-drive' });
-        await appendLog(PERFORMANCE_LOG, { type: 'performance', action: 'video_upload', duration: Date.now() - startTime, success: false, fileSize: req.file ? req.file.size : 0, details: error.message, userAgent: req.get('user-agent'), ip: req.ip });
-        if (videoPath && fs.existsSync(videoPath)) { try { fs.unlinkSync(videoPath); } catch (cleanupError) {} }
-        res.status(500).json({ success: false, error: error.message });
+
+        await appendLog(ERROR_LOG, {
+            type: 'server_error',
+            severity: 'error',
+            message: 'Video upload failed',
+            stack: error.stack,
+            source: 'upload-to-google-drive'
+        });
+
+        await appendLog(PERFORMANCE_LOG, {
+            type: 'performance',
+            action: 'video_upload',
+            duration: Date.now() - startTime,
+            success: false,
+            fileSize: req.file ? req.file.size : 0,
+            details: error.message,
+            userAgent: req.get('user-agent'),
+            ip: req.ip
+        });
+
+        if (videoPath && fs.existsSync(videoPath)) {
+            try {
+                fs.unlinkSync(videoPath);
+                console.log('✅ Cleaned up failed upload file');
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
