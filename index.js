@@ -2399,6 +2399,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         // VIDEO ENHANCEMENT WITH FFMPEG
         // ========================================
         const ffmpeg = require('fluent-ffmpeg');
+        // Set FFmpeg binary paths for Railway deployment
+        ffmpeg.setFfmpegPath('/usr/bin/ffmpeg');
+        ffmpeg.setFfprobePath('/usr/bin/ffprobe');
+        console.log('✅ FFmpeg paths configured for Railway');
         enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
         
         await new Promise((resolve, reject) => {
