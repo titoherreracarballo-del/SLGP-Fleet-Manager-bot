@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.3 FINAL FIX</title>
+    <title>Video Inspection v4.6.0</title>
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
@@ -345,28 +345,93 @@
         #camera-status.ready { color: #4ade80; border: 1px solid #4ade80; }
         #camera-status.error { color: #ef4444; border: 1px solid #ef4444; }
         #camera-status.flash-on { color: #FCD34D; border: 1px solid #FCD34D; }
-        
-        #flip-camera-btn {
-            position: absolute;
-            bottom: clamp(70px, 20vw, 80px);
-            left: var(--space-sm);
-            background-color: #374151;
-            border: 1px solid #4b5563;
-            color: #3B82F6;
-            padding: var(--space-sm);
-            border-radius: 50%;
-            font-size: var(--font-lg);
-            cursor: pointer;
-            z-index: 5;
-            width: clamp(45px, 12vw, 50px);
-            height: clamp(45px, 12vw, 50px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        #camera-status.wrong-camera { 
+            color: #ef4444; 
+            border: 2px solid #ef4444; 
+            background-color: rgba(239, 68, 68, 0.2);
+            font-size: var(--font-sm);
+            animation: blink 1s infinite;
         }
         
-        #flip-camera-btn:active {
-            background-color: #1f2937;
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.5; }
+        }
+        
+        #camera-repair-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            padding: var(--space-lg);
+            text-align: center;
+        }
+        
+        #camera-repair-overlay.active {
+            display: flex;
+        }
+        
+        .repair-warning {
+            font-size: clamp(40px, 12vw, 60px);
+            margin-bottom: var(--space-md);
+            animation: pulse-warning 1.5s infinite;
+        }
+        
+        @keyframes pulse-warning {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .repair-title {
+            color: #ef4444;
+            font-size: var(--font-xl);
+            font-weight: 900;
+            margin-bottom: var(--space-md);
+            text-transform: uppercase;
+        }
+        
+        .repair-text {
+            color: #ffffff;
+            font-size: var(--font-base);
+            line-height: 1.8;
+            margin-bottom: var(--space-lg);
+            max-width: 400px;
+        }
+        
+        .repair-btn {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            padding: var(--space-lg) var(--space-xl);
+            border-radius: var(--radius);
+            font-size: var(--font-md);
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            margin: var(--space-xs);
+            min-width: 200px;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+        }
+        
+        .repair-btn.secondary {
+            background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+            box-shadow: 0 4px 20px rgba(55, 65, 81, 0.4);
+        }
+        
+        .repair-btn:active {
+            transform: scale(0.95);
+        }
+        
+        /* DISABLED - REAR CAMERA ONLY */
+        #flip-camera-btn {
+            display: none !important;
         }
         
         #current-camera-label {
@@ -599,23 +664,6 @@
     </div>
 </div>
 
-<div id="frontCameraWarningModal" class="modal">
-    <div class="modal-content modal-red">
-        <span class="warning-icon">📷</span>
-        <div class="modal-title">⚠️ FRONT CAMERA DETECTED</div>
-        <div class="modal-text">
-            <strong>WARNING: The front-facing camera is currently active.</strong><br><br>
-            🔄 Please try the following:<br><br>
-            1️⃣ <strong>Close this page completely</strong> (swipe away from recent apps)<br>
-            2️⃣ <strong>Reopen the Fleet Portal</strong><br>
-            3️⃣ If problem persists, <strong>restart your phone</strong><br><br>
-            📹 Vehicle inspections must use the <strong>rear camera</strong> for proper documentation.<br><br>
-            ⚠️ If rear camera continues to fail, contact fleet management immediately.
-        </div>
-        <button class="modal-btn" onclick="closeFrontCameraWarning()">I Understand - Continue Anyway</button>
-    </div>
-</div>
-
 <div class="container">
     <div class="header-row">
         <a href="/" class="back-link">← Back to Menu</a>
@@ -661,9 +709,22 @@
         </div>
         <div id="camera-status">Initializing...</div>
         <div id="timer-display">00:00</div>
-        <button id="flip-camera-btn" onclick="flipCamera()">🔄</button>
         <div id="current-camera-label">REAR</div>
         <button id="flash-toggle" onclick="toggleFlash()">💡</button>
+        
+        <!-- CAMERA REPAIR OVERLAY (Only shows if auto-repair fails) -->
+        <div id="camera-repair-overlay">
+            <div class="repair-warning">⚠️</div>
+            <div class="repair-title">AUTOMATIC REPAIR FAILED</div>
+            <div class="repair-text">
+                Could not automatically switch to rear camera.<br><br>
+                Try manual fix options below.
+            </div>
+            <button class="repair-btn" onclick="deepResetCamera()">🔄 DEEP RESET</button>
+            <button class="repair-btn secondary" onclick="showRepairInstructions()">📋 MANUAL FIX</button>
+            <button class="repair-btn secondary" onclick="closeCameraRepair()">✓ CONTINUE WITH FRONT</button>
+        </div>
+        
         <video id="preview" autoplay playsinline muted></video>
         <video id="playback" controls style="display:none;"></video>
         
@@ -687,15 +748,15 @@
     document.getElementById('ts').innerText = new Date().toLocaleString();
 
     // ============================================
-    // CONFIGURATION - HIGH QUALITY VIDEO SETTINGS
+    // CONFIGURATION - UPDATED FOR FAST UPLOADS
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 10000000,  // 10 Mbps - HIGH QUALITY
+        VIDEO_BITRATE: 8000000,   // 8 Mbps - FAST UPLOADS (server upscales to 20 Mbps)
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
         CAMERA_TIMEOUT: 15000,
-        BRIGHTNESS_THRESHOLD: 70,  // Auto-flash threshold (higher = more sensitive, triggers in more lighting conditions)
+        BRIGHTNESS_THRESHOLD: 70,
         BRIGHTNESS_CHECK_INTERVAL: 2000
     };
 
@@ -704,7 +765,6 @@
     // ========================================
     async function checkSunsetAndEnableFlash() {
         try {
-            // User location: Ashburn, Virginia
             const lat = 39.0438;
             const lng = -77.4874;
             
@@ -716,10 +776,8 @@
                 const sunrise = new Date(data.results.sunrise);
                 const now = new Date();
                 
-                // Check if current time is after sunset OR before sunrise (nighttime)
                 if (now > sunset || now < sunrise) {
                     console.log('🌙 After sunset - Auto-enabling flash');
-                    // Auto-enable flash for nighttime recording
                     if (!flashEnabled) {
                         setFlash(true);
                         updateFlashUI(true);
@@ -732,7 +790,6 @@
             }
         } catch (error) {
             console.error('Failed to fetch sunset time:', error);
-            // If API fails, fall back to time-based check (after 6 PM or before 6 AM)
             const hour = new Date().getHours();
             if (hour >= 18 || hour < 6) {
                 console.log('🌙 Using time-based fallback - Auto-enabling flash');
@@ -757,7 +814,7 @@
     let currentStream = null;
     let currentVideoTrack = null;
     let flashEnabled = false;
-    let preferredFacingMode = "environment"; // "environment" = rear, "user" = front
+    const REAR_CAMERA_ONLY = "environment";  // FIXED - No front camera option
     let brightnessCheckInterval = null;
 
     const vinDatabase = {
@@ -856,14 +913,11 @@
             const avgBrightness = totalBrightness / (canvas.width * canvas.height);
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             
-            // AUTO-ADJUST FLASH BASED ON BRIGHTNESS
-            // Turn flash ON if too dark (below threshold)
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
                 console.log('🔦 AUTO-FLASH ON (dark scene detected)');
                 setFlash(true);
                 updateFlashUI(true);
             }
-            // Turn flash OFF if bright enough (above threshold + hysteresis)
             else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
                 console.log('💡 AUTO-FLASH OFF (bright enough)');
                 setFlash(false);
@@ -877,11 +931,10 @@
 
     function startBrightnessMonitoring() {
         stopBrightnessMonitoring();
-        // Check immediately, then every 2 seconds
         setTimeout(() => {
             detectBrightness();
             brightnessCheckInterval = setInterval(detectBrightness, CONFIG.BRIGHTNESS_CHECK_INTERVAL);
-        }, 500); // Start after 500ms to let camera stabilize
+        }, 500);
     }
 
     function stopBrightnessMonitoring() {
@@ -937,65 +990,18 @@
         }
     }
 
-    async function flipCamera() {
-        console.log("🔄 === FLIP CAMERA BUTTON CLICKED ===");
-        
-        const label = document.getElementById('current-camera-label');
-        
-        if (preferredFacingMode === "environment") {
-            preferredFacingMode = "user";
-            label.innerText = "FRONT";
-            label.style.color = "#fbbf24";
-            label.style.borderColor = "#fbbf24";
-            console.log("👤 User selected: FRONT camera");
-        } else {
-            preferredFacingMode = "environment";
-            label.innerText = "REAR";
-            label.style.color = "#3B82F6";
-            label.style.borderColor = "#3B82F6";
-            console.log("📹 User selected: REAR camera");
-        }
-        
-        console.log(`✅ preferredFacingMode set to: "${preferredFacingMode}"`);
-        
-        stopBrightnessMonitoring();
-        
-        if (currentStream) {
-            console.log("Stopping current camera streams...");
-            currentStream.getTracks().forEach(track => {
-                console.log(`  Stopping: ${track.kind} - ${track.label}`);
-                track.stop();
-            });
-            currentStream = null;
-            currentVideoTrack = null;
-        }
-        
-        const preview = document.getElementById('preview');
-        if (preview && preview.srcObject) {
-            preview.srcObject.getTracks().forEach(track => track.stop());
-            preview.srcObject = null;
-        }
-        
-        console.log("Waiting 500ms before restarting camera...");
-        setTimeout(() => {
-            console.log("Restarting camera with new preference...");
-            startCamera();
-        }, 500);
-    }
-
     async function startCamera() {
         const preview = document.getElementById('preview');
         const loadingOverlay = document.getElementById('loading-overlay');
         const statusEl = document.getElementById('camera-status');
         const flashBtn = document.getElementById('flash-toggle');
         
-        console.log('🚀 Starting SIMPLE camera...');
+        console.log('🚀 Starting REAR CAMERA ONLY...');
         
         loadingOverlay.style.display = 'flex';
         statusEl.style.display = 'none';
         flashBtn.style.display = 'none';
 
-        // Stop any existing streams
         stopBrightnessMonitoring();
         if (currentStream) {
             currentStream.getTracks().forEach(track => track.stop());
@@ -1008,21 +1014,19 @@
         }
 
         try {
-            console.log('📹 Requesting camera with simple constraints...');
+            console.log('📹 Requesting rear camera with 1080p minimum...');
             
-            // MINIMUM 1080p - camera can use higher resolution if available (4K, etc)
             const constraints = {
                 video: {
-                    facingMode: { ideal: preferredFacingMode },
-                    width: { min: 1920 },   // MINIMUM width - can go higher
-                    height: { min: 1080 }   // MINIMUM height - can go higher
+                    facingMode: REAR_CAMERA_ONLY,  // STRICT REAR CAMERA ONLY
+                    width: { min: 1920 },
+                    height: { min: 1080 }
                 },
                 audio: true
             };
             
             console.log('Constraints:', JSON.stringify(constraints));
             
-            // Set timeout for getUserMedia
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Camera timeout after 20 seconds')), 20000)
             );
@@ -1037,17 +1041,16 @@
             const settings = currentVideoTrack.getSettings();
             
             console.log(`Camera active: ${settings.width}x${settings.height}`);
-            console.log(`Facing mode: ${settings.facingMode || 'unknown'}`);
+            console.log(`Facing mode: ${settings.facingMode || 'rear (environment)'}`);
             console.log(`Device: ${currentVideoTrack.label}`);
             
             preview.srcObject = currentStream;
             
-            // Wait for video to be ready (lenient timeout)
             try {
                 await new Promise((resolve, reject) => {
                     const loadTimeout = setTimeout(() => {
                         console.warn('Video load timeout - continuing anyway');
-                        resolve(); // Don't reject, just continue
+                        resolve();
                     }, 15000);
                     
                     preview.onloadedmetadata = () => {
@@ -1060,13 +1063,11 @@
                             })
                             .catch(err => {
                                 console.error('Video play error:', err);
-                                // Try without waiting for play to complete
                                 clearTimeout(loadTimeout);
                                 resolve();
                             });
                     };
                     
-                    // Also try playing immediately in case metadata already loaded
                     if (preview.readyState >= 2) {
                         console.log('Video already ready, playing immediately');
                         preview.play().catch(console.error);
@@ -1074,16 +1075,13 @@
                 });
             } catch (e) {
                 console.warn('Video load promise failed:', e);
-                // Continue anyway - stream is already set
             }
             
-            // Enable flash if available
             try {
                 const capabilities = currentVideoTrack.getCapabilities();
                 if (capabilities.torch) {
                     flashBtn.style.display = 'block';
                     console.log('💡 Flash available');
-                    // Check if it's after sunset and auto-enable flash
                     checkSunsetAndEnableFlash();
                 }
             } catch (e) {
@@ -1102,6 +1100,9 @@
             startBrightnessMonitoring();
             
             console.log('✅ Camera initialization complete!');
+            
+            // CHECK IF WRONG CAMERA IS ACTIVE
+            checkCameraFacing();
             
         } catch (error) {
             console.error('❌ Camera failed:', error);
@@ -1123,8 +1124,447 @@
         }
     }
 
+    // ========================================
+    // CAMERA DETECTION & AUTOMATIC REPAIR
+    // ========================================
     
-        function resetCamera() {
+    async function checkCameraFacing() {
+        if (!currentVideoTrack) return;
+        
+        const settings = currentVideoTrack.getSettings();
+        const facingMode = settings.facingMode;
+        const label = currentVideoTrack.label.toLowerCase();
+        
+        console.log(`🔍 Camera Check:`, {
+            facingMode: facingMode,
+            label: label,
+            width: settings.width,
+            height: settings.height
+        });
+        
+        // Detect if front camera is active
+        const isFrontCamera = 
+            facingMode === 'user' || 
+            label.includes('front') || 
+            label.includes('facing') ||
+            (!facingMode && !label.includes('back') && !label.includes('rear'));
+        
+        if (isFrontCamera) {
+            console.warn('⚠️ FRONT CAMERA DETECTED - INITIATING AUTOMATIC REPAIR!');
+            
+            // Show status
+            const statusEl = document.getElementById('camera-status');
+            statusEl.innerText = '🔧 Auto-repairing camera...';
+            statusEl.className = 'wrong-camera';
+            statusEl.style.display = 'block';
+            
+            // AUTOMATIC REPAIR - NO USER INTERACTION NEEDED
+            await automaticCameraRepair();
+        } else {
+            console.log('✅ Rear camera confirmed');
+        }
+    }
+    
+    async function automaticCameraRepair() {
+        console.log('🔧 === AUTOMATIC CAMERA REPAIR INITIATED ===');
+        
+        const statusEl = document.getElementById('camera-status');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        
+        // Show loading
+        loadingOverlay.style.display = 'flex';
+        loadingOverlay.innerHTML = `
+            <div class="spinner"></div>
+            <p style="color: #fbbf24; margin-top: 15px; font-size: 14px; font-weight: 700;">
+                🔧 Front camera detected<br>
+                Auto-repairing to rear camera...
+            </p>
+        `;
+        
+        try {
+            // Step 1: Stop all streams
+            console.log('Step 1: Stopping all camera streams...');
+            stopBrightnessMonitoring();
+            
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => {
+                    console.log(`  Stopping: ${track.kind} - ${track.label}`);
+                    track.stop();
+                });
+                currentStream = null;
+                currentVideoTrack = null;
+            }
+            
+            const preview = document.getElementById('preview');
+            if (preview && preview.srcObject) {
+                preview.srcObject.getTracks().forEach(track => track.stop());
+                preview.srcObject = null;
+            }
+            
+            // Step 2: Wait 3 seconds for full camera release
+            console.log('Step 2: Waiting 3 seconds for camera release...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Step 3: Enumerate devices (forces system refresh)
+            console.log('Step 3: Enumerating devices...');
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const cameras = devices.filter(d => d.kind === 'videoinput');
+            console.log(`Found ${cameras.length} cameras:`, cameras.map(c => ({
+                label: c.label,
+                id: c.deviceId.substring(0, 20) + '...'
+            })));
+            
+            // Step 4: Try to find rear camera by deviceId
+            const rearCamera = cameras.find(c => 
+                c.label.toLowerCase().includes('back') || 
+                c.label.toLowerCase().includes('rear') ||
+                c.label.toLowerCase().includes('environment') ||
+                (!c.label.toLowerCase().includes('front') && cameras.indexOf(c) === 0)
+            );
+            
+            let repairSuccess = false;
+            
+            // Attempt 1: Use specific rear camera deviceId if found
+            if (rearCamera) {
+                console.log(`Step 4a: Trying specific rear camera: ${rearCamera.label}`);
+                try {
+                    const constraints = {
+                        video: {
+                            deviceId: { exact: rearCamera.deviceId },
+                            width: { min: 1920 },
+                            height: { min: 1080 }
+                        },
+                        audio: true
+                    };
+                    
+                    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    currentVideoTrack = currentStream.getVideoTracks()[0];
+                    preview.srcObject = currentStream;
+                    await preview.play();
+                    
+                    const newSettings = currentVideoTrack.getSettings();
+                    console.log(`✅ Repair successful via deviceId: ${newSettings.width}x${newSettings.height}`);
+                    repairSuccess = true;
+                    
+                } catch (e) {
+                    console.log('Attempt 1 failed:', e.message);
+                }
+            }
+            
+            // Attempt 2: Use exact facingMode if deviceId failed
+            if (!repairSuccess) {
+                console.log('Step 4b: Trying exact facingMode...');
+                try {
+                    const constraints = {
+                        video: {
+                            facingMode: { exact: 'environment' },
+                            width: { min: 1920 },
+                            height: { min: 1080 }
+                        },
+                        audio: true
+                    };
+                    
+                    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    currentVideoTrack = currentStream.getVideoTracks()[0];
+                    preview.srcObject = currentStream;
+                    await preview.play();
+                    
+                    const newSettings = currentVideoTrack.getSettings();
+                    console.log(`✅ Repair successful via facingMode: ${newSettings.width}x${newSettings.height}`);
+                    repairSuccess = true;
+                    
+                } catch (e) {
+                    console.log('Attempt 2 failed:', e.message);
+                }
+            }
+            
+            if (repairSuccess) {
+                // SUCCESS - Hide loading, show success briefly
+                const newSettings = currentVideoTrack.getSettings();
+                
+                loadingOverlay.innerHTML = `
+                    <div style="font-size: 48px; margin-bottom: 15px;">✅</div>
+                    <p style="color: #4ade80; margin-top: 15px; font-size: 16px; font-weight: 700;">
+                        Repair Successful!<br>
+                        Rear camera active: ${newSettings.width}×${newSettings.height}
+                    </p>
+                `;
+                
+                statusEl.innerText = `✅ Repaired (${newSettings.width}×${newSettings.height})`;
+                statusEl.className = 'ready';
+                statusEl.style.display = 'block';
+                
+                // Hide after 2 seconds and restore loading overlay
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                    loadingOverlay.innerHTML = `
+                        <div class="spinner"></div>
+                        <p style="color: #94a3b8; margin-top: 15px; font-size: 12px;">Starting camera...</p>
+                    `;
+                    if (statusEl.className === 'ready') {
+                        statusEl.style.display = 'none';
+                    }
+                }, 2000);
+                
+                // Restart monitoring
+                startBrightnessMonitoring();
+                
+                // Enable flash if available
+                try {
+                    const capabilities = currentVideoTrack.getCapabilities();
+                    if (capabilities.torch) {
+                        document.getElementById('flash-toggle').style.display = 'block';
+                        checkSunsetAndEnableFlash();
+                    }
+                } catch (e) {}
+                
+            } else {
+                // FAILED - Restore loading overlay and show manual repair overlay
+                console.error('❌ Automatic repair failed - showing manual options');
+                loadingOverlay.style.display = 'none';
+                loadingOverlay.innerHTML = `
+                    <div class="spinner"></div>
+                    <p style="color: #94a3b8; margin-top: 15px; font-size: 12px;">Starting camera...</p>
+                `;
+                showManualRepairOverlay();
+            }
+            
+        } catch (error) {
+            console.error('❌ Automatic repair error:', error);
+            loadingOverlay.style.display = 'none';
+            loadingOverlay.innerHTML = `
+                <div class="spinner"></div>
+                <p style="color: #94a3b8; margin-top: 15px; font-size: 12px;">Starting camera...</p>
+            `;
+            showManualRepairOverlay();
+        }
+    }
+    
+    function showManualRepairOverlay() {
+        const overlay = document.getElementById('camera-repair-overlay');
+        const statusEl = document.getElementById('camera-status');
+        
+        statusEl.innerText = '⚠️ REPAIR FAILED - MANUAL FIX NEEDED';
+        statusEl.className = 'wrong-camera';
+        statusEl.style.display = 'block';
+        
+        overlay.innerHTML = `
+            <div class="repair-warning">⚠️</div>
+            <div class="repair-title">AUTOMATIC REPAIR FAILED</div>
+            <div class="repair-text">
+                Could not automatically switch to rear camera.<br><br>
+                <strong>Possible causes:</strong><br>
+                • Rear camera hardware issue<br>
+                • Camera in use by another app<br>
+                • Device only has front camera<br><br>
+                Try manual fix options below.
+            </div>
+            <button class="repair-btn" onclick="deepResetCamera()">🔄 DEEP RESET</button>
+            <button class="repair-btn secondary" onclick="showRepairInstructions()">📋 MANUAL FIX</button>
+            <button class="repair-btn secondary" onclick="closeCameraRepair()">✓ CONTINUE WITH FRONT</button>
+        `;
+        
+        overlay.classList.add('active');
+    }
+    
+    function closeCameraRepair() {
+        const overlay = document.getElementById('camera-repair-overlay');
+        overlay.classList.remove('active');
+        
+        const statusEl = document.getElementById('camera-status');
+        statusEl.innerText = '⚠️ FRONT CAMERA ACTIVE';
+        statusEl.className = 'wrong-camera';
+        statusEl.style.display = 'block';
+    }
+    
+    function showRepairInstructions() {
+        const overlay = document.getElementById('camera-repair-overlay');
+        overlay.innerHTML = `
+            <div class="repair-warning">📋</div>
+            <div class="repair-title">MANUAL FIX INSTRUCTIONS</div>
+            <div class="repair-text" style="text-align: left; max-width: 350px;">
+                <strong>Step 1: Close This App Completely</strong><br>
+                • Don't just go back<br>
+                • Swipe away from recent apps<br><br>
+                
+                <strong>Step 2: Close ALL Camera Apps</strong><br>
+                • Check recent apps<br>
+                • Close anything using camera<br><br>
+                
+                <strong>Step 3: Clear Browser Cache</strong><br>
+                • Settings → Apps → Browser<br>
+                • Storage → Clear Cache<br><br>
+                
+                <strong>Step 4: Restart Phone</strong><br>
+                • Power off completely<br>
+                • Wait 10 seconds<br>
+                • Power back on<br><br>
+                
+                <strong>Step 5: Reopen Fleet Portal</strong><br>
+                • Should use rear camera now<br>
+            </div>
+            <button class="repair-btn" onclick="deepResetCamera()">🔄 TRY DEEP RESET FIRST</button>
+            <button class="repair-btn secondary" onclick="closeCameraRepair()">← BACK</button>
+        `;
+    }
+    
+    async function deepResetCamera() {
+        console.log('🔄 === DEEP CAMERA RESET ===');
+        
+        const overlay = document.getElementById('camera-repair-overlay');
+        overlay.innerHTML = `
+            <div class="repair-warning">🔄</div>
+            <div class="repair-title">DEEP RESET IN PROGRESS...</div>
+            <div class="repair-text">
+                This will completely reset the camera system.<br><br>
+                Please wait...<br><br>
+                <div class="spinner" style="margin: 20px auto;"></div>
+            </div>
+        `;
+        
+        // Stop everything
+        console.log('Stopping all camera streams and monitoring...');
+        stopBrightnessMonitoring();
+        
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+            mediaRecorder.stop();
+        }
+        
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => {
+                console.log(`Stopping: ${track.kind} - ${track.label}`);
+                track.stop();
+            });
+            currentStream = null;
+        }
+        
+        if (currentVideoTrack) {
+            try { currentVideoTrack.stop(); } catch (e) {}
+            currentVideoTrack = null;
+        }
+        
+        const preview = document.getElementById('preview');
+        const playback = document.getElementById('playback');
+        
+        if (preview && preview.srcObject) {
+            preview.srcObject.getTracks().forEach(track => track.stop());
+            preview.srcObject = null;
+        }
+        
+        preview.style.display = 'block';
+        if (playback) {
+            playback.style.display = 'none';
+            playback.src = '';
+        }
+        
+        document.getElementById('btn-record').style.display = 'flex';
+        document.getElementById('btn-stop').style.display = 'none';
+        document.getElementById('btn-upload').style.display = 'none';
+        flashEnabled = false;
+        updateFlashUI(false);
+        
+        // Wait longer (5 seconds)
+        console.log('Waiting 5 seconds for full release...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Enumerate devices
+        console.log('Enumerating devices...');
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const cameras = devices.filter(d => d.kind === 'videoinput');
+            console.log(`Found ${cameras.length} cameras:`, cameras.map(c => ({
+                label: c.label,
+                id: c.deviceId.substring(0, 20) + '...'
+            })));
+        } catch (e) {
+            console.log('Device enumeration failed:', e);
+        }
+        
+        // Try rear camera
+        console.log('Attempting rear camera with exact constraints...');
+        try {
+            const constraints = {
+                video: {
+                    facingMode: { exact: 'environment' },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: true
+            };
+            
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            currentVideoTrack = currentStream.getVideoTracks()[0];
+            preview.srcObject = currentStream;
+            await preview.play();
+            
+            const settings = currentVideoTrack.getSettings();
+            console.log(`✅ Deep reset successful: ${settings.width}x${settings.height}`);
+            
+            overlay.innerHTML = `
+                <div class="repair-warning">✅</div>
+                <div class="repair-title" style="color: #4ade80;">DEEP RESET SUCCESSFUL!</div>
+                <div class="repair-text">
+                    Camera system fully reset.<br><br>
+                    Rear camera: ${settings.width}×${settings.height}<br><br>
+                    Ready for recording!
+                </div>
+                <button class="repair-btn" style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);" onclick="finishDeepReset()">✓ START RECORDING</button>
+            `;
+            
+        } catch (error) {
+            console.error('Deep reset failed:', error);
+            
+            overlay.innerHTML = `
+                <div class="repair-warning">❌</div>
+                <div class="repair-title">DEEP RESET FAILED</div>
+                <div class="repair-text">
+                    Camera hardware may be unavailable.<br><br>
+                    Error: ${error.message}<br><br>
+                    <strong>Next steps:</strong><br>
+                    1. Restart your phone<br>
+                    2. Check if other apps work<br>
+                    3. Contact fleet management if issue persists
+                </div>
+                <button class="repair-btn" onclick="showRepairInstructions()">📋 MANUAL FIX STEPS</button>
+                <button class="repair-btn secondary" onclick="window.location.reload()">🔄 RELOAD PAGE</button>
+            `;
+        }
+    }
+    
+    function finishDeepReset() {
+        const overlay = document.getElementById('camera-repair-overlay');
+        overlay.classList.remove('active');
+        
+        // Verify camera is correct
+        const settings = currentVideoTrack.getSettings();
+        const facingMode = settings.facingMode;
+        const label = currentVideoTrack.label.toLowerCase();
+        
+        const isRear = 
+            facingMode === 'environment' || 
+            label.includes('back') || 
+            label.includes('rear');
+        
+        if (isRear) {
+            startBrightnessMonitoring();
+            
+            const statusEl = document.getElementById('camera-status');
+            statusEl.innerText = '✅ Camera Ready';
+            statusEl.className = 'ready';
+            statusEl.style.display = 'block';
+            
+            document.getElementById('status').innerText = 'Ready for Inspection';
+            
+            setTimeout(() => {
+                if (statusEl.className === 'ready') statusEl.style.display = 'none';
+            }, 3000);
+        } else {
+            // Still wrong camera after deep reset
+            showManualRepairOverlay();
+        }
+    }
+
+    function resetCamera() {
         console.log("🔄 === RESET CAMERA CLICKED ===");
         
         if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -1180,11 +1620,11 @@
         flashEnabled = false;
         updateFlashUI(false);
         
-        console.log("Waiting 1.5s before restarting...");
+        console.log("Waiting 2s before restarting...");
         setTimeout(() => {
             console.log("Starting camera after reset...");
             startCamera();
-        }, 1500);
+        }, 2000);
     }
 
     function checkVin() {
@@ -1234,10 +1674,6 @@
 
     function closeModal() {
         document.querySelectorAll('.modal').forEach(el => el.style.display = 'none');
-    }
-    
-    function closeFrontCameraWarning() {
-        document.getElementById('frontCameraWarningModal').style.display = 'none';
     }
 
     function selectType(type) {
@@ -1332,9 +1768,11 @@
                     
                     document.getElementById('btn-record').style.display = 'none';
                     document.getElementById('btn-stop').style.display = 'none';
-                    document.getElementById('btn-upload').style.display = 'block';
                     document.getElementById('flash-toggle').style.display = 'none';
-                    document.getElementById('status').innerText = `Video Ready (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB)`;
+                    
+                    // AUTO-UPLOAD IMMEDIATELY AFTER 1 SECOND
+                    document.getElementById('status').innerText = `Video Ready - Auto-uploading...`;
+                    setTimeout(() => uploadVideo(), 1000);
                 };
 
                 mediaRecorder.onerror = (event) => {
@@ -1383,11 +1821,11 @@
         const status = document.getElementById('status');
         const progressBar = document.getElementById('progress-container');
         const progressFill = document.getElementById('progress-fill');
+        const percentOverlay = document.getElementById('progress-percentage');
 
         btn.style.display = 'none';
         progressBar.style.display = 'block';
         status.innerText = "Preparing upload...";
-        const percentOverlay = document.getElementById('progress-percentage');
         if (percentOverlay) percentOverlay.innerText = '0%';
 
         const formData = new FormData();
@@ -1402,74 +1840,34 @@
             attempts++;
             console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
             
-            let simulatedProgress = 0;
-            let progressInterval = null;
-            let realProgressReceived = false;
-            
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/upload-to-google-drive', true);
-                xhr.timeout = 120000; // 2 minutes
+                xhr.timeout = 600000; // 10 minutes
 
-                console.log('⏱️ Starting simulated progress timer...');
-                let progressStuckCount = 0;
-                progressInterval = setInterval(() => {
-                    if (!realProgressReceived) {
-                        if (simulatedProgress < 95) {
-                            simulatedProgress += 5;
-                            progressStuckCount = 0;
-                        } else if (simulatedProgress < 98) {
-                            // Slow down near the end
-                            simulatedProgress += 1;
-                            progressStuckCount++;
-                            
-                            // If stuck at 95%+ for too long (10 seconds), jump to 100%
-                            if (progressStuckCount > 12) {
-                                console.warn('Upload taking too long, forcing 100%');
-                                simulatedProgress = 100;
-                            }
-                        }
-                        
-                        progressFill.style.width = simulatedProgress + '%';
-                        const percentOverlay = document.getElementById('progress-percentage');
-                        if (percentOverlay) percentOverlay.innerText = simulatedProgress + '%';
-                        
-                        const estimatedMB = (videoBlob.size / 1024 / 1024).toFixed(1);
-                        const uploadedMB = ((simulatedProgress / 100) * videoBlob.size / 1024 / 1024).toFixed(1);
-                        status.innerText = `Uploading: ${simulatedProgress}% (${uploadedMB}/${estimatedMB}MB)`;
-                        console.log(`⏱️ Simulated progress: ${simulatedProgress}%`);
-                    }
-                }, 800);
-
-                xhr.upload.onprogress = function(e) {
-                    console.log('📊 Real progress event received!', e);
+                // REAL PROGRESS FROM START - NO SIMULATION
+                xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
-                        realProgressReceived = true;
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            console.log('✅ Switched to real progress');
-                        }
-                        
                         const percent = Math.round((e.loaded / e.total) * 100);
                         progressFill.style.width = percent + '%';
                         const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
                         const mbTotal = (e.total / 1024 / 1024).toFixed(1);
-                        status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
-                        const percentOverlay = document.getElementById('progress-percentage');
+                        
+                        if (percent < 100) {
+                            status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
+                        } else {
+                            status.innerText = '✨ Enhancing to 20 Mbps quality...';
+                        }
+                        
                         if (percentOverlay) percentOverlay.innerText = percent + '%';
-                        console.log(`📊 Real progress: ${percent}% (${mbLoaded}/${mbTotal}MB)`);
+                        console.log(`📊 Progress: ${percent}% (${mbLoaded}/${mbTotal}MB)`);
                     }
-                };
+                });
 
-                xhr.onload = function() {
+                xhr.addEventListener('load', () => {
                     console.log('✅ Upload complete, xhr.status:', xhr.status);
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
-                    }
                     
                     progressFill.style.width = '100%';
-                    const percentOverlay = document.getElementById('progress-percentage');
                     if (percentOverlay) percentOverlay.innerText = '100%';
                     
                     if (xhr.status === 200) {
@@ -1486,17 +1884,15 @@
                     } else {
                         reject(new Error(`Server error: ${xhr.status}`));
                     }
-                };
+                });
 
-                xhr.onerror = () => {
-                    if (progressInterval) clearInterval(progressInterval);
+                xhr.addEventListener('error', () => {
                     reject(new Error('Network error'));
-                };
+                });
                 
-                xhr.ontimeout = () => {
-                    if (progressInterval) clearInterval(progressInterval);
+                xhr.addEventListener('timeout', () => {
                     reject(new Error('Upload timeout'));
-                };
+                });
 
                 console.log('📤 Sending upload request...');
                 console.log('📦 Video size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
@@ -1525,7 +1921,6 @@
                 if (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
                     status.innerText = `Retrying (${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS})...`;
                     progressFill.style.width = '0%';
-                    const percentOverlay = document.getElementById('progress-percentage');
                     if (percentOverlay) percentOverlay.innerText = '0%';
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 } else {
@@ -1542,7 +1937,6 @@ Please check your connection and try again.`);
                     btn.style.display = 'block';
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
-                    const percentOverlay = document.getElementById('progress-percentage');
                     if (percentOverlay) percentOverlay.innerText = '0%';
                     status.innerText = "Upload failed. Ready to retry.";
                 }
