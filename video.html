@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.6.3</title>
+    <title>Video Inspection v4.6.5</title>
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
@@ -669,7 +669,7 @@
     </div>
     
     <!-- FIX 3: Updated version to match server v4.6.3 -->
-    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.6.3</div>
+    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.6.5</div>
     
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
@@ -753,7 +753,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 8000000,
+        VIDEO_BITRATE: 2500000, // Optimized for upload speed - server enhances to 20Mbps
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -1146,8 +1146,8 @@
             const constraints = {
                 video: {
                     facingMode: REAR_CAMERA_ONLY,
-                    width: { min: 1920 },
-                    height: { min: 1080 }
+                    width: { ideal: 1920, min: 640 },
+                    height: { ideal: 1080, min: 480 }
                 },
                 audio: true
             };
@@ -1207,8 +1207,24 @@
             statusEl.style.display = 'block';
             
             let errorMsg = 'Camera Error: ' + error.message;
-            if (error.message.includes('denied') || error.name === 'NotAllowedError') {
+            if (error.name === 'NotAllowedError' || error.message.includes('denied')) {
                 errorMsg += '\n\nFix:\n1. Settings → Apps → Browser\n2. Permissions → Camera → Allow\n3. Refresh page';
+            } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+                // Device can't meet resolution - retry without resolution constraints
+                console.warn('OverconstrainedError - retrying with basic constraints');
+                try {
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                    currentVideoTrack = currentStream.getVideoTracks()[0];
+                    document.getElementById('preview-raw').srcObject = currentStream;
+                    try { await document.getElementById('preview-raw').play(); } catch(pe) {}
+                    startStabilizer(); startBrightnessMonitoring();
+                    const s2 = currentVideoTrack.getSettings();
+                    loadingOverlay.style.display = 'none';
+                    statusEl.innerText = 'Ready (' + s2.width + 'x' + s2.height + ')';
+                    statusEl.className = 'ready'; statusEl.style.display = 'block';
+                    setTimeout(() => { if (statusEl.className === 'ready') statusEl.style.display = 'none'; }, 3000);
+                    checkCameraFacing(); return;
+                } catch (e2) { errorMsg = 'Camera unavailable on this device: ' + e2.message; }
             } else if (error.message.includes('timeout')) {
                 errorMsg += '\n\nFix:\n1. Close other camera apps\n2. Try Reset Camera button\n3. Restart phone if needed';
             } else if (error.name === 'NotReadableError') {
@@ -1224,11 +1240,11 @@
         const facingMode = settings.facingMode;
         const label = currentVideoTrack.label.toLowerCase();
         
-        const isFrontCamera = 
-            facingMode === 'user' || 
-            label.includes('front') || 
-            label.includes('facing') ||
-            (!facingMode && !label.includes('back') && !label.includes('rear'));
+        // Extended OEM rear camera patterns (Samsung, Pixel, Xiaomi, LG all differ)
+        const isDefinitelyFront = facingMode === 'user' || label.includes('front') || label.includes('selfie') || label.includes('user');
+        const isDefinitelyRear = facingMode === 'environment' || label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('main') || /camera2? 0/i.test(label);
+        // Only trigger repair if DEFINITELY front - not just ambiguous/unlabeled
+        const isFrontCamera = isDefinitelyFront && !isDefinitelyRear;
         
         if (isFrontCamera) {
             console.warn('⚠️ FRONT CAMERA DETECTED - INITIATING AUTOMATIC REPAIR!');
@@ -1271,25 +1287,29 @@
             
             const devices = await navigator.mediaDevices.enumerateDevices();
             const cameras = devices.filter(d => d.kind === 'videoinput');
-            
-            const rearCamera = cameras.find(c => 
-                c.label.toLowerCase().includes('back') || 
+            console.log('Cameras found:', cameras.length, cameras.map(c=>c.label||'[no label]'));
+            // Labels may be empty strings (browser privacy) - fall through to facingMode in that case
+            const hasLabels = cameras.some(c => c.label && c.label.length > 0);
+            const rearCamera = hasLabels ? cameras.find(c =>
+                c.label.toLowerCase().includes('back') ||
                 c.label.toLowerCase().includes('rear') ||
                 c.label.toLowerCase().includes('environment') ||
-                (!c.label.toLowerCase().includes('front') && cameras.indexOf(c) === 0)
-            );
+                c.label.toLowerCase().includes('main') ||
+                /camera2? 0/i.test(c.label) ||
+                (!c.label.toLowerCase().includes('front') && !c.label.toLowerCase().includes('selfie') && cameras.indexOf(c) === 0)
+            ) : null;
             
             let repairSuccess = false;
             
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { min: 1920 }, height: { min: 1080 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
-                    await document.getElementById('preview-raw').play();
+                    try { await document.getElementById('preview-raw').play(); } catch(pe) {}
                     startStabilizer();
                     repairSuccess = true;
                 } catch (e) { console.log('Attempt 1 failed:', e.message); }
@@ -1298,7 +1318,7 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: { exact: 'environment' }, width: { min: 1920 }, height: { min: 1080 } },
+                        video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1429,13 +1449,13 @@
         
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
                 audio: true
             });
             currentVideoTrack = currentStream.getVideoTracks()[0];
             const rawVid = document.getElementById('preview-raw');
             rawVid.srcObject = currentStream;
-            await rawVid.play();
+            try { await rawVid.play(); } catch(pe) { console.warn("play() non-fatal:",pe.message); }
             startStabilizer();
             const settings = currentVideoTrack.getSettings();
             overlay.innerHTML = `
@@ -1732,7 +1752,7 @@
                         if (percent < 100) {
                             status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
                         } else {
-                            status.innerText = '✨ Enhancing to 20 Mbps quality...';
+                            status.innerText = '✨ Processing on server...';
                         }
                         if (percentOverlay) percentOverlay.innerText = percent + '%';
                     }
