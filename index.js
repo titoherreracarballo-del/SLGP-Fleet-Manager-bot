@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const ffmpeg = require('fluent-ffmpeg');
+const { execSync } = require('child_process');
 const multer = require('multer');
 const { google } = require('googleapis');
 const path = require('path');
@@ -17,7 +19,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.3';
+const VERSION_STRING = '4.6.5';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -168,6 +170,33 @@ webpush.setVapidDetails('mailto:' + (process.env.EMAIL_USER || 'slgpfleetmanager
 // ============================================
 let driveClient = null;
 
+// ========================================
+// FFMPEG AUTO-DETECTION
+// ========================================
+let ffmpegPath = null;
+let ffprobePath = null;
+
+function detectFFmpeg() {
+    const possiblePaths = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/bin/ffmpeg', 'ffmpeg'];
+    for (const testPath of possiblePaths) {
+        try {
+            execSync(`${testPath} -version`, { stdio: 'pipe' });
+            ffmpegPath = testPath;
+            ffprobePath = testPath.replace('ffmpeg', 'ffprobe');
+            console.log(`✅ FFmpeg found at: ${testPath}`);
+            return;
+        } catch (e) {}
+    }
+    try {
+        ffmpegPath = execSync('which ffmpeg', { encoding: 'utf8' }).trim();
+        ffprobePath = execSync('which ffprobe', { encoding: 'utf8' }).trim();
+        console.log(`✅ FFmpeg detected via which: ${ffmpegPath}`);
+    } catch (e) {
+        console.warn('⚠️  FFmpeg not found - videos will upload without enhancement');
+    }
+}
+detectFFmpeg();
+
 function initializeDrive() {
     try {
         if (!process.env.GCP_SA_KEY) {
@@ -286,7 +315,6 @@ app.post('/api/log-debug', async (req, res) => {
 // API ROUTES - GATE & ARRIVAL CHECKS
 // ============================================
 app.post('/log-gate-check', async (req, res) => {
-    const perfStart = Date.now();
     try {
         const { name } = req.body;
         if (isDuplicate(GATE_LOG_FILE, name)) {
@@ -356,7 +384,6 @@ app.post('/log-gate-check', async (req, res) => {
 });
 
 app.post('/log-arrival-check', async (req, res) => {
-    const perfStart = Date.now();
     try {
         const { name } = req.body;
         if (isDuplicate(ARRIVAL_LOG_FILE, name)) {
@@ -603,7 +630,7 @@ app.post('/submit-report', async (req, res) => {
                 from: emailUser,
                 to: ['slgpfleetmanager@gmail.com'],
                 subject: `REPORT: ${data.vinLast4} - ${data.reportType}`,
-                text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nGoogle Drive: https://drive.google.com/drive/folders/${folderId}`,
+                text: `Driver: ${data.driverName}\nVIN: ${data.vinLast4}\n\nGoogle Drive: ${folderId ? 'https://drive.google.com/drive/folders/' + folderId : 'Drive upload unavailable'}`,
                 attachments: [{ filename: 'Vehicle_Report.pdf', path: pdfPath }]
             });
             fs.unlinkSync(pdfPath);
@@ -1130,6 +1157,8 @@ app.get('/api/speed-limit', async (req, res) => {
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
     let videoPath = null;
+    let enhancedVideoPath = null;
+    let wasEnhanced = false;
     try {
         console.log('📹 Video upload initiated');
         if (!driveClient) throw new Error('Google Drive not initialized');
@@ -1144,9 +1173,97 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
         console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
 
-        const fileName = `${driverName}_${vin}_${inspectionType}_${Date.now()}.mp4`;
+        // ========================================
+        // FFMPEG ENHANCEMENT (server-side)
+        // Records at 2.5Mbps for fast upload, enhances to 20Mbps H.264 here
+        // ========================================
+        let finalVideoPath = videoPath;
+        wasEnhanced = false;
 
-        console.log('☁️  Starting Google Drive upload...');
+        if (ffmpegPath) {
+            try {
+                console.log('🎨 Starting video enhancement...');
+                const enhanceStart = Date.now();
+
+                // Rename temp file to .mp4 so FFmpeg detects format
+                const inputPath = videoPath + '.mp4';
+                fs.renameSync(videoPath, inputPath);
+                videoPath = inputPath; // update ref for cleanup
+
+                enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
+
+                ffmpeg.setFfmpegPath(ffmpegPath);
+                if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
+
+                // Resilient filter runner - tries full filters, falls back to basic if hqdn3d unavailable
+                const runFFmpeg = (filters) => new Promise((resolve, reject) => {
+                    ffmpeg(videoPath)
+                        .videoFilters(filters)
+                        .videoBitrate('20M')
+                        .videoCodec('libx264')
+                        .outputOptions([
+                            '-preset medium',
+                            '-crf 18',
+                            '-profile:v high',
+                            '-level 4.2',
+                            '-movflags +faststart',
+                            '-pix_fmt yuv420p'
+                        ])
+                        .audioCodec('aac')
+                        .audioBitrate('128k')
+                        .output(enhancedVideoPath)
+                        .on('start', () => console.log('🎬 FFmpeg started'))
+                        .on('progress', (p) => console.log(`⏳ Enhancing: ${p.percent?.toFixed(0) || 0}%`))
+                        .on('end', () => {
+                            const enhancedStats = fs.statSync(enhancedVideoPath);
+                            const enhancedMB = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                            const enhanceTime = ((Date.now() - enhanceStart) / 1000).toFixed(1);
+                            console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
+                            resolve();
+                        })
+                        .on('error', (err) => reject(err))
+                        .run();
+                });
+
+                // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
+                const fullFilters = [
+                    'hqdn3d=4:3:6:4.5',
+                    'eq=brightness=0.05:contrast=1.08:saturation=1.1',
+                    'unsharp=5:5:1.0:5:5:0.5'
+                ];
+                // Basic fallback: color + sharpen only (works with standard ffmpeg)
+                const basicFilters = [
+                    'eq=brightness=0.05:contrast=1.08:saturation=1.1',
+                    'unsharp=5:5:1.0:5:5:0.5'
+                ];
+
+                try {
+                    console.log('🎨 Attempting full enhancement (hqdn3d + color + sharpen)...');
+                    await runFFmpeg(fullFilters);
+                    console.log('✅ Full enhancement applied (hqdn3d active)');
+                } catch (filterErr) {
+                    console.warn(`⚠️  Full filters failed, retrying basic: ${filterErr.message.substring(0,80)}`);
+                    if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
+                    await runFFmpeg(basicFilters);
+                    console.log('✅ Basic enhancement applied');
+                }
+
+                finalVideoPath = enhancedVideoPath;
+                wasEnhanced = true;
+            } catch (enhanceError) {
+                console.warn('⚠️  Enhancement failed, uploading original:', enhanceError.message);
+                finalVideoPath = videoPath; // fall back to original
+                enhancedVideoPath = null;
+            }
+        } else {
+            console.log('⏩ FFmpeg not available - uploading original');
+        }
+
+        const finalStats = fs.statSync(finalVideoPath);
+        const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
+        const fileName = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
+
+        console.log(`☁️  Starting Google Drive upload (${wasEnhanced ? 'enhanced' : 'original'}, ${finalSizeMB}MB)...`);
 
         const fileMetadata = {
             name: fileName,
@@ -1157,16 +1274,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 vin: vin,
                 inspectionType: inspectionType,
                 uploadDate: new Date().toISOString(),
-                codec: 'H.265/HEVC',
+                codec: wasEnhanced ? 'H.264 Enhanced (20Mbps)' : 'Original',
                 resolution: '1920x1080',
+                enhanced: String(wasEnhanced),
                 downloadPreferred: 'true'
             },
             description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
         };
 
-        const media = { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) };
+        const media = { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) };
 
-        const uploadType = fileStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
+        const uploadType = finalStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
         console.log(`📤 Using ${uploadType} upload method`);
 
         const driveResponse = await driveClient.files.create({
@@ -1184,7 +1302,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
         console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
-        console.log(`   Size uploaded: ${fileSizeMB}MB`);
+        console.log(`   Size uploaded: ${finalSizeMB}MB (raw was ${fileSizeMB}MB)`);
 
         await appendLog(PERFORMANCE_LOG, {
             type: 'performance',
@@ -1238,10 +1356,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr>
-                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${fileSizeMB} MB</td></tr>
+                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${finalSizeMB} MB${wasEnhanced ? " (raw: " + fileSizeMB + " MB)" : ""}</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">1920x1080 (H.265/HEVC)</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">${wasEnhanced ? '1920x1080 H.264 Enhanced (20Mbps) + denoising' : '1920x1080 Original'}</td></tr>
                             </table>
                             <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
                                 <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">📹 FULL QUALITY 1080p VIDEO</h3>
@@ -1281,16 +1399,21 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             });
         }
 
-        if (fs.existsSync(videoPath)) {
-            fs.unlinkSync(videoPath);
-            console.log('✅ Temporary file cleaned up');
+        // Clean up all temp files
+        for (const p of [videoPath, enhancedVideoPath]) {
+            if (p && fs.existsSync(p)) {
+                try { fs.unlinkSync(p); } catch (e) {}
+            }
         }
+        console.log('✅ Temporary files cleaned up');
 
         res.json({
             success: true,
             fileId: fileId,
             fileName: fileName,
-            fileSize: fileSizeMB,
+            fileSize: finalSizeMB,
+            rawSize: fileSizeMB,
+            enhanced: wasEnhanced,
             uploadTime: uploadTime,
             viewLink: viewLink,
             downloadLink: directDownloadLink,
@@ -1321,14 +1444,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             ip: req.ip
         });
 
-        if (videoPath && fs.existsSync(videoPath)) {
-            try {
-                fs.unlinkSync(videoPath);
-                console.log('✅ Cleaned up failed upload file');
-            } catch (cleanupError) {
-                console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+        for (const p of [videoPath, enhancedVideoPath]) {
+            if (p && fs.existsSync(p)) {
+                try { fs.unlinkSync(p); } catch (e) {}
             }
         }
+        console.log('✅ Cleaned up temp files after error');
         res.status(500).json({
             success: false,
             error: error.message
@@ -1518,7 +1639,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.3 - SPEED LIMITS + FFMPEG FIX      ║
+║  v4.6.5 - HQDN3D DENOISING + RESILIENT FILTERS  ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
