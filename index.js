@@ -1,7 +1,55 @@
 require('dotenv').config();
 const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
-const { execSync } = require('child_process');
+const { execSync, fork } = require('child_process');
+
+// ============================================
+// ACTIVE FFMPEG PID TRACKING
+// Shared with agent.js so orphan killer never
+// touches a live enhancement job
+// ============================================
+const activeFfmpegPids = new Set();
+const ACTIVE_PIDS_FILE = '/app/meshcentral-data/active_pids.json';
+// ============================================
+// JOB TRACKING STORE
+// Decouples upload receipt from processing so
+// the phone gets an immediate response and polls
+// for live status instead of waiting blindly
+// ============================================
+const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
+const JOB_CLEANUP_MS = 10 * 60 * 1000; // remove completed jobs after 10 min
+
+function createJob(jobId, meta) {
+    jobStore.set(jobId, {
+        status: 'received',       // received | enhancing | uploading | complete | failed
+        stage: 'File received',
+        progress: 0,
+        message: 'Upload received — starting processing...',
+        meta,
+        result: null,
+        error: null,
+        createdAt: Date.now()
+    });
+    // Auto-cleanup after 10 min
+    setTimeout(() => jobStore.delete(jobId), JOB_CLEANUP_MS);
+    return jobId;
+}
+
+function updateJob(jobId, patch) {
+    const job = jobStore.get(jobId);
+    if (job) jobStore.set(jobId, { ...job, ...patch });
+}
+
+function registerPid(pid) {
+    activeFfmpegPids.add(pid);
+    try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([...activeFfmpegPids])); } catch(e) {}
+    console.log(`🔐 FFmpeg PID registered: ${pid}`);
+}
+function unregisterPid(pid) {
+    activeFfmpegPids.delete(pid);
+    try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([...activeFfmpegPids])); } catch(e) {}
+    console.log(`🔓 FFmpeg PID released: ${pid}`);
+}
 const multer = require('multer');
 const { google } = require('googleapis');
 const path = require('path');
@@ -19,7 +67,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.5';
+const VERSION_STRING = '4.6.6';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -70,7 +118,7 @@ ensureDirectories();
 
 const upload = multer({ 
     dest: UPLOAD_DIR,
-    limits: { fileSize: 200 * 1024 * 1024 }
+    limits: { fileSize: 50 * 1024 * 1024 }  // 50MB max - 90s walk-around @2.5Mbps ≈ 28MB
 });
 
 app.use(express.json({ limit: '150mb' }));
@@ -1156,22 +1204,41 @@ app.get('/api/speed-limit', async (req, res) => {
 // ============================================
 app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
     const startTime = Date.now();
-    let videoPath = null;
+
+    // ── Validate synchronously before doing anything ──────────
+    if (!driveClient) return res.status(503).json({ success: false, error: 'Google Drive not available' });
+    if (!req.file)    return res.status(400).json({ success: false, error: 'No video file received' });
+
+    const { driverName, vin, inspectionType } = req.body;
+    if (!driverName || !vin || !inspectionType)
+        return res.status(400).json({ success: false, error: 'Missing required fields' });
+
+    const fileStats  = fs.statSync(req.file.path);
+    const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+
+    // Hard reject oversized files before processing
+    if (fileStats.size > 50 * 1024 * 1024) {
+        try { fs.unlinkSync(req.file.path); } catch(e) {}
+        return res.status(400).json({
+            success: false,
+            error: `Video too large (${fileSizeMB}MB). Max 50MB. Walk-around should be under 90 seconds.`
+        });
+    }
+
+    console.log(`📹 Upload received - Driver: ${driverName}, VIN: ${vin}, Size: ${fileSizeMB}MB`);
+
+    // ── Generate jobId and respond IMMEDIATELY ─────────────────
+    // Phone gets a response right away — no waiting for FFmpeg or Drive
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    createJob(jobId, { driverName, vin, inspectionType, fileSizeMB });
+    res.json({ success: true, jobId, message: 'Upload received — processing started' });
+
+    // ── All heavy processing runs in background ────────────────
+    let videoPath = req.file.path;
     let enhancedVideoPath = null;
     let wasEnhanced = false;
     try {
-        console.log('📹 Video upload initiated');
-        if (!driveClient) throw new Error('Google Drive not initialized');
-        if (!req.file) throw new Error('No video file received');
-
-        videoPath = req.file.path;
-        const { driverName, vin, inspectionType } = req.body;
-        if (!driverName || !vin || !inspectionType) throw new Error('Missing required fields');
-
-        const fileStats = fs.statSync(videoPath);
-        const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
-
-        console.log(`📹 Upload - Driver: ${driverName}, VIN: ${vin}, Type: ${inspectionType}, Size: ${fileSizeMB}MB`);
+        console.log(`📹 Background processing started for job ${jobId}`);
 
         // ========================================
         // FFMPEG ENHANCEMENT (server-side)
@@ -1179,6 +1246,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         // ========================================
         let finalVideoPath = videoPath;
         wasEnhanced = false;
+
+        updateJob(jobId, { status: 'enhancing', stage: 'Starting enhancement', progress: 5, message: 'Enhancing video quality...' });
 
         if (ffmpegPath) {
             try {
@@ -1190,14 +1259,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 fs.renameSync(videoPath, inputPath);
                 videoPath = inputPath; // update ref for cleanup
 
-                enhancedVideoPath = videoPath.replace('.mp4', '_enhanced.mp4');
+                // Write enhanced output to /tmp - always writable on Railway
+                // The uploads dir can block new file creation by FFmpeg (permission issue)
+                const enhancedFileName = path.basename(videoPath).replace('.mp4', '_enhanced.mp4');
+                enhancedVideoPath = path.join('/tmp', enhancedFileName);
 
                 ffmpeg.setFfmpegPath(ffmpegPath);
                 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 
-                // Resilient filter runner - tries full filters, falls back to basic if hqdn3d unavailable
+                // Resilient filter runner with PID tracking + 4-min hard timeout
+                const FFMPEG_TIMEOUT_MS = 4 * 60 * 1000;
                 const runFFmpeg = (filters) => new Promise((resolve, reject) => {
-                    ffmpeg(videoPath)
+                    let ffmpegPid = null;
+                    let killTimer = null;
+                    const proc = ffmpeg(videoPath)
                         .videoFilters(filters)
                         .videoBitrate('20M')
                         .videoCodec('libx264')
@@ -1212,16 +1287,36 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         .audioCodec('aac')
                         .audioBitrate('128k')
                         .output(enhancedVideoPath)
-                        .on('start', () => console.log('🎬 FFmpeg started'))
-                        .on('progress', (p) => console.log(`⏳ Enhancing: ${p.percent?.toFixed(0) || 0}%`))
+                        .on('start', () => {
+                            try { if (proc._ffmpegProc && proc._ffmpegProc.pid) { ffmpegPid=proc._ffmpegProc.pid; registerPid(ffmpegPid); } } catch(e) {}
+                            console.log('🎬 FFmpeg started (PID: '+(ffmpegPid||'unknown')+(')'));
+                            killTimer = setTimeout(() => {
+                                console.error('❌ FFmpeg 4-min timeout - killing');
+                                if (ffmpegPid) unregisterPid(ffmpegPid);
+                                try { proc.kill('SIGKILL'); } catch(e) {}
+                                reject(new Error('FFmpeg timeout - exceeded 4 minutes'));
+                            }, FFMPEG_TIMEOUT_MS);
+                        })
+                        .on('progress', (p) => {
+                            const pct = Math.round(p.percent || 0);
+                            console.log(`⏳ Enhancing: ${pct}%`);
+                            updateJob(jobId, {
+                                status: 'enhancing',
+                                stage: 'Enhancing video',
+                                progress: Math.min(5 + Math.round(pct * 0.6), 65),
+                                message: `Enhancing video quality... ${pct}%`
+                            });
+                        })
                         .on('end', () => {
+                            clearTimeout(killTimer);
+                            if (ffmpegPid) unregisterPid(ffmpegPid);
                             const enhancedStats = fs.statSync(enhancedVideoPath);
                             const enhancedMB = (enhancedStats.size / 1024 / 1024).toFixed(2);
                             const enhanceTime = ((Date.now() - enhanceStart) / 1000).toFixed(1);
                             console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
                             resolve();
                         })
-                        .on('error', (err) => reject(err))
+                        .on('error', (err) => { clearTimeout(killTimer); if (ffmpegPid) unregisterPid(ffmpegPid); reject(err); })
                         .run();
                 });
 
@@ -1250,6 +1345,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                 finalVideoPath = enhancedVideoPath;
                 wasEnhanced = true;
+                updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 68, message: 'Enhancement complete — uploading to Google Drive...' });
             } catch (enhanceError) {
                 console.warn('⚠️  Enhancement failed, uploading original:', enhanceError.message);
                 finalVideoPath = videoPath; // fall back to original
@@ -1287,12 +1383,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const uploadType = finalStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
         console.log(`📤 Using ${uploadType} upload method`);
 
-        const driveResponse = await driveClient.files.create({
-            requestBody: fileMetadata,
-            media: media,
-            fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
-            supportsAllDrives: true
-        });
+        const driveResponse = await Promise.race([
+            driveClient.files.create({
+                requestBody: fileMetadata,
+                media: media,
+                fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
+                supportsAllDrives: true
+            }),
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('Google Drive upload timeout after 3 minutes')),3*60*1000))
+        ]);
+
+        updateJob(jobId, { status: 'uploading', stage: 'Finalizing', progress: 90, message: 'Drive upload complete — sending notifications...' });
 
         const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const fileId = driveResponse.data.id;
@@ -1407,21 +1508,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         }
         console.log('✅ Temporary files cleaned up');
 
-        res.json({
-            success: true,
-            fileId: fileId,
-            fileName: fileName,
-            fileSize: finalSizeMB,
-            rawSize: fileSizeMB,
-            enhanced: wasEnhanced,
-            uploadTime: uploadTime,
-            viewLink: viewLink,
-            downloadLink: directDownloadLink,
-            embedLink: embedLink,
-            thumbnailLink: thumbnailLink,
-            metadata: videoMetadata,
-            createdTime: driveResponse.data.createdTime
+        updateJob(jobId, {
+            status: 'complete',
+            stage: 'Done',
+            progress: 100,
+            message: `✅ Complete! ${wasEnhanced ? 'Enhanced to 20Mbps' : 'Uploaded'} in ${uploadTime}s`,
+            result: {
+                success: true,
+                fileId, fileName, fileSize: finalSizeMB, rawSize: fileSizeMB,
+                enhanced: wasEnhanced, uploadTime, viewLink,
+                downloadLink: directDownloadLink, embedLink, thumbnailLink,
+                metadata: videoMetadata, createdTime: driveResponse.data.createdTime
+            }
         });
+        console.log(`✅ Job ${jobId} complete in ${uploadTime}s`);
     } catch (error) {
         console.error('❌ Video upload error:', error);
 
@@ -1450,11 +1550,37 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             }
         }
         console.log('✅ Cleaned up temp files after error');
-        res.status(500).json({
-            success: false,
+        updateJob(jobId, {
+            status: 'failed',
+            stage: 'Error',
+            progress: 0,
+            message: `Upload failed: ${error.message}`,
             error: error.message
         });
+        console.log(`❌ Job ${jobId} failed: ${error.message}`);
     }
+});
+
+// ============================================
+// JOB STATUS POLLING ENDPOINT
+// Client polls this every 2s after upload
+// ============================================
+app.get('/api/job-status/:jobId', (req, res) => {
+    const job = jobStore.get(req.params.jobId);
+    if (!job) {
+        return res.status(404).json({ success: false, error: 'Job not found or expired' });
+    }
+    res.json({
+        success: true,
+        jobId: req.params.jobId,
+        status: job.status,       // received | enhancing | uploading | complete | failed
+        stage: job.stage,
+        progress: job.progress,
+        message: job.message,
+        result: job.result || null,
+        error: job.error || null,
+        elapsed: Math.round((Date.now() - job.createdAt) / 1000)
+    });
 });
 
 // ============================================
@@ -1635,11 +1761,32 @@ app.use((err, req, res, next) => {
 // ============================================
 const PORT = process.env.PORT || 8080;
 
+// ============================================
+// FORK MAINTENANCE AGENT
+// ============================================
+(function startAgent() {
+    const agentPath = path.join(__dirname, 'agent.js');
+    if (!fs.existsSync(agentPath)) {
+        console.warn('⚠️  agent.js not found - running without maintenance agent');
+        return;
+    }
+    const agent = fork(agentPath, [], { silent: false });
+    agent.on('message', (msg) => console.log('🤖 Agent:', msg));
+    agent.on('error', (err) => console.error('⚠️  Agent error:', err.message));
+    agent.on('exit', (code) => {
+        if (code !== 0) {
+            console.warn(`⚠️  Agent exited (code ${code}) - restarting in 30s`);
+            setTimeout(startAgent, 30000);
+        }
+    });
+    console.log('✅ Maintenance agent forked');
+})();
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.5 - HQDN3D DENOISING + RESILIENT FILTERS  ║
+║  v4.6.6 - AGENT + VIDEO LIMITS + PID TRACKING  ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -1661,5 +1808,6 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
 process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received - shutting down gracefully');
+    try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
     process.exit(0);
 });
