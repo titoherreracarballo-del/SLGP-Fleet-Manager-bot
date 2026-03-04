@@ -15,6 +15,11 @@ const VOLUME_PATH       = '/app/meshcentral-data';
 const UPLOAD_DIR        = path.join(VOLUME_PATH, 'uploads');
 const LOGS_DIR          = path.join(VOLUME_PATH, 'logs');
 const ACTIVE_PIDS_FILE  = path.join(VOLUME_PATH, 'active_pids.json');
+const RETRY_QUEUE_FILE  = path.join(VOLUME_PATH, 'retry_queue.json');
+const INTERNAL_PORT     = process.env.PORT || 3000;
+const MAX_RETRY_ATTEMPTS = 3;
+// Backoff: attempt 1 = 30s, attempt 2 = 2min, attempt 3 = 5min
+const RETRY_BACKOFF_MS  = [30_000, 120_000, 300_000];
 const AGENT_LOG_FILE    = path.join(LOGS_DIR, 'agent.json');
 const ERROR_LOG         = path.join(LOGS_DIR, 'errors.json');
 const DEBUG_LOG         = path.join(LOGS_DIR, 'debug.json');
@@ -288,6 +293,103 @@ function checkMidnight() {
     }
 }
 
+// ============================================
+// RETRY WATCHER
+// Reads retry_queue.json written by index.js
+// when a Drive upload fails with a network error.
+// Calls /api/internal/retry-job/:jobId on index.js
+// which owns the Drive client and email setup.
+// ============================================
+const RETRY_CHECK_INTERVAL = 60 * 1000; // check every 60 seconds
+const pendingRetries = new Map(); // jobId -> scheduled timeout handle
+
+async function processRetryQueue() {
+    if (!fs.existsSync(RETRY_QUEUE_FILE)) return;
+
+    let queue;
+    try {
+        queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+    } catch(e) {
+        agentLog('RETRY_WATCHER', 'Could not read retry queue', { error: e.message });
+        return;
+    }
+
+    if (!queue || queue.length === 0) return;
+
+    agentLog('RETRY_WATCHER', `Found ${queue.length} job(s) in retry queue`);
+
+    for (const entry of queue) {
+        const { jobId, attemptCount, failedAt, lastError } = entry;
+
+        // Skip if we already have this job scheduled
+        if (pendingRetries.has(jobId)) continue;
+
+        // Skip if max attempts exceeded (index.js will clean this up but belt+suspenders)
+        if (attemptCount > MAX_RETRY_ATTEMPTS) {
+            agentLog('RETRY_WATCHER', `Job ${jobId} exceeded max retries — skipping`, { attemptCount });
+            continue;
+        }
+
+        // Calculate backoff delay based on attempt number
+        const backoffMs = RETRY_BACKOFF_MS[Math.min(attemptCount - 1, RETRY_BACKOFF_MS.length - 1)];
+        const timeSinceFailure = Date.now() - failedAt;
+
+        if (timeSinceFailure < backoffMs) {
+            const waitSec = Math.round((backoffMs - timeSinceFailure) / 1000);
+            agentLog('RETRY_WATCHER', `Job ${jobId} waiting ${waitSec}s before retry ${attemptCount}/${MAX_RETRY_ATTEMPTS}`, { lastError });
+            // Schedule it for when the backoff expires
+            const handle = setTimeout(() => {
+                pendingRetries.delete(jobId);
+                triggerRetry(entry);
+            }, backoffMs - timeSinceFailure);
+            pendingRetries.set(jobId, handle);
+        } else {
+            // Backoff already elapsed — retry now
+            agentLog('RETRY_WATCHER', `Job ${jobId} backoff elapsed — triggering retry ${attemptCount}/${MAX_RETRY_ATTEMPTS}`);
+            triggerRetry(entry);
+        }
+    }
+}
+
+async function triggerRetry(entry) {
+    const { jobId, driverName, vin, attemptCount } = entry;
+    agentLog('RETRY_WATCHER', `Calling retry endpoint for job ${jobId}`, { driverName, vin, attempt: attemptCount });
+
+    try {
+        const http = require('http');
+        await new Promise((resolve, reject) => {
+            const req = http.request({
+                hostname: '127.0.0.1',
+                port:     INTERNAL_PORT,
+                path:     `/api/internal/retry-job/${jobId}`,
+                method:   'POST',
+                headers:  { 'Content-Type': 'application/json', 'Content-Length': 0 },
+                timeout:  10000
+            }, (res) => {
+                let body = '';
+                res.on('data', d => body += d);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(body);
+                        if (res.statusCode === 200) {
+                            agentLog('RETRY_WATCHER', `Retry triggered successfully for ${jobId}`, parsed);
+                            resolve(parsed);
+                        } else {
+                            agentLog('RETRY_WATCHER', `Retry endpoint returned ${res.statusCode} for ${jobId}`, parsed);
+                            resolve(parsed); // index.js handles the failure
+                        }
+                    } catch(e) { reject(new Error('Bad response from retry endpoint')); }
+                });
+            });
+            req.on('error',   reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('Retry endpoint timeout')); });
+            req.end();
+        });
+    } catch(e) {
+        agentLog('RETRY_WATCHER', `Failed to call retry endpoint for ${jobId}`, { error: e.message });
+    }
+}
+
 // ── Startup ──────────────────────────────────────────────────
 agentLog('STARTUP', 'Maintenance agent started', { pid: process.pid, node: process.version });
 
@@ -299,19 +401,21 @@ if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: tr
 try { if (!fs.existsSync(ACTIVE_PIDS_FILE)) fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
 
 // Run all tasks once on startup (staggered to avoid burst)
-setTimeout(() => killOrphanFFmpeg(),  5000);
+setTimeout(() => killOrphanFFmpeg(),   5000);
 setTimeout(() => reapStaleUploads(),  10000);
 setTimeout(() => rotateLogs(),        15000);
 setTimeout(() => checkMemory(),       20000);
 setTimeout(() => healthPing(),        30000);
+setTimeout(() => processRetryQueue(), 45000); // check retry queue after server fully warms up
 
 // ── Scheduled intervals ──────────────────────────────────────
-setInterval(killOrphanFFmpeg,  ORPHAN_CHECK_INTERVAL);
-setInterval(reapStaleUploads,  UPLOAD_REAP_INTERVAL);
-setInterval(rotateLogs,        LOG_ROTATE_INTERVAL);
-setInterval(checkMemory,       MEMORY_CHECK_INTERVAL);
-setInterval(healthPing,        HEALTH_PING_INTERVAL);
-setInterval(checkMidnight,     60 * 1000); // check every minute for midnight
+setInterval(killOrphanFFmpeg,    ORPHAN_CHECK_INTERVAL);
+setInterval(reapStaleUploads,    UPLOAD_REAP_INTERVAL);
+setInterval(rotateLogs,          LOG_ROTATE_INTERVAL);
+setInterval(checkMemory,         MEMORY_CHECK_INTERVAL);
+setInterval(healthPing,          HEALTH_PING_INTERVAL);
+setInterval(checkMidnight,       60 * 1000);   // check every minute for midnight
+setInterval(processRetryQueue,   RETRY_CHECK_INTERVAL); // watch for failed jobs to retry
 
 // ── Graceful shutdown ────────────────────────────────────────
 process.on('SIGTERM', () => {
