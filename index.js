@@ -118,7 +118,7 @@ ensureDirectories();
 
 const upload = multer({ 
     dest: UPLOAD_DIR,
-    limits: { fileSize: 50 * 1024 * 1024 }  // 50MB max - 90s walk-around @2.5Mbps ≈ 28MB
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB ceiling - 30s@8Mbps = ~30MB so this is never hit
 });
 
 app.use(express.json({ limit: '150mb' }));
@@ -1217,11 +1217,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
 
     // Hard reject oversized files before processing
-    if (fileStats.size > 50 * 1024 * 1024) {
+    if (fileStats.size > 100 * 1024 * 1024) {
         try { fs.unlinkSync(req.file.path); } catch(e) {}
         return res.status(400).json({
             success: false,
-            error: `Video too large (${fileSizeMB}MB). Max 50MB. Walk-around should be under 90 seconds.`
+            error: `Video too large (${fileSizeMB}MB). Please keep walk-around under 30 seconds.`
         });
     }
 
