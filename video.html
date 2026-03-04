@@ -827,10 +827,18 @@
     let stabCtx = null;
     let stabStream = null;          // canvas.captureStream() - what we record
     let prevFrameData = null;
-    let smoothX = 0, smoothY = 0;  // smoothed correction offsets
-    const STAB_ZOOM = 1.08;        // 8% zoom-in to give crop room
-    const STAB_SMOOTH = 0.85;      // smoothing factor (higher = more stable, less responsive)
-    const STAB_MAX_SHIFT = 0.04;   // max 4% shift per axis
+    let smoothX = 0, smoothY = 0;      // smoothed correction offsets (pixels)
+    let velX = 0, velY = 0;            // velocity for friction damping
+    let motionHistory = [];            // rolling motion buffer for temporal smoothing
+    let detectCanvas = null;           // reused detection canvas (not created per-frame)
+    let detectCtx = null;
+    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 10% margin each side (~192px at 1080p)
+    const STAB_SMOOTH    = 0.92;      // high smoothing — less shake bleed-through
+    const STAB_MAX_SHIFT = 0.09;      // max 9% shift per axis (matches zoom budget)
+    const STAB_VELOCITY  = 0.80;      // velocity friction — damps oscillation
+    const STAB_HISTORY   = 3;         // frames to average for motion estimate
+    const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
+    const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
     let brightnessCheckInterval = null;
 
@@ -981,59 +989,54 @@
     // ========================================
     function initStabilizer() {
         stabCanvas = document.getElementById('preview');
-        stabCtx = stabCanvas.getContext('2d', { willReadFrequently: true });
-        console.log('📐 Stabilizer initialized');
+        stabCtx    = stabCanvas.getContext('2d', { willReadFrequently: true });
+        // Pre-allocate detection canvas once — reused every frame, no GC pressure
+        if (!detectCanvas) {
+            detectCanvas      = document.createElement('canvas');
+            detectCanvas.width  = DETECT_W;
+            detectCanvas.height = DETECT_H;
+            detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        console.log('📐 Stabilizer initialized (ZOOM:' + STAB_ZOOM + ' SMOOTH:' + STAB_SMOOTH + ')');
     }
 
-    function detectMotion(currentCtx, w, h) {
-        // Sample a 16x9 grid of points at low res to detect global motion
-        const sampleW = 32, sampleH = 18;
-        const currentData = currentCtx.getImageData(0, 0, sampleW, sampleH).data;
-        
+    function detectMotion() {
+        // Reuse pre-allocated detection canvas - no GC pressure per frame
+        const rawVideo = document.getElementById('preview-raw');
+        if (!rawVideo || rawVideo.readyState < 2) return { dx: 0, dy: 0 };
+        detectCtx.drawImage(rawVideo, 0, 0, DETECT_W, DETECT_H);
+        const currentData = detectCtx.getImageData(0, 0, DETECT_W, DETECT_H).data;
+
         if (!prevFrameData || prevFrameData.length !== currentData.length) {
-            prevFrameData = currentData;
+            prevFrameData = new Uint8ClampedArray(currentData);
             return { dx: 0, dy: 0 };
         }
 
         let sumDx = 0, sumDy = 0, count = 0;
-        const blockSize = 4; // compare 4px blocks
+        const blockSize = 4;
+        const searchR   = 3; // ±3px on 64px canvas = ±90 real pixels at 1920 wide
 
-        for (let y = blockSize; y < sampleH - blockSize; y += blockSize) {
-            for (let x = blockSize; x < sampleW - blockSize; x += blockSize) {
-                const idx = (y * sampleW + x) * 4;
-                const prevBright = prevFrameData[idx] * 0.299 + prevFrameData[idx+1] * 0.587 + prevFrameData[idx+2] * 0.114;
-                
+        for (let y = searchR + blockSize; y < DETECT_H - searchR - blockSize; y += blockSize) {
+            for (let x = searchR + blockSize; x < DETECT_W - searchR - blockSize; x += blockSize) {
+                const idx = (y * DETECT_W + x) * 4;
+                const prevBright = prevFrameData[idx]*0.299 + prevFrameData[idx+1]*0.587 + prevFrameData[idx+2]*0.114;
+
                 let bestDx = 0, bestDy = 0, bestDiff = Infinity;
-                
-                // Search ±2 pixels for best match
-                for (let dy = -2; dy <= 2; dy++) {
-                    for (let dx = -2; dx <= 2; dx++) {
-                        const nx = x + dx, ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= sampleW || ny >= sampleH) continue;
-                        const nIdx = (ny * sampleW + nx) * 4;
-                        const currBright = currentData[nIdx] * 0.299 + currentData[nIdx+1] * 0.587 + currentData[nIdx+2] * 0.114;
+                for (let dy = -searchR; dy <= searchR; dy++) {
+                    for (let dx = -searchR; dx <= searchR; dx++) {
+                        const nIdx = ((y+dy) * DETECT_W + (x+dx)) * 4;
+                        const currBright = currentData[nIdx]*0.299 + currentData[nIdx+1]*0.587 + currentData[nIdx+2]*0.114;
                         const diff = Math.abs(currBright - prevBright);
                         if (diff < bestDiff) { bestDiff = diff; bestDx = dx; bestDy = dy; }
                     }
                 }
-                
-                if (bestDiff < 30) { // Only count confident matches
-                    sumDx += bestDx;
-                    sumDy += bestDy;
-                    count++;
-                }
+                if (bestDiff < 40) { sumDx += bestDx; sumDy += bestDy; count++; }
             }
         }
 
-        prevFrameData = currentData;
-        
-        if (count < 3) return { dx: 0, dy: 0 };
-        
-        // Normalize to -1..1 range
-        return {
-            dx: (sumDx / count) / sampleW,
-            dy: (sumDy / count) / sampleH
-        };
+        prevFrameData = new Uint8ClampedArray(currentData);
+        if (count < 2) return { dx: 0, dy: 0 };
+        return { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
     }
 
     function stabFrame() {
@@ -1043,42 +1046,45 @@
             return;
         }
 
-        const vw = rawVideo.videoWidth || 1920;
+        const vw = rawVideo.videoWidth  || 1920;
         const vh = rawVideo.videoHeight || 1080;
 
-        // Set canvas to video resolution for recording quality
         if (stabCanvas.width !== vw || stabCanvas.height !== vh) {
-            stabCanvas.width = vw;
+            stabCanvas.width  = vw;
             stabCanvas.height = vh;
         }
 
         if (stabEnabled) {
-            // Draw scaled-down version for motion detection
-            const detectCanvas = document.createElement('canvas');
-            detectCanvas.width = 32;
-            detectCanvas.height = 18;
-            const dCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
-            dCtx.drawImage(rawVideo, 0, 0, 32, 18);
+            // Detect motion from current frame (uses pre-allocated detectCanvas)
+            const motion = detectMotion();
 
-            const motion = detectMotion(dCtx, 32, 18);
-
-            // Clamp motion to max shift
+            // Clamp raw motion to max shift budget
             const clampedDx = Math.max(-STAB_MAX_SHIFT, Math.min(STAB_MAX_SHIFT, motion.dx));
             const clampedDy = Math.max(-STAB_MAX_SHIFT, Math.min(STAB_MAX_SHIFT, motion.dy));
 
-            // Accumulate correction (inverse of motion)
-            smoothX = smoothX * STAB_SMOOTH - clampedDx * (1 - STAB_SMOOTH) * vw;
-            smoothY = smoothY * STAB_SMOOTH - clampedDy * (1 - STAB_SMOOTH) * vh;
+            // Temporal smoothing: blend over last N frames to kill single-frame spikes
+            motionHistory.push({ dx: clampedDx, dy: clampedDy });
+            if (motionHistory.length > STAB_HISTORY) motionHistory.shift();
+            const avgDx = motionHistory.reduce((s,m) => s + m.dx, 0) / motionHistory.length;
+            const avgDy = motionHistory.reduce((s,m) => s + m.dy, 0) / motionHistory.length;
 
-            // Clamp correction to zoom budget
+            // Velocity-based correction with friction damping
+            // velX accumulates detected motion; friction stops oscillation
+            velX = velX * STAB_VELOCITY - avgDx * vw;
+            velY = velY * STAB_VELOCITY - avgDy * vh;
+
+            // Exponential smoothing on top of velocity for silky output
+            smoothX = smoothX * STAB_SMOOTH + velX * (1 - STAB_SMOOTH);
+            smoothY = smoothY * STAB_SMOOTH + velY * (1 - STAB_SMOOTH);
+
+            // Hard clamp to zoom budget (can't correct more than the zoom allows)
             const maxPx = vw * (STAB_ZOOM - 1) / 2;
             const maxPy = vh * (STAB_ZOOM - 1) / 2;
             smoothX = Math.max(-maxPx, Math.min(maxPx, smoothX));
             smoothY = Math.max(-maxPy, Math.min(maxPy, smoothY));
 
-            // Draw zoomed + shifted frame
-            const drawW = vw * STAB_ZOOM;
-            const drawH = vh * STAB_ZOOM;
+            const drawW   = vw * STAB_ZOOM;
+            const drawH   = vh * STAB_ZOOM;
             const offsetX = -(drawW - vw) / 2 + smoothX;
             const offsetY = -(drawH - vh) / 2 + smoothY;
 
@@ -1092,8 +1098,9 @@
 
     function startStabilizer() {
         if (stabAnimFrame) cancelAnimationFrame(stabAnimFrame);
-        smoothX = 0;
-        smoothY = 0;
+        smoothX = 0; smoothY = 0;
+        velX = 0;    velY = 0;
+        motionHistory = [];
         prevFrameData = null;
         initStabilizer();
 
@@ -1689,8 +1696,9 @@
             indicator.innerText = '⚖️ STAB ON';
             indicator.style.color = '#4ade80';
             indicator.style.borderColor = '#4ade80';
-            smoothX = 0;
-            smoothY = 0;
+            smoothX = 0; smoothY = 0;
+            velX = 0;    velY = 0;
+            motionHistory = [];
             prevFrameData = null;
             console.log('✅ Stabilizer ON');
         } else {
