@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Build Notes & Updates</title>
     <style>
-        /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
             --bg-body: #0A6CF1;
             --bg-card: #1C1C1E;
@@ -13,46 +12,32 @@
             --primary-blue: #1976D2;
             --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
             --text-label: #1976D2;
-            --text-white: #ffffff;
             --text-primary: #FFFFFF;
             --text-gray: #8E8E93;
             --text-green: #4CAF50;
             --text-orange: #FF9800;
             --text-red: #EF4444;
-            --text-on-blue: #FFFFFF;
             --border-color: rgba(255, 255, 255, 0.1);
-            
-            /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
             --space-sm: clamp(6px, 1.5vw, 10px);
             --space-md: clamp(10px, 2.5vw, 15px);
             --space-lg: clamp(15px, 3.5vw, 20px);
             --space-xl: clamp(20px, 4.5vw, 30px);
-            
-            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
             --font-md: clamp(16px, 3.6vw, 18px);
-            --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
             --font-xxl: clamp(26px, 6vw, 30px);
-            
-            /* FLUID RADIUS */
             --radius: clamp(12px, 3vw, 16px);
-            
-            /* MIN TOUCH TARGET */
-            --min-touch: 44px;
         }
 
-        * {
-            -webkit-tap-highlight-color: transparent;
-        }
+        * { -webkit-tap-highlight-color: transparent; }
 
         body {
             background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: white;
+            color: var(--text-primary);
             display: flex;
             justify-content: center;
             padding: clamp(10px, 4vw, 20px);
@@ -60,7 +45,6 @@
             min-height: 100vh;
             font-size: var(--font-base);
             -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         }
 
         .container {
@@ -77,9 +61,9 @@
             display: inline-flex;
             align-items: center;
             gap: var(--space-sm);
-            color: #ffffff; 
+            color: #ffffff;
             background: var(--primary-gradient);
-            text-decoration: none; 
+            text-decoration: none;
             font-size: var(--font-md);
             font-weight: 700;
             padding: var(--space-md) var(--space-lg);
@@ -89,20 +73,10 @@
             transition: all 0.2s ease;
             margin-bottom: var(--space-lg);
         }
-        .back-link:hover {
-            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
-            box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
-            transform: translateY(-2px);
-        }
-        .back-link:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
-        }
+        .back-link:hover { background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%); transform: translateY(-2px); }
+        .back-link:active { transform: translateY(0); }
 
-        .header {
-            text-align: center;
-            margin-bottom: var(--space-xl);
-        }
+        .header { text-align: center; margin-bottom: var(--space-xl); }
 
         h1 {
             color: var(--text-label);
@@ -114,18 +88,35 @@
             text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
 
-        .version {
-            color: var(--text-green);
-            font-size: var(--font-sm);
-            font-weight: 700;
-        }
+        .version { color: var(--text-green); font-size: var(--font-sm); font-weight: 700; }
 
+        /* Loading state */
+        .loading {
+            text-align: center;
+            padding: var(--space-xl);
+            color: var(--text-gray);
+            font-size: var(--font-sm);
+        }
+        .loading-dot {
+            display: inline-block;
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes pulse { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+
+        /* Build sections */
         .build-section {
             background: var(--bg-section);
             border: 1px solid var(--border-color);
             border-radius: var(--radius);
             padding: var(--space-md);
             margin-bottom: var(--space-lg);
+        }
+
+        .build-section.latest {
+            border-color: rgba(76, 175, 80, 0.4);
+            box-shadow: 0 0 12px rgba(76, 175, 80, 0.1);
         }
 
         .build-header {
@@ -137,11 +128,7 @@
             border-bottom: 1px solid var(--border-color);
         }
 
-        .build-date {
-            color: var(--text-label);
-            font-size: var(--font-md);
-            font-weight: 900;
-        }
+        .build-date { color: var(--text-label); font-size: var(--font-md); font-weight: 900; }
 
         .build-version {
             background: var(--primary-blue);
@@ -152,12 +139,11 @@
             font-weight: 700;
         }
 
-        .category {
-            margin-top: var(--space-md);
-        }
+        .build-version.latest-badge { background: #4CAF50; }
+
+        .category { margin-top: var(--space-md); }
 
         .category-title {
-            color: var(--text-green);
             font-size: var(--font-sm);
             font-weight: 800;
             text-transform: uppercase;
@@ -166,17 +152,12 @@
             align-items: center;
             gap: var(--space-xs);
         }
-
-        .category-title.new { color: var(--text-green); }
-        .category-title.fix { color: var(--text-orange); }
+        .category-title.new      { color: var(--text-green); }
+        .category-title.fix      { color: var(--text-orange); }
         .category-title.optimize { color: var(--text-label); }
-        .category-title.remove { color: var(--text-red); }
+        .category-title.remove   { color: var(--text-red); }
 
-        .change-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+        .change-list { list-style: none; padding: 0; margin: 0; }
 
         .change-item {
             color: var(--text-gray);
@@ -186,20 +167,8 @@
             position: relative;
             margin-bottom: var(--space-xs);
         }
-
-        .change-item::before {
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: var(--text-label);
-            font-weight: 900;
-        }
-
-        .highlight {
-            color: var(--text-white);
-            font-weight: 700;
-        }
-
+        .change-item::before { content: "•"; position: absolute; left: 0; color: var(--text-label); font-weight: 900; }
+        .highlight { color: #FFFFFF; font-weight: 700; }
         .code {
             background: rgba(255, 255, 255, 0.05);
             padding: 2px 6px;
@@ -209,480 +178,104 @@
             color: var(--text-green);
         }
 
-        /* --- RESPONSIVE BREAKPOINTS --- */
-        @media (max-width: 340px) {
-            body { padding: 8px; }
-            .container { padding: 12px; }
+        /* Error state */
+        .error-msg {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius);
+            padding: var(--space-lg);
+            text-align: center;
+            color: var(--text-red);
+            font-size: var(--font-sm);
         }
 
+        @media (max-width: 340px) { body { padding: 8px; } .container { padding: 12px; } }
         @media (min-width: 768px) {
-            :root {
-                --font-xs: 12px;
-                --font-sm: 13px;
-                --font-base: 15px;
-                --font-md: 16px;
-                --font-lg: 18px;
-                --font-xl: 24px;
-                --font-xxl: 28px;
-            }
+            :root { --font-xs: 12px; --font-sm: 13px; --font-base: 15px; --font-md: 16px; --font-xl: 24px; --font-xxl: 28px; }
         }
-
-        /* iOS-specific fix */
-        @supports (-webkit-touch-callout: none) {
-            input, textarea, select {
-                font-size: 16px !important;
-            }
-        }
+        @supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }
     </style>
 </head>
 <body>
-
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
-    
+
     <div class="header">
         <h1>Build Notes</h1>
-        <div class="version">Current Version: 4.6.3</div>
+        <div class="version" id="currentVersion">Loading...</div>
     </div>
 
-    <!-- BUILD v4.6.3 - March 2, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">March 2, 2026</div>
-            <div class="build-version">v4.6.3</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🚦 GPS-BASED SPEED LIMIT READER</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Real-Time Speed Limits:</span> Automatic GPS-based speed limit detection for driver's current location</li>
-                <li class="change-item"><span class="highlight">Live Speed Monitoring:</span> Displays driver's current speed vs posted limit with visual alerts</li>
-                <li class="change-item"><span class="highlight">Violation Warnings:</span> Color-coded alerts (Green=Safe, Yellow=Caution, Red=Speeding)</li>
-                <li class="change-item"><span class="highlight">Known Violation Zones:</span> Pre-loaded database of high-risk areas with enforcement cameras</li>
-                <li class="change-item"><span class="highlight">Reduces Tickets:</span> Helps drivers stay compliant and avoid speeding violations</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">📊 USAGE TRACKING & EMAIL ALERTS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">API Monitoring:</span> Tracks TomTom API requests to stay within free tier (2,500/day)</li>
-                <li class="change-item"><span class="highlight">Email Alerts:</span> Automatic notifications at 80%, 90%, and 95% of daily limit</li>
-                <li class="change-item"><span class="highlight">Hard Limit:</span> Prevents overages by blocking requests at 2,500/day</li>
-                <li class="change-item"><span class="highlight">Daily Reset:</span> Counters reset automatically at midnight</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🗺️ COMPREHENSIVE MULTI-COUNTY DATABASE</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">75+ Roads:</span> Complete coverage across 27 delivery zones in 4 counties</li>
-                <li class="change-item"><span class="highlight">Coweta County:</span> Peachtree City, Newnan, Senoia, Sharpsburg, Moreland, Grantville, Concord</li>
-                <li class="change-item"><span class="highlight">Fulton County:</span> Atlanta (Downtown, Midtown, Southwest, Airport, North), Fairburn, Palmetto, Union City</li>
-                <li class="change-item"><span class="highlight">North Atlanta:</span> Jones Mill Rd, Old Alabama Rd, State Bridge Rd, Medlock Bridge Rd (Alpharetta/Johns Creek)</li>
-                <li class="change-item"><span class="highlight">Fayette County:</span> Tyrone, Fayetteville corridors</li>
-                <li class="change-item"><span class="highlight">Meriwether County:</span> Woodbury delivery area</li>
-                <li class="change-item"><span class="highlight">Official Data:</span> Coweta County Board of Commissioners Radar List #0223-077</li>
-                <li class="change-item"><span class="highlight">All State Routes:</span> SR-14, 16, 34, 54, 70, 74/85, 154 + Atlanta interstates</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🚨 CRITICAL ENFORCEMENT AREAS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">SR-74/SR-85 Camera:</span> Peachtree City - 55 MPH (drivers think 65!)</li>
-                <li class="change-item"><span class="highlight">SR-34 to SR-54:</span> Reduced to 50 MPH (March 2023) - Heavy tickets!</li>
-                <li class="change-item"><span class="highlight">Trinity Christian Zones:</span> 50 MPH school hours with cameras</li>
-                <li class="change-item"><span class="highlight">I-75/I-85 Connector:</span> Downtown Atlanta - 55 MPH strict enforcement</li>
-                <li class="change-item"><span class="highlight">15+ School Zones:</span> All with exact times (7:30-8:30 AM, 2:30-3:30 PM typical)</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🎨 ENHANCED UI WITH ANIMATIONS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Interactive Map:</span> Real-time GPS tracking with OpenStreetMap + Leaflet.js integration</li>
-                <li class="change-item"><span class="highlight">Massive Displays:</span> Speed limit 150px font, current speed 120px for glance-while-driving visibility</li>
-                <li class="change-item"><span class="highlight">Vibrant Colors:</span> Green (safe), Yellow (5 over), Red (speeding) with gradient backgrounds</li>
-                <li class="change-item"><span class="highlight">Full-Screen Flasher:</span> 🚨 Entire screen flashes red when speeding - impossible to miss!</li>
-                <li class="change-item"><span class="highlight">Flashing Border:</span> Speed display gets pulsing red border when exceeding limit</li>
-                <li class="change-item"><span class="highlight">Speeding Animations:</span> Pulsing text + background flash + phone vibration when exceeding limit</li>
-                <li class="change-item"><span class="highlight">Auto-Centering Map:</span> Red marker follows driver's GPS position in real-time</li>
-                <li class="change-item"><span class="highlight">Header Controls:</span> Quick refresh button always accessible at top</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">💾 SMART CACHING SYSTEM</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">3-Tier Lookup:</span> Database → Cache → TomTom API (minimizes costs)</li>
-                <li class="change-item"><span class="highlight">24-Hour Cache:</span> Speed limits cached per GPS location</li>
-                <li class="change-item"><span class="highlight">90% Reduction:</span> Smart caching reduces API calls from 3,600 to 370/day</li>
-                <li class="change-item"><span class="highlight">Free Forever:</span> Can scale to 300+ drivers and stay FREE</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">💰 COST PROTECTION</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">40 Drivers:</span> ~370 requests/day = $0/month ✅</li>
-                <li class="change-item"><span class="highlight">100 Drivers:</span> ~900 requests/day = $0/month ✅</li>
-                <li class="change-item"><span class="highlight">300 Drivers:</span> ~2,400 requests/day = $0/month ✅</li>
-                <li class="change-item"><span class="highlight">Email Warnings:</span> Get notified before hitting limits</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📍 COMPLETE DATABASE COVERAGE</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">Coweta County (40+ roads):</span> Newnan, Peachtree City, Senoia, Sharpsburg, Moreland, Grantville, Concord</li>
-                <li class="change-item"><span class="code">Fulton County (20+ roads):</span> Atlanta (all zones), Fairburn, Palmetto, South Fulton, Alpharetta, Johns Creek</li>
-                <li class="change-item"><span class="code">Fayette County (5+ roads):</span> Tyrone, Fayetteville access routes</li>
-                <li class="change-item"><span class="code">Meriwether County (2+ roads):</span> Woodbury delivery area</li>
-                <li class="change-item"><span class="code">Major Routes:</span> SR-14, 16, 34, 54, 70, 74/85, 154, I-75/85, US-29</li>
-                <li class="change-item"><span class="code">School Zones:</span> 15+ schools with exact enforcement times</li>
-                <li class="change-item"><span class="code">Camera Zones:</span> SR-74/85 North, Trinity Christian areas</li>
-                <li class="change-item"><span class="code">Total:</span> 75+ roads covering 27 delivery zones</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📱 AFFECTED FILES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">speed-limits.html</span> - NEW GPS speed limit reader</li>
-                <li class="change-item"><span class="code">index.js</span> - Usage tracking, caching, API endpoint</li>
-                <li class="change-item"><span class="code">menu.html</span> - Added Speed Limits button</li>
-                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated</li>
-            </ul>
+    <div id="notes-container">
+        <div class="loading">
+            <span class="loading-dot">●</span>
+            <span class="loading-dot">●</span>
+            <span class="loading-dot">●</span>
         </div>
     </div>
 
-    <!-- BUILD v4.6.2 - March 1, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">March 1, 2026</div>
-            <div class="build-version">v4.6.2</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🧠 SILENT LEARNING AI SYSTEM</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Invisible Classification:</span> AI analyzes issues in background - drivers never see it working</li>
-                <li class="change-item"><span class="highlight">Continuous Learning:</span> System remembers every classification and improves over time</li>
-                <li class="change-item"><span class="highlight">Fleet Knowledge Base:</span> Builds database of common issues specific to SLGP fleet</li>
-                <li class="change-item"><span class="highlight">Historical Context:</span> AI references similar past issues when classifying new reports</li>
-                <li class="change-item"><span class="highlight">Pattern Recognition:</span> Tracks issue frequency and adapts to fleet-specific problems</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">📚 LEARNING DATABASE SYSTEM</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Issue History Database:</span> Stores all classifications with descriptions, confidence scores, and reasoning</li>
-                <li class="change-item"><span class="highlight">Knowledge Base:</span> Pre-seeded with common vehicle issues and learns fleet-specific patterns</li>
-                <li class="change-item"><span class="highlight">Frequency Tracking:</span> Counts how often each issue occurs in the fleet</li>
-                <li class="change-item"><span class="highlight">Vehicle-Specific Learning:</span> Adapts to Rivian EDV, diesel, and gas vehicle differences</li>
-                <li class="change-item"><span class="highlight">Admin API:</span> View knowledge base and learning statistics at /api/knowledge-base?key=slgp-admin-2026</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title fix">📧 EMAIL ATTACHMENT SYSTEM</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Photos/Videos in Email:</span> All media files attached directly to email (no Google Drive)</li>
-                <li class="change-item"><span class="highlight">Instant Access:</span> Fleet managers receive everything in one email</li>
-                <li class="change-item"><span class="highlight">Multiple Files Supported:</span> Accept both photos and videos in single submission</li>
-                <li class="change-item"><span class="highlight">Auto-Cleanup:</span> Temporary files deleted after email sent</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🎨 UI IMPROVEMENTS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">No AI Branding:</span> Drivers see simple, clean issue reporting form</li>
-                <li class="change-item"><span class="highlight">Natural Language:</span> Just describe the issue - no categories to select</li>
-                <li class="change-item"><span class="highlight">Simplified Form:</span> Fewer clicks, faster reporting</li>
-                <li class="change-item"><span class="highlight">Standard Submit Button:</span> No mention of AI or automation</li>
-                <li class="change-item"><span class="highlight">Removed Tow Assistance:</span> Not needed for issue reporting (kept in accident form)</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📊 TECHNICAL IMPLEMENTATION</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">Learning Files:</span> issue_history.json and fleet_knowledge_base.json</li>
-                <li class="change-item"><span class="code">Claude API:</span> Uses claude-sonnet-4-20250514 with historical context</li>
-                <li class="change-item"><span class="code">Adaptive Prompts:</span> Includes recent similar issues and fleet patterns</li>
-                <li class="change-item"><span class="code">Auto-Initialize:</span> Creates knowledge base on first run with common issues</li>
-                <li class="change-item"><span class="code">History Limit:</span> Keeps last 500 classifications to prevent database bloat</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🔍 HOW LEARNING WORKS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Step 1:</span> Driver submits issue description</li>
-                <li class="change-item"><span class="highlight">Step 2:</span> AI loads historical data and fleet knowledge</li>
-                <li class="change-item"><span class="highlight">Step 3:</span> AI finds similar past issues for context</li>
-                <li class="change-item"><span class="highlight">Step 4:</span> AI classifies using learned patterns</li>
-                <li class="change-item"><span class="highlight">Step 5:</span> Classification saved to database for future learning</li>
-                <li class="change-item"><span class="highlight">Step 6:</span> Knowledge base updated with new patterns</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📱 AFFECTED FILES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">report-issue.html</span> - Removed AI branding, natural input form, v4.6.2</li>
-                <li class="change-item"><span class="code">index.js</span> - Learning AI system, knowledge base, history tracking, v4.6.2</li>
-                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.2</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.6.1 - March 1, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">March 1, 2026</div>
-            <div class="build-version">v4.6.1</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🚦 CORRIDOR TRAFFIC ALERTS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Major Route Monitoring:</span> Real-time traffic on 8 major corridors (I-75, I-85, I-285, US-19/41, SR-74, US-29)</li>
-                <li class="change-item"><span class="highlight">Smart Suggestions:</span> Automatic alternative route suggestions when heavy traffic detected</li>
-                <li class="change-item"><span class="highlight">Corridor Status:</span> Detailed breakdown showing current vs normal speed for each route</li>
-                <li class="change-item"><span class="highlight">Traffic-Aware Alerts:</span> Clear/Moderate/Heavy status with percentage indicators</li>
-                <li class="change-item"><span class="highlight">Zero Extra Cost:</span> Uses existing TomTom Traffic Flow API (no routing charges)</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title fix">🔧 WEATHER SYSTEM IMPROVEMENTS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Removed Inaccurate Logic:</span> Eliminated weekend traffic assumption (was not data-driven)</li>
-                <li class="change-item"><span class="highlight">Sunset Alert:</span> Added alert when sunset is approaching within 60 minutes</li>
-                <li class="change-item"><span class="highlight">Speed Ratio Display:</span> Shows current speed vs normal speed (e.g., "72% of normal")</li>
-                <li class="change-item"><span class="highlight">Expanded Coverage:</span> Added 7 new delivery zones (Senoia, Sharpsburg, Moreland, Grantville, Hogansville, Luthersville, Greenville)</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">🗺️ ROUTE PLANNING FEATURES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Renamed Feature:</span> "Today's Forecast" → "Route Planning" (better describes functionality)</li>
-                <li class="change-item"><span class="highlight">Corridor View:</span> See all major highways at a glance with color-coded status</li>
-                <li class="change-item"><span class="highlight">Alternative Routes:</span> System suggests clear routes when heavy traffic detected</li>
-                <li class="change-item"><span class="highlight">Real-Time Updates:</span> Traffic data refreshes every 60 minutes automatically</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📊 TECHNICAL CHANGES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">fetchCorridorTraffic():</span> New function checks 8 major corridors in delivery area</li>
-                <li class="change-item"><span class="code">Smart Delays:</span> 100ms delay between API calls to avoid rate limiting</li>
-                <li class="change-item"><span class="code">Status Algorithm:</span> <80% = clear, 50-80% = moderate, <50% = heavy</li>
-                <li class="change-item"><span class="code">Alternative Logic:</span> Automatically suggests top 2 clear routes when congestion found</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📱 AFFECTED FILES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">weather.html</span> - Corridor alerts, route suggestions, expanded zones, v4.6.1</li>
-                <li class="change-item"><span class="code">menu.html</span> - Renamed to "Route Planning", v4.6.1</li>
-                <li class="change-item"><span class="code">build-notes.html</span> - Changelog updated, v4.6.1</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.6.0 - February 28, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">February 28, 2026</div>
-            <div class="build-version">v4.6.0</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">✨ COMPLETE UI REDESIGN</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Modern Blue Theme:</span> Vibrant blue background (#0A6CF1) inspired by modern delivery apps</li>
-                <li class="change-item"><span class="highlight">Dark Containers:</span> All cards now use dark theme (#1C1C1E) for professional appearance</li>
-                <li class="change-item"><span class="highlight">SF Pro Display Fonts:</span> Upgraded to Apple's SF Pro Display typography system</li>
-                <li class="change-item"><span class="highlight">Sunset Flash Detection:</span> Camera automatically enables flash after sunset using real-time API</li>
-                <li class="change-item"><span class="highlight">Smart Fallback:</span> Time-based flash (6 PM - 6 AM) if sunset API unavailable</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🎨 DESIGN IMPROVEMENTS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Color Consistency:</span> Blue gradients (#1E88E5 → #42A5F5) across all buttons</li>
-                <li class="change-item"><span class="highlight">White Text:</span> All text now white (#FFFFFF) on dark containers for better readability</li>
-                <li class="change-item"><span class="highlight">Subtle Borders:</span> White borders (opacity 0.1) replace harsh dark borders</li>
-                <li class="change-item"><span class="highlight">Deeper Shadows:</span> Enhanced depth with rgba(0,0,0,0.3) shadows</li>
-                <li class="change-item"><span class="highlight">Input Fields:</span> Dark gray (#2C2C2E) backgrounds with white text</li>
-                <li class="change-item"><span class="highlight">Font Smoothing:</span> Antialiased rendering for crisp text on all devices</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title fix">🌅 SUNSET FLASH SYSTEM</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">API Integration:</span> Uses sunrise-sunset.org API for Ashburn, VA location</li>
-                <li class="change-item"><span class="highlight">Daily Updates:</span> Sunset time automatically fetched each day</li>
-                <li class="change-item"><span class="highlight">Auto-Enable:</span> Flash turns ON automatically after sunset or before sunrise</li>
-                <li class="change-item"><span class="highlight">Smart Detection:</span> Checks current time vs actual sunset (not fixed hours)</li>
-                <li class="change-item"><span class="highlight">Reliable Fallback:</span> Uses 6 PM - 6 AM schedule if API fails</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📱 AFFECTED FILES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">menu.html</span> - Blue background, dark cards, SF Pro fonts, v4.6.0</li>
-                <li class="change-item"><span class="code">report-issue.html</span> - Dark theme, blue gradients, v4.6.0</li>
-                <li class="change-item"><span class="code">accident-report.html</span> - Dark containers, updated styling, v4.6.0</li>
-                <li class="change-item"><span class="code">video.html</span> - Sunset flash detection, dark theme, v4.6.0</li>
-                <li class="change-item"><span class="code">build-notes.html</span> - Dark theme, changelog updated, v4.6.0</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.5.0 - February 27, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">February 27, 2026</div>
-            <div class="build-version">v4.5.0</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">✨ NEW FEATURES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Build Notes Page:</span> Added comprehensive changelog to track all system updates</li>
-                <li class="change-item"><span class="highlight">Video Requirement:</span> Report Issue now requires video documentation instead of photos</li>
-                <li class="change-item"><span class="highlight">Mandatory Notes:</span> Detailed description now required for all issue reports</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Auto-Scaling Design:</span> All forms now use fluid responsive CSS with <span class="code">clamp()</span> functions</li>
-                <li class="change-item"><span class="highlight">Mobile UX:</span> Touch targets meet 44px minimum (Apple/Google guidelines)</li>
-                <li class="change-item"><span class="highlight">Adaptive Typography:</span> Fonts scale 10-28px based on screen size</li>
-                <li class="change-item"><span class="highlight">Adaptive Spacing:</span> Padding/margins scale 4-30px automatically</li>
-                <li class="change-item"><span class="highlight">iOS Zoom Prevention:</span> Input fields fixed at 16px to prevent zoom</li>
-                <li class="change-item"><span class="highlight">Proportional Scaling:</span> All elements scale smoothly across device sizes</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title fix">🔧 DATABASE UPDATES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Rivian VINs Corrected:</span> Removed incorrect VINs (2866, 2860, 2863, 2859, 2857)</li>
-                <li class="change-item"><span class="highlight">New Rivians Added:</span> 8125, 8084, 7918, 7898</li>
-                <li class="change-item"><span class="highlight">Tow Policy Update:</span> All Rivian vehicles set to NO tow assistance</li>
-                <li class="change-item"><span class="highlight">Total Rivian Fleet:</span> 14 vehicles verified and active</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">📱 AFFECTED FILES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="code">accident-report.html</span> - Auto-scaling applied, VIN database updated</li>
-                <li class="change-item"><span class="code">index.html</span> - Auto-scaling applied, build notes link added</li>
-                <li class="change-item"><span class="code">report-issue.html</span> - Auto-scaling applied, video requirement, notes mandatory</li>
-                <li class="change-item"><span class="code">video-inspection.html</span> - Auto-scaling applied, VIN database updated</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.3.0 - February 25, 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">February 25, 2026</div>
-            <div class="build-version">v4.3.0</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title fix">🔧 BUG FIXES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Google Drive Upload:</span> Fixed quota error by sharing folder with service account</li>
-                <li class="change-item"><span class="highlight">Service Account:</span> <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="9af7ffe9f2b7f8f5eeb7efeaf6f5fbfeffe8dae9f6fdeab7f7ffe9f2b7e9ffe8ecffe8b4f3fbf7b4fde9ffe8ecf3f9fffbf9f9f5eff4eeb4f9f5f7">[email&#160;protected]</a> configured</li>
-                <li class="change-item"><span class="highlight">Photo Upload:</span> Accident reports now successfully upload to Google Drive</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🚀 OPTIMIZATIONS</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Photo Compression:</span> Images auto-compressed to 1024x1024 at 70% quality</li>
-                <li class="change-item"><span class="highlight">Upload Speed:</span> Smaller file sizes = faster uploads on mobile networks</li>
-                <li class="change-item"><span class="highlight">Storage Efficiency:</span> Reduced Google Drive storage usage</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.2.0 - February 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">February 2026</div>
-            <div class="build-version">v4.2.0</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">✨ FEATURES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Security Gates:</span> Mandatory checklists before departure/arrival</li>
-                <li class="change-item"><span class="highlight">Time-Based Routing:</span> Automatic Pre/Post-trip selection based on time</li>
-                <li class="change-item"><span class="highlight">Tow Warnings:</span> Modal alerts for vehicles without tow coverage</li>
-                <li class="change-item"><span class="highlight">VIN Database:</span> Auto-detect vehicle type and tow status</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">🎨 UI/UX</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Dark Theme:</span> Professional dark mode across all pages</li>
-                <li class="change-item"><span class="highlight">Touch Optimization:</span> Larger buttons and inputs for mobile</li>
-                <li class="change-item"><span class="highlight">Visual Feedback:</span> Color-coded status indicators</li>
-                <li class="change-item"><span class="highlight">Progressive Forms:</span> Step-by-step validation</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- BUILD v4.0.0 - January 2026 -->
-    <div class="build-section">
-        <div class="build-header">
-            <div class="build-date">January 2026</div>
-            <div class="build-version">v4.0.0</div>
-        </div>
-
-        <div class="category">
-            <div class="category-title new">✨ CORE FEATURES</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Accident Report System:</span> Photo documentation, GPS, signature capture</li>
-                <li class="change-item"><span class="highlight">Video Inspection:</span> High-quality video recording (1080p @ 10Mbps)</li>
-                <li class="change-item"><span class="highlight">Issue Reporting:</span> Categorized issue tracking with GPS</li>
-                <li class="change-item"><span class="highlight">Insurance Cards:</span> Digital access to fleet insurance</li>
-                <li class="change-item"><span class="highlight">Push Notifications:</span> Service worker for instant alerts</li>
-            </ul>
-        </div>
-
-        <div class="category">
-            <div class="category-title optimize">⚡ PERFORMANCE</div>
-            <ul class="change-list">
-                <li class="change-item"><span class="highlight">Auto-Updates:</span> Version checking every 30 seconds</li>
-                <li class="change-item"><span class="highlight">Wake Lock:</span> Prevent screen sleep during recording</li>
-                <li class="change-item"><span class="highlight">Retry Logic:</span> Auto-retry failed uploads (3 attempts)</li>
-                <li class="change-item"><span class="highlight">Flash Detection:</span> Auto-enable flash in low light</li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- FOOTER -->
     <div style="text-align: center; color: var(--text-gray); font-size: var(--font-xs); margin-top: var(--space-xl); padding-top: var(--space-lg); border-top: 1px solid var(--border-color);">
-        <p>SLGP Flee
+        SLGP Fleet System · Strategic Logistics Group
+    </div>
+</div>
+
+<script>
+    const TYPE_COLORS = { new: 'new', fix: 'fix', optimize: 'optimize', remove: 'remove' };
+
+    function renderNotes(notes, currentVersion) {
+        const container = document.getElementById('notes-container');
+        document.getElementById('currentVersion').textContent = 'Current Version: ' + currentVersion;
+
+        if (!notes || notes.length === 0) {
+            container.innerHTML = '<div class="error-msg">No build notes available.</div>';
+            return;
+        }
+
+        container.innerHTML = notes.map(function(build, idx) {
+            var isLatest = idx === 0;
+            var changesHtml = build.changes.map(function(cat) {
+                var typeClass = TYPE_COLORS[cat.type] || 'optimize';
+                var itemsHtml = cat.items.map(function(item) {
+                    return '<li class="change-item"><span class="highlight">' + escHtml(item.highlight) + '</span> ' + escHtml(item.text) + '</li>';
+                }).join('');
+                return '<div class="category"><div class="category-title ' + typeClass + '">' + escHtml(cat.title) + '</div><ul class="change-list">' + itemsHtml + '</ul></div>';
+            }).join('');
+
+            return '<div class="build-section' + (isLatest ? ' latest' : '') + '">' +
+                '<div class="build-header">' +
+                '<div class="build-date">' + escHtml(build.date) + '</div>' +
+                '<div class="build-version' + (isLatest ? ' latest-badge' : '') + '">v' + escHtml(build.version) + (isLatest ? ' ★' : '') + '</div>' +
+                '</div>' +
+                changesHtml +
+                '</div>';
+        }).join('');
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    async function loadBuildNotes() {
+        try {
+            const res = await fetch('/api/build-notes');
+            if (!res.ok) throw new Error('Server returned ' + res.status);
+            const data = await res.json();
+            if (!data.success) throw new Error('API error');
+            renderNotes(data.notes, data.currentVersion);
+        } catch (e) {
+            console.error('Build notes fetch failed:', e);
+            document.getElementById('notes-container').innerHTML =
+                '<div class="error-msg">⚠️ Could not load build notes.<br>Please try refreshing the page.</div>';
+            document.getElementById('currentVersion').textContent = 'Version unavailable';
+        }
+    }
+
+    loadBuildNotes();
+</script>
+
+<script src="/auto-refresh.js"></script>
+</body>
+</html>
