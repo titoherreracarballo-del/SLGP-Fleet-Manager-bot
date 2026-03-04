@@ -1729,6 +1729,17 @@
         const progressFill   = document.getElementById('progress-fill');
         const percentOverlay = document.getElementById('progress-percentage');
 
+        // ── Helpers defined before first use ───────────────
+        function setProgress(pct, msg) {
+            progressFill.style.width = pct + '%';
+            if (percentOverlay) percentOverlay.innerText = pct + '%';
+            if (status) status.innerText = msg;
+            console.log(`📊 ${pct}% - ${msg}`);
+        }
+        function backoffDelay(attempt) {
+            return Math.min(1000 * Math.pow(2, attempt - 1), 10000); // 1s, 2s, 4s, max 10s
+        }
+
         btn.style.display        = 'none';
         progressBar.style.display = 'block';
         progressFill.style.backgroundColor = '#3b82f6';
@@ -1739,19 +1750,6 @@
         formData.append('driverName', driver);
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
-
-        // ── Helper: update progress bar + status text ───────
-        function setProgress(pct, msg) {
-            progressFill.style.width = pct + '%';
-            if (percentOverlay) percentOverlay.innerText = pct + '%';
-            if (status) status.innerText = msg;
-            console.log(`📊 ${pct}% - ${msg}`);
-        }
-
-        // ── Helper: exponential backoff delay ───────────────
-        function backoffDelay(attempt) {
-            return Math.min(1000 * Math.pow(2, attempt - 1), 10000); // 1s, 2s, 4s, max 10s
-        }
 
         // ── PHASE 1: Upload file to server ──────────────────
         // Server responds immediately with jobId once file is received.
