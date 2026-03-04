@@ -1702,30 +1702,37 @@
 
     async function uploadVideo() {
         const driver = document.getElementById('driverName').value.trim();
-        const vin = document.getElementById('vinInput').value.trim();
-        
+        const vin    = document.getElementById('vinInput').value.trim();
+
         if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert("Please complete all fields and record a video.");
+            alert('Please complete all fields and record a video.');
             return;
         }
 
-        if (videoBlob.size > 150 * 1024 * 1024) {
-            alert(`Video too large (${(videoBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 150MB.`);
+        // Client-side size guard (matches server 50MB limit)
+        if (videoBlob.size > 50 * 1024 * 1024) {
+            alert(`Video too large (${(videoBlob.size/1024/1024).toFixed(1)}MB). Max 50MB.\nWalk-around should be under 90 seconds.`);
+            return;
+        }
+
+        // Network check before attempting
+        if (!navigator.onLine) {
+            alert('No internet connection detected.\nPlease connect to WiFi and try again.');
             return;
         }
 
         requestWakeLock();
 
-        const btn = document.getElementById('btn-upload');
-        const status = document.getElementById('status');
-        const progressBar = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
+        const btn            = document.getElementById('btn-upload');
+        const status         = document.getElementById('status');
+        const progressBar    = document.getElementById('progress-container');
+        const progressFill   = document.getElementById('progress-fill');
         const percentOverlay = document.getElementById('progress-percentage');
 
-        btn.style.display = 'none';
+        btn.style.display        = 'none';
         progressBar.style.display = 'block';
-        status.innerText = "Preparing upload...";
-        if (percentOverlay) percentOverlay.innerText = '0%';
+        progressFill.style.backgroundColor = '#3b82f6';
+        setProgress(0, 'Preparing upload...');
 
         const formData = new FormData();
         formData.append('video', videoBlob, 'inspection.mp4');
@@ -1733,77 +1740,117 @@
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
 
-        let attempts = 0;
-
-        async function attemptUpload() {
-            attempts++;
-            console.log(`📤 Upload attempt ${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS}`);
-            return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/upload-to-google-drive', true);
-                xhr.timeout = 600000;
-
-                xhr.upload.addEventListener('progress', (e) => {
-                    if (e.lengthComputable) {
-                        const percent = Math.round((e.loaded / e.total) * 100);
-                        progressFill.style.width = percent + '%';
-                        const mbLoaded = (e.loaded / 1024 / 1024).toFixed(1);
-                        const mbTotal = (e.total / 1024 / 1024).toFixed(1);
-                        if (percent < 100) {
-                            status.innerText = `Uploading: ${percent}% (${mbLoaded}/${mbTotal}MB)`;
-                        } else {
-                            status.innerText = '✨ Processing on server...';
-                        }
-                        if (percentOverlay) percentOverlay.innerText = percent + '%';
-                    }
-                });
-
-                xhr.addEventListener('load', () => {
-                    progressFill.style.width = '100%';
-                    if (percentOverlay) percentOverlay.innerText = '100%';
-                    if (xhr.status === 200) {
-                        try {
-                            const response = JSON.parse(xhr.responseText);
-                            if (response.success) { resolve(response); }
-                            else { reject(new Error(response.error || 'Upload failed')); }
-                        } catch (e) { reject(new Error('Invalid server response')); }
-                    } else { reject(new Error(`Server error: ${xhr.status}`)); }
-                });
-
-                xhr.addEventListener('error', () => reject(new Error('Network error')));
-                xhr.addEventListener('timeout', () => reject(new Error('Upload timeout')));
-                xhr.send(formData);
-            });
+        // ── Helper: update progress bar + status text ───────
+        function setProgress(pct, msg) {
+            progressFill.style.width = pct + '%';
+            if (percentOverlay) percentOverlay.innerText = pct + '%';
+            if (status) status.innerText = msg;
+            console.log(`📊 ${pct}% - ${msg}`);
         }
 
-        while (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
+        // ── Helper: exponential backoff delay ───────────────
+        function backoffDelay(attempt) {
+            return Math.min(1000 * Math.pow(2, attempt - 1), 10000); // 1s, 2s, 4s, max 10s
+        }
+
+        // ── PHASE 1: Upload file to server ──────────────────
+        // Server responds immediately with jobId once file is received.
+        // All FFmpeg + Drive work happens in the background.
+        let jobId = null;
+        const MAX_UPLOAD_ATTEMPTS = CONFIG.MAX_RETRY_ATTEMPTS || 3;
+
+        for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+            // Check network before each attempt
+            if (!navigator.onLine) {
+                setProgress(0, '⚠️ No connection — waiting for WiFi...');
+                await new Promise(resolve => {
+                    const onOnline = () => { window.removeEventListener('online', onOnline); resolve(); };
+                    window.addEventListener('online', onOnline);
+                });
+                setProgress(0, 'Connection restored — retrying...');
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
             try {
-                await attemptUpload();
+                console.log(`📤 Upload attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS}`);
+                if (attempt > 1) setProgress(0, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`);
+
+                jobId = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/upload-to-google-drive', true);
+                    xhr.timeout = 120000; // 2 min for the file transfer itself
+
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            const pct    = Math.round((e.loaded / e.total) * 100);
+                            const loaded = (e.loaded / 1024 / 1024).toFixed(1);
+                            const total  = (e.total  / 1024 / 1024).toFixed(1);
+                            // Upload phase = 0-50% of total progress bar
+                            setProgress(Math.round(pct * 0.5), `Uploading: ${pct}% (${loaded}/${total}MB)`);
+                        }
+                    });
+
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status === 200) {
+                            try {
+                                const resp = JSON.parse(xhr.responseText);
+                                if (resp.success && resp.jobId) {
+                                    resolve(resp.jobId);
+                                } else {
+                                    reject(new Error(resp.error || 'Server rejected upload'));
+                                }
+                            } catch(e) { reject(new Error('Invalid server response')); }
+                        } else if (xhr.status === 400) {
+                            try {
+                                const err = JSON.parse(xhr.responseText);
+                                reject(new Error(err.error || `Error ${xhr.status}`));
+                            } catch(e) { reject(new Error(`Server error: ${xhr.status}`)); }
+                        } else {
+                            reject(new Error(`Server error: ${xhr.status}`));
+                        }
+                    });
+
+                    xhr.addEventListener('error',   () => reject(new Error('Network error during upload')));
+                    xhr.addEventListener('timeout',  () => reject(new Error('Upload timed out — check WiFi signal')));
+                    xhr.addEventListener('abort',    () => reject(new Error('Upload cancelled')));
+                    xhr.send(formData);
+                });
+
+                // File is on the server — driver is done. 
+                // All enhancement + Drive upload happens silently in the background.
                 if (wakeLock) { wakeLock.release(); wakeLock = null; }
-                status.innerText = "Upload Complete! ✅";
-                progressFill.style.backgroundColor = "#4ade80";
-                setTimeout(() => window.location.href = '/success', 2000);
+                setProgress(100, '✅ Submitted! You\'re done.');
+                progressFill.style.backgroundColor = '#4ade80';
+                setTimeout(() => window.location.href = '/success', 1500);
                 return;
-            } catch (error) {
-                console.error(`❌ Attempt ${attempts} failed:`, error.message);
-                if (attempts < CONFIG.MAX_RETRY_ATTEMPTS) {
-                    status.innerText = `Retrying (${attempts}/${CONFIG.MAX_RETRY_ATTEMPTS})...`;
-                    progressFill.style.width = '0%';
-                    if (percentOverlay) percentOverlay.innerText = '0%';
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                } else {
+
+
+            } catch (uploadErr) {
+                console.error(`Upload attempt failed:`, uploadErr.message);
+                if (uploadErr.message.includes('too large') || uploadErr.message.includes('Missing')) {
                     if (wakeLock) { wakeLock.release(); wakeLock = null; }
-                    alert(`Upload failed after ${CONFIG.MAX_RETRY_ATTEMPTS} attempts:\n${error.message}\n\nPlease check your connection and try again.`);
+                    alert(uploadErr.message);
+                    btn.style.display = 'block';
+                    progressBar.style.display = 'none';
+                    status.innerText = 'Upload failed.';
+                    return;
+                }
+                if (attempt === MAX_UPLOAD_ATTEMPTS) {
+                    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+                    alert(`Upload failed after ${MAX_UPLOAD_ATTEMPTS} attempts:\n${uploadErr.message}\n\nCheck your WiFi and tap Submit again.`);
                     btn.style.display = 'block';
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
                     if (percentOverlay) percentOverlay.innerText = '0%';
-                    status.innerText = "Upload failed. Ready to retry.";
+                    status.innerText = 'Upload failed — tap Submit to retry.';
+                    return;
                 }
+                const delay = backoffDelay(attempt);
+                setProgress(0, `Upload failed — retrying in ${Math.round(delay/1000)}s... (${attempt}/${MAX_UPLOAD_ATTEMPTS})`);
+                await new Promise(r => setTimeout(r, delay));
             }
-        }
-    }
-
+        } // end for loop
+    } // end uploadVideo
     startCamera();
     autoSelectInspection();
     
