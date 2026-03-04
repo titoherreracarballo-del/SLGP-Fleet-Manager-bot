@@ -753,7 +753,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 8000000, // 8 Mbps - minimum for clean 1080p source (48s = ~48MB, 5s = ~5MB)
+        VIDEO_BITRATE:       8000000, // 8 Mbps source - server enhances to 20Mbps (30s@8Mbps = ~30MB, under 100MB limit)
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -1583,8 +1583,9 @@
     function startTimer() {
         seconds = 0;
         const timerEl = document.getElementById('timer-display');
+        timerEl.style.color   = '#ffffff';
         timerEl.style.display = 'block';
-        timerEl.innerText = "00:00";
+        timerEl.innerText     = '00:00';
         timerInterval = setInterval(() => {
             seconds++;
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -1657,7 +1658,11 @@
                     document.getElementById('btn-stop').style.display = 'none';
                     document.getElementById('flash-toggle').style.display = 'none';
                     
-                    document.getElementById('status').innerText = `Video Ready - Auto-uploading...`;
+                    // Reset timer colour for next recording attempt
+                    const timerEl2 = document.getElementById('timer-display');
+                    if (timerEl2) timerEl2.style.color = '#ffffff';
+
+                    document.getElementById('status').innerText = 'Video Ready - Auto-uploading...';
                     setTimeout(() => uploadVideo(), 1000);
                 };
 
@@ -1719,8 +1724,8 @@
         }
 
         // Client-side size guard (matches server 50MB limit)
-        if (videoBlob.size > 50 * 1024 * 1024) {
-            alert(`Video too large (${(videoBlob.size/1024/1024).toFixed(1)}MB). Max 50MB.\nWalk-around should be under 90 seconds.`);
+        if (videoBlob.size > 100 * 1024 * 1024) {
+            alert(`Video too large (${(videoBlob.size/1024/1024).toFixed(1)}MB).\nPlease keep your walk-around under 30 seconds and try again.`);
             return;
         }
 
