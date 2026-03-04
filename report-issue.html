@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Report Issue</title>
     <style>
-        /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
             --bg-body: #0A6CF1;
             --bg-card: #1C1C1E;
@@ -20,33 +19,21 @@
             --text-gray: #8E8E93;
             --text-on-blue: #FFFFFF;
             --border-color: rgba(255, 255, 255, 0.1);
-            
-            /* FLUID SPACING */
             --space-xs: clamp(4px, 1vw, 6px);
             --space-sm: clamp(6px, 1.5vw, 10px);
             --space-md: clamp(10px, 2.5vw, 15px);
             --space-lg: clamp(15px, 3.5vw, 20px);
             --space-xl: clamp(20px, 4.5vw, 30px);
-            
-            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
             --font-md: clamp(16px, 3.6vw, 18px);
             --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
-            
-            /* FLUID RADIUS */
             --radius: clamp(12px, 3vw, 16px);
-            
-            /* MIN TOUCH TARGET */
             --min-touch: 44px;
         }
-
-        * {
-            -webkit-tap-highlight-color: transparent;
-        }
-
+        * { -webkit-tap-highlight-color: transparent; }
         body {
             background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -60,7 +47,6 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
-
         .container {
             width: 100%;
             max-width: 420px;
@@ -70,8 +56,6 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
-
-        /* --- LOGO STYLING --- */
         .logo-header {
             display: block;
             margin: 0 auto var(--space-md) auto;
@@ -80,15 +64,13 @@
             height: auto;
             border-radius: 4px;
         }
-
-        /* --- HEADERS --- */
         .back-link {
             display: inline-flex;
             align-items: center;
             gap: var(--space-sm);
-            color: #ffffff; 
+            color: #ffffff;
             background: var(--primary-gradient);
-            text-decoration: none; 
+            text-decoration: none;
             font-size: var(--font-md);
             font-weight: 700;
             padding: var(--space-md) var(--space-lg);
@@ -103,215 +85,108 @@
             box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
             transform: translateY(-2px);
         }
-        .back-link:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
-        }
-        .timestamp {
-            color: #4ade80; 
-            text-align: center; 
-            font-size: var(--font-sm); 
-            font-weight: 700; 
-            margin-bottom: var(--space-xs);
-        }
+        .back-link:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35); }
+        .timestamp { color: #4ade80; text-align: center; font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); }
         h1 {
-            color: var(--text-label); 
-            text-align: center; 
-            font-size: var(--font-xl); 
-            font-weight: 900; 
-            text-transform: uppercase; 
-            margin: 0 0 var(--space-xl) 0; 
+            color: var(--text-label);
+            text-align: center;
+            font-size: var(--font-xl);
+            font-weight: 900;
+            text-transform: uppercase;
+            margin: 0 0 var(--space-xl) 0;
             letter-spacing: 1px;
             text-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
         }
-
-        /* --- INPUTS --- */
         .form-group { margin-bottom: var(--space-lg); }
         .row-split { display: flex; gap: var(--space-sm); }
-        .vin-col { flex: 0.3; min-width: 70px; } 
+        .vin-col { flex: 0.3; min-width: 70px; }
         .type-col { flex: 0.7; }
-
         label {
-            color: var(--text-label); 
-            display: block; 
-            font-size: var(--font-xs); 
-            font-weight: 800; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
+            color: var(--text-label);
+            display: block;
+            font-size: var(--font-xs);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             margin-bottom: var(--space-xs);
-            white-space: nowrap; 
+            white-space: nowrap;
         }
         input, textarea {
-            width: 100%; 
-            background-color: var(--bg-input); 
-            border: 1px solid var(--border-color); 
+            width: 100%;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
             color: white;
-            padding: var(--space-md); 
-            border-radius: var(--radius); 
-            font-size: 16px; /* Fixed to prevent iOS zoom */
-            box-sizing: border-box; 
+            padding: var(--space-md);
+            border-radius: var(--radius);
+            font-size: 16px;
+            box-sizing: border-box;
             outline: none;
             transition: border-color 0.2s;
             min-height: var(--min-touch);
         }
-        
-        #vehicleType {
-            font-size: var(--font-sm); 
-            white-space: normal;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
+        #vehicleType { font-size: var(--font-sm); white-space: normal; overflow: hidden; text-overflow: ellipsis; }
         input:focus, textarea:focus { border-color: var(--text-label); }
-
-        /* Readonly Styling */
-        input[readonly] {
-            background-color: #1a202c; 
-            font-weight: bold;
-            cursor: not-allowed;
-            border-color: #2d3748;
-            color: #6b7280; 
-        }
-        
-        /* Auto-Fix Colors */
+        input[readonly] { background-color: #1a202c; font-weight: bold; cursor: not-allowed; border-color: #2d3748; color: #6b7280; }
         input[readonly].gas-mode { color: #ef4444 !important; border-color: #ef4444; }
         input[readonly].diesel-mode { color: #4ade80 !important; border-color: #4ade80; }
         input[readonly].electric-mode { color: #ffffff !important; border-color: #ffffff; }
-
-        /* ISSUE DESCRIPTION TEXTAREA */
-        #issueDescription {
-            min-height: 120px;
-            font-size: 16px;
-            line-height: 1.5;
-            resize: vertical;
-        }
-
-        /* --- CAMERA BOX --- */
+        #issueDescription { min-height: 120px; font-size: 16px; line-height: 1.5; resize: vertical; }
         .camera-box {
-            border: 2px dashed #4b5563; 
-            border-radius: var(--radius); 
+            border: 2px dashed #4b5563;
+            border-radius: var(--radius);
             height: clamp(120px, 32vw, 140px);
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             justify-content: center;
-            cursor: pointer; 
+            cursor: pointer;
             background-color: rgba(255,255,255,0.02);
-            position: relative; 
-            overflow: hidden; 
+            position: relative;
+            overflow: hidden;
             transition: border-color 0.2s;
         }
-        .camera-box:hover { 
-            border-color: var(--text-label); 
-            background-color: rgba(59, 130, 246, 0.05); 
-        }
-        #photoInput { 
-            position: absolute; 
-            width: 100%; 
-            height: 100%; 
-            opacity: 0; 
-            cursor: pointer; 
-            z-index: 10; 
-        }
-        
-        .camera-icon { 
-            width: clamp(32px, 9vw, 40px); 
-            height: clamp(32px, 9vw, 40px); 
-            fill: #cbd5e1; 
-            margin-bottom: var(--space-sm); 
-            z-index: 6; 
-        }
-        .camera-title { 
-            font-size: var(--font-sm); 
-            font-weight: 800; 
-            color: white; 
-            letter-spacing: 0.5px; 
-            margin-bottom: var(--space-xs); 
-            z-index: 6; 
-        }
-        .camera-sub { 
-            font-size: var(--font-xs); 
-            font-weight: 700; 
-            color: #ef4444; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
-            z-index: 6; 
-        }
-
-        /* --- SUBMIT --- */
+        .camera-box:hover { border-color: var(--text-label); background-color: rgba(59, 130, 246, 0.05); }
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+        .camera-icon { width: clamp(32px, 9vw, 40px); height: clamp(32px, 9vw, 40px); fill: #cbd5e1; margin-bottom: var(--space-sm); z-index: 6; }
+        .camera-title { font-size: var(--font-sm); font-weight: 800; color: white; letter-spacing: 0.5px; margin-bottom: var(--space-xs); z-index: 6; }
+        .camera-sub { font-size: var(--font-xs); font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; z-index: 6; }
         .submit-btn {
-            width: 100%; 
+            width: 100%;
             background: var(--primary-gradient);
-            color: white; 
+            color: white;
             border: none;
-            padding: var(--space-lg); 
+            padding: var(--space-lg);
             border-radius: clamp(12px, 3vw, 16px);
-            font-weight: 900; 
+            font-weight: 900;
             font-size: var(--font-md);
-            text-transform: uppercase; 
+            text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-top: var(--space-xl); 
+            margin-top: var(--space-xl);
             cursor: pointer;
             box-shadow: 0 6px 24px rgba(30, 136, 229, 0.4);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             min-height: clamp(50px, 12vw, 56px);
         }
-        .submit-btn:hover:not(:disabled) {
-            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(30, 136, 229, 0.5);
-        }
-        .submit-btn:active:not(:disabled) {
-            transform: translateY(0);
-            box-shadow: 0 4px 16px rgba(30, 136, 229, 0.4);
-        }
+        .submit-btn:hover:not(:disabled) { background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(30, 136, 229, 0.5); }
+        .submit-btn:active:not(:disabled) { transform: translateY(0); box-shadow: 0 4px 16px rgba(30, 136, 229, 0.4); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* --- RESPONSIVE BREAKPOINTS --- */
-        @media (max-width: 340px) {
-            body { padding: 8px; }
-            .container { padding: 12px; }
-        }
-
-        @media (min-width: 768px) {
-            :root {
-                --font-xs: 12px;
-                --font-sm: 13px;
-                --font-base: 15px;
-                --font-md: 16px;
-                --font-lg: 18px;
-                --font-xl: 24px;
-            }
-        }
-
-        @media (max-height: 600px) and (orientation: landscape) {
-            .camera-box { height: clamp(100px, 25vw, 120px); }
-        }
-
-        /* iOS-specific fix */
-        @supports (-webkit-touch-callout: none) {
-            input, textarea, select {
-                font-size: 16px !important;
-            }
-        }
+        @media (max-width: 340px) { body { padding: 8px; } .container { padding: 12px; } }
+        @media (min-width: 768px) { :root { --font-xs: 12px; --font-sm: 13px; --font-base: 15px; --font-md: 16px; --font-lg: 18px; --font-xl: 24px; } }
+        @media (max-height: 600px) and (orientation: landscape) { .camera-box { height: clamp(100px, 25vw, 120px); } }
+        @supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }
     </style>
 </head>
 <body>
-
 <div class="container">
     <a href="/" class="back-link">← Back to Menu</a>
-    
-    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.1</div>
-    
+    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.6</div>
     <img src="./Final-01.jpg" alt="Strategic Logistics Logo" class="logo-header">
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Report Issue</h1>
-    
     <div class="form-group">
         <label>Driver Full Name</label>
         <input type="text" id="driverName" placeholder="Enter Full Name">
     </div>
-
     <div class="form-group row-split">
         <div class="vin-col">
             <label>Last 4 VIN</label>
@@ -322,12 +197,10 @@
             <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
         </div>
     </div>
-
     <div class="form-group">
         <label>Describe the Issue (1-2 sentences)</label>
         <textarea id="issueDescription" placeholder="Example: 'The brakes are making a loud grinding noise when I press them' or 'The vehicle won't start and the battery light is on'" required></textarea>
     </div>
-
     <div class="form-group" style="margin-top: 25px;">
         <label>LIVE CAMERA (PHOTO/VIDEO REQUIRED)</label>
         <div class="camera-box">
@@ -339,12 +212,9 @@
             <div class="camera-sub">PHOTO/VIDEO REQUIRED</div>
         </div>
     </div>
-
     <button class="submit-btn" onclick="submitForm()">Submit Report</button>
 </div>
-
 <script>
-// --- FULL VIN DATABASE ---
 const vinDatabase = {
     "7097": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
     "1288": { type: "Custom Delivery Van 12ft (Gas)", fuel: "gas", hasTow: false },
@@ -390,94 +260,96 @@ const vinDatabase = {
     "7403": { type: "Extra Large Van (Gas)", fuel: "gas", hasTow: true }
 };
 
-// --- GLOBAL VARIABLES ---
 let photos = [];
+let photosReady = false;  // true once all FileReaders complete
 let isSubmitting = false;
 
-// --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ts').innerText = new Date().toLocaleString();
     document.getElementById('vinInput').addEventListener('keyup', checkVin);
 
     const photoInput = document.getElementById('photoInput');
-
     photoInput.addEventListener('change', function(e) {
         const files = Array.from(e.target.files);
-        if(files.length > 0) {
-            const fileCount = files.length;
-            document.querySelector('.camera-title').innerText = fileCount === 1 ? `FILE CAPTURED` : `${fileCount} FILES CAPTURED`;
-            document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
-            document.querySelector('.camera-sub').style.color = "#4ade80"; 
-            document.querySelector('.camera-icon').style.fill = '#4ade80';
-            
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
-                };
-                reader.readAsDataURL(file);
-            });
-        }
+        if (files.length === 0) return;
+
+        photos = [];
+        photosReady = false;
+
+        const fileCount = files.length;
+        document.querySelector('.camera-title').innerText = fileCount === 1 ? 'FILE CAPTURED' : `${fileCount} FILES CAPTURED`;
+        document.querySelector('.camera-sub').innerText = "PROCESSING...";
+        document.querySelector('.camera-sub').style.color = "#f59e0b";
+        document.querySelector('.camera-icon').style.fill = '#f59e0b';
+
+        let loaded = 0;
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
+                loaded++;
+                if (loaded === files.length) {
+                    photosReady = true;
+                    document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
+                    document.querySelector('.camera-sub').style.color = "#4ade80";
+                    document.querySelector('.camera-icon').style.fill = '#4ade80';
+                }
+            };
+            reader.onerror = function() {
+                loaded++;
+                if (loaded === files.length) { photosReady = photos.length > 0; }
+            };
+            reader.readAsDataURL(file);
+        });
     });
 });
 
-// --- CORE FUNCTIONS ---
 function checkVin() {
     let vin = document.getElementById('vinInput').value.toUpperCase();
     const typeBox = document.getElementById('vehicleType');
-
     typeBox.classList.remove('diesel-mode', 'gas-mode', 'electric-mode');
-    
     if (vin.length === 4) {
         let found = vinDatabase[vin];
-        if (vin.startsWith("W")) { 
-            typeBox.value = "Mercedes (Diesel)"; 
+        if (vin.startsWith("W")) {
+            typeBox.value = "Mercedes (Diesel)";
             typeBox.classList.add('diesel-mode');
-            return; 
+            return;
         }
         if (found) {
-            typeBox.value = found.type; 
-            
-            if (found.fuel === 'electric') {
-                typeBox.classList.add('electric-mode');
-            } else if (found.fuel === 'diesel') { 
-                typeBox.classList.add('diesel-mode'); 
-            } else { 
-                typeBox.classList.add('gas-mode'); 
-            }
+            typeBox.value = found.type;
+            if (found.fuel === 'electric') { typeBox.classList.add('electric-mode'); }
+            else if (found.fuel === 'diesel') { typeBox.classList.add('diesel-mode'); }
+            else { typeBox.classList.add('gas-mode'); }
         } else {
             typeBox.value = "Unknown Vehicle";
         }
-    } else { 
+    } else {
         typeBox.value = "";
     }
 }
 
 async function submitForm() {
     if (isSubmitting) return;
-
     const driverName = document.getElementById('driverName').value;
     const vin = document.getElementById('vinInput').value;
     const vehicleType = document.getElementById('vehicleType').value;
     const issueDescription = document.getElementById('issueDescription').value;
-
     if(!driverName) { alert("Please enter Driver Name"); return; }
     if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
-    if(!issueDescription || issueDescription.trim().length === 0) { 
-        alert("Please describe the issue in 1-2 sentences."); 
-        return; 
+    if(!issueDescription || issueDescription.trim().length === 0) { alert("Please describe the issue in 1-2 sentences."); return; }
+    if (photos.length === 0 && !photosReady) {
+        alert("Photo or video documentation is required.");
+        return;
     }
-    if(photos.length === 0) { 
-        alert("Photo or video documentation is required."); 
-        return; 
+    if (photos.length > 0 && !photosReady) {
+        alert("Files are still loading — please wait a moment and try again.");
+        return;
     }
-
     isSubmitting = true;
     const btn = document.querySelector('.submit-btn');
     btn.innerText = "SUBMITTING...";
     btn.style.opacity = "0.7";
     btn.disabled = true;
-
     const payload = {
         driverName: driverName,
         vinLast4: vin,
@@ -487,7 +359,6 @@ async function submitForm() {
         time: new Date().toLocaleTimeString(),
         photos: photos
     };
-
     try {
         const res = await fetch('/submit-issue-ai', {
             method: 'POST',
@@ -507,11 +378,10 @@ async function submitForm() {
         btn.innerText = "SUBMIT REPORT";
         btn.style.opacity = "1";
         btn.disabled = false;
+        // Don't reset photos/photosReady — driver can retry with same files
     }
 }
 </script>
-    
 <script src="/auto-refresh.js"></script>
-
 </body>
 </html>
