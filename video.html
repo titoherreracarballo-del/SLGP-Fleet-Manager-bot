@@ -1847,7 +1847,7 @@
                         // Ease toward 90%: fast up to ~60%, then slow
                         const step = simPct < 60 ? 2.5 : simPct < 80 ? 1.2 : 0.4;
                         simPct = Math.min(simPct + step, 90);
-                        setProgress(Math.round(simPct * 0.5),
+                        setProgress(Math.round(simPct),
                             `Uploading ${fileMB}MB... ${Math.round(simPct)}%`);
                         simTimer = setTimeout(tickSim, 600);
                     }
@@ -1862,7 +1862,7 @@
                             const pct    = Math.round((e.loaded / e.total) * 100);
                             const loaded = (e.loaded / 1024 / 1024).toFixed(1);
                             const total  = (e.total  / 1024 / 1024).toFixed(1);
-                            setProgress(Math.round(pct * 0.5),
+                            setProgress(pct,
                                 `Uploading: ${pct}% (${loaded}/${total}MB)`);
                         }
                     });
@@ -1896,7 +1896,7 @@
                 });
 
                 // File received by server — animate bar to 55% while it processes
-                setProgress(55, '✅ File received — processing...');
+                setProgress(100, '✅ File received — processing...');
 
                 // File is on the server — driver is done. 
                 // All enhancement + Drive upload happens silently in the background.
