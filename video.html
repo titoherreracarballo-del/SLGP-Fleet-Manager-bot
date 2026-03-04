@@ -753,7 +753,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE: 2500000, // Optimized for upload speed - server enhances to 20Mbps
+        VIDEO_BITRATE: 8000000, // 8 Mbps - minimum for clean 1080p source (48s = ~48MB, 5s = ~5MB)
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -1098,7 +1098,7 @@
         initStabilizer();
 
         // Capture stream from canvas for recording (+ original audio)
-        stabStream = stabCanvas.captureStream(30);
+        stabStream = stabCanvas.captureStream(30); // 30fps - canvas must match camera resolution before this call
 
         // Add audio tracks from camera stream
         if (currentStream) {
@@ -1600,14 +1600,15 @@
 
             requestWakeLock();
 
+            // H.264 first - Android Chrome encoder support is most reliable for recording
+            // H.265/AV1 browsers support decoding but rarely encoding via MediaRecorder
             const codecOptions = [
-                { mimeType: 'video/mp4; codecs="hvc1"', name: 'H.265 (HEVC)' },
-                { mimeType: 'video/webm; codecs="av01.0.05M.08,opus"', name: 'AV1' },
-                { mimeType: 'video/webm; codecs="vp9,opus"', name: 'VP9' },
-                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High' },
-                { mimeType: 'video/mp4; codecs="avc1"', name: 'H.264' },
-                { mimeType: 'video/webm; codecs="vp8,opus"', name: 'VP8' },
-                { mimeType: 'video/webm', name: 'WebM' }
+                { mimeType: 'video/mp4; codecs="avc1.640033"', name: 'H.264 High L5.1' },
+                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High L4.2' },
+                { mimeType: 'video/mp4; codecs="avc1"',        name: 'H.264' },
+                { mimeType: 'video/webm; codecs="vp9,opus"',   name: 'VP9' },
+                { mimeType: 'video/webm; codecs="vp8,opus"',   name: 'VP8' },
+                { mimeType: 'video/webm',                        name: 'WebM' }
             ];
 
             let selectedOption = codecOptions.find(opt => MediaRecorder.isTypeSupported(opt.mimeType));
