@@ -1321,17 +1321,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 });
 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
+                // scale=1920:1080 forces true 1080p even if device recorded 720p
+                // lanczos = highest quality upscaling algorithm
                 const fullFilters = [
+                    'scale=1920:1080:flags=lanczos',
                     'hqdn3d=4:3:6:4.5',
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
                     'unsharp=5:5:1.0:5:5:0.5'
                 ];
-                // Basic fallback: color + sharpen only (works with standard ffmpeg)
+                // Basic fallback: scale + color + sharpen (works with standard ffmpeg)
                 const basicFilters = [
+                    'scale=1920:1080:flags=lanczos',
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
                     'unsharp=5:5:1.0:5:5:0.5'
                 ];
-
                 try {
                     console.log('🎨 Attempting full enhancement (hqdn3d + color + sharpen)...');
                     await runFFmpeg(fullFilters);
