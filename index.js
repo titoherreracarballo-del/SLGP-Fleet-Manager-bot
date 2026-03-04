@@ -119,7 +119,8 @@ const BUILD_INFO = {
 };
 
 const VOLUME_PATH = '/app/meshcentral-data';
-const UPLOAD_DIR = path.join(VOLUME_PATH, 'uploads');
+const UPLOAD_DIR    = path.join(VOLUME_PATH, 'uploads');
+const ENHANCED_DIR  = path.join(VOLUME_PATH, 'enhanced'); // FFmpeg output - always writable on Railway
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
 const GATE_LOG_FILE = path.join(VOLUME_PATH, 'gate_acknowledgments.json');
@@ -143,7 +144,7 @@ const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 // DIRECTORY INITIALIZATION
 // ============================================
 async function ensureDirectories() {
-    const dirs = [UPLOAD_DIR, LOGS_DIR];
+    const dirs = [UPLOAD_DIR, LOGS_DIR, ENHANCED_DIR];
     for (const dir of dirs) {
         if (!fs.existsSync(dir)) {
             try {
@@ -768,14 +769,24 @@ function initializeLearningSystem() {
 initializeLearningSystem();
 
 function loadLearningData() {
+    const defaultHistory  = { total_issues: 0, classifications: [], patterns: {}, last_updated: null };
+    const defaultKnowledge = { common_issues: {}, learned_patterns: {}, last_updated: null };
+    let history  = defaultHistory;
+    let knowledge = defaultKnowledge;
     try {
-        const history = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
-        const knowledge = JSON.parse(fs.readFileSync(KNOWLEDGE_BASE_FILE, 'utf8'));
-        return { history, knowledge };
-    } catch (e) {
-        console.error('Failed to load learning data:', e);
-        return { history: { classifications: [] }, knowledge: { common_issues: {} } };
-    }
+        if (fs.existsSync(ISSUE_HISTORY_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
+            // Merge with defaults so missing fields don't crash saveClassification
+            history = { ...defaultHistory, ...parsed };
+        }
+    } catch (e) { console.error('Failed to load issue history, using defaults:', e.message); }
+    try {
+        if (fs.existsSync(KNOWLEDGE_BASE_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(KNOWLEDGE_BASE_FILE, 'utf8'));
+            knowledge = { ...defaultKnowledge, ...parsed };
+        }
+    } catch (e) { console.error('Failed to load knowledge base, using defaults:', e.message); }
+    return { history, knowledge };
 }
 
 function saveClassification(description, classification, vehicleType, vinLast4) {
@@ -836,36 +847,51 @@ function buildLearningPrompt(description, vehicleType, vinLast4, learningData) {
         fleetContext += '\nMOST COMMON ISSUES IN THIS FLEET:\n';
         topIssues.forEach(([key, data]) => { fleetContext += `- ${data.category} (${data.fleet_frequency} occurrences)\n`; });
     }
-    return `You are analyzing a vehicle issue for SLGP Fleet. Use your knowledge AND the historical data below to make an accurate classification.
+    return `You are a fleet vehicle issue classifier for SLGP Fleet. Classify the issue below into exactly ONE priority level.
 
 CURRENT ISSUE: "${description}"
 VEHICLE: ${vehicleType || 'Unknown'} (VIN: ${vinLast4})
 ${historicalContext}${fleetContext}
 
-CLASSIFICATION RULES:
-1. HIGH PRIORITY - Safety-critical issues requiring immediate attention:
-   - Brakes squealing/grinding/failure, Tire blowout/extreme wear/flat tire
-   - Steering problems/column loose, Vehicle won't start/dead battery
-   - Burning smell/fluid leaks, Doors stuck (affects deliveries)
-   - Lights out (safety hazard), Backup camera failure
-   - Low DEF warning (diesel), Missing license plate/tag
+CLASSIFICATION RULES — read carefully before deciding:
 
-2. EDV_ELECTRIC - Electric vehicle specific issues (Rivian fleet):
-   - Key fob battery low, Vehicle not charging/charging issues
-   - Electric system warning lights, Bulkhead door problems
-   - Severe body damage, Broken mirror/glass
+1. HIGH_PRIORITY — immediate safety risk or vehicle cannot operate:
+   - Brakes: grinding, squealing, pedal sinking, failure
+   - Tires: blowout, flat, dangerously low tread
+   - Steering: loose, unresponsive, pulling severely
+   - Engine: won't start, stalls while driving, overheating warning
+   - Fluids: active leak, burning smell, smoke
+   - Lights: headlights/brake lights out (safety hazard at night)
+   - Backup camera: completely failed (delivery safety)
+   - DEF level critical (diesel only — causes engine derate)
+   - Doors: won't close/latch while driving
 
-3. LOW_PRIORITY - Minor issues not affecting immediate safety/operation:
-   - Light scratches/cosmetic damage, Interior cleanliness
-   - Door sensor errors (non-critical), Seat adjustment problems
-   - Radio/audio malfunctions, QR code faded/unreadable
+2. EDV_ELECTRIC — Rivian electric vehicle specific issues ONLY:
+   - Vehicle not charging / charging port damaged
+   - Key fob battery dead/low
+   - Bulkhead door malfunction
+   - Electric drivetrain warning lights
+   - Battery range dramatically reduced
 
-Respond ONLY with valid JSON (no markdown, no backticks):
+3. LOW_PRIORITY — cosmetic or minor convenience issues, vehicle is still safe and operational:
+   - Scratches, dents, paint scuffs
+   - Interior dirt, damage, smell
+   - Radio, A/C, seat adjustment, mirror adjustment
+   - Door sensor false alarm (vehicle drives fine)
+   - QR code faded, sticker peeling
+   - Broken mirror glass (not affecting drive safety)
+   - Windshield chip (not in driver sightline)
+   - Missing license plate frame (not the plate itself)
+   - Minor body damage with no mechanical impact
+
+IMPORTANT: If the vehicle is still safe to drive and the issue is cosmetic or a minor inconvenience, always use LOW_PRIORITY. Only use HIGH_PRIORITY if there is a real safety risk or the vehicle cannot complete its route.
+
+Respond ONLY with valid JSON. No markdown, no backticks, no explanation outside the JSON:
 {
   "priority": "HIGH_PRIORITY" or "EDV_ELECTRIC" or "LOW_PRIORITY",
-  "category": "specific issue category from lists above",
+  "category": "concise issue label e.g. Brake Grinding, Flat Tire, Light Scratch",
   "confidence": 0.0 to 1.0,
-  "reasoning": "brief explanation including any historical pattern matches"
+  "reasoning": "one sentence explaining the classification"
 }`;
 }
 
@@ -885,15 +911,23 @@ app.post('/submit-issue-ai', async (req, res) => {
         const classificationPrompt = buildLearningPrompt(issueDescription, vehicleType, vinLast4, learningData);
         let aiResponse = null;
         try {
-            const apiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            // Gemini Pro — same prompt, different endpoint + response shape
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY || ''}`;
+            const apiResponse = await fetch(geminiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
-                body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: classificationPrompt }] })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: classificationPrompt }] }],
+                    generationConfig: { maxOutputTokens: 500, temperature: 0.2, responseMimeType: 'application/json' }
+                })
             });
-            if (!apiResponse.ok) { throw new Error(`Claude API error: ${apiResponse.status}`); }
+            if (!apiResponse.ok) { throw new Error(`Gemini API error: ${apiResponse.status}`); }
             const apiData = await apiResponse.json();
-            const responseText = apiData.content[0].text;
-            aiResponse = JSON.parse(responseText);
+            // Gemini response: candidates[0].content.parts[0].text
+            const responseText = apiData.candidates[0].content.parts[0].text;
+            // Strip markdown code fences if Gemini wraps JSON in ```json ... ```
+            const cleanText = responseText.replace(/```json|```/g, '').trim();
+            aiResponse = JSON.parse(cleanText);
             console.log(`🤖 Classification: ${aiResponse.priority} - ${aiResponse.category}`);
             console.log(`📊 Confidence: ${Math.round(aiResponse.confidence * 100)}%`);
             saveClassification(issueDescription, aiResponse, vehicleType, vinLast4);
@@ -982,6 +1016,193 @@ app.get('/api/knowledge-base', (req, res) => {
         const history = JSON.parse(fs.readFileSync(ISSUE_HISTORY_FILE, 'utf8'));
         res.json({ knowledge_base: knowledge, issue_history: { total_issues: history.total_issues, patterns: history.patterns, recent_classifications: history.classifications.slice(-10) } });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ============================================
+// BUILD NOTES ENDPOINT
+// Single source of truth for changelog.
+// build-notes.html fetches this and renders
+// dynamically — no manual HTML edits needed.
+// Add a new entry here when deploying a build.
+// ============================================
+const BUILD_NOTES = [
+    {
+        version: '4.6.6',
+        date: 'March 4, 2026',
+        changes: [
+            {
+                type: 'fix',
+                title: '🔧 AI CLASSIFIER FIXES',
+                items: [
+                    { highlight: 'Gemini Pro:', text: 'Swapped Anthropic Claude for Google Gemini Pro (uses existing subscription, no extra cost)' },
+                    { highlight: 'Prompt Rebalanced:', text: 'Rewrote classification rules — HIGH_PRIORITY and LOW_PRIORITY now have equal weight with clear examples' },
+                    { highlight: 'Everything-High-Priority Bug Fixed:', text: 'Prompt now includes explicit IMPORTANT rule: if vehicle is safe to drive, use LOW_PRIORITY' },
+                    { highlight: 'EDV Miscategorization Fixed:', text: 'Body damage and broken mirrors moved out of EDV_ELECTRIC (they have nothing to do with electric vehicles)' },
+                    { highlight: 'JSON Enforcement:', text: 'Added responseMimeType: application/json to Gemini config — model returns clean JSON, no markdown fences' },
+                    { highlight: 'Learning DB Fixed:', text: 'loadLearningData now uses safe defaults — missing fields no longer cause NaN in history counters' }
+                ]
+            },
+            {
+                type: 'fix',
+                title: '🔧 REPORT ISSUE PAGE',
+                items: [
+                    { highlight: 'FileReader Race Condition Fixed:', text: 'Photos submitted immediately after selection no longer arrive empty — submit waits until all files are fully loaded' },
+                    { highlight: 'PROCESSING State:', text: 'Camera box shows amber "PROCESSING..." while files load, green "READY TO SUBMIT" when safe' },
+                    { highlight: 'Version Updated:', text: 'report-issue.html bumped to v4.6.6' }
+                ]
+            },
+            {
+                type: 'new',
+                title: '🔁 AUTO RETRY SYSTEM',
+                items: [
+                    { highlight: 'Intelligent Retry:', text: 'Failed Drive uploads (network/timeout errors) automatically retry — up to 3 attempts with exponential backoff' },
+                    { highlight: 'Backoff Schedule:', text: 'Attempt 1 after 30s, attempt 2 after 2 min, attempt 3 after 5 min' },
+                    { highlight: 'File Preserved:', text: 'Video file kept on server between attempts — only deleted after success or all retries exhausted' },
+                    { highlight: 'Retry Email:', text: 'Notification email sent on successful retry, marked as retry so fleet manager knows' },
+                    { highlight: 'Agent Driven:', text: 'agent.js watches retry_queue.json every 60s and calls internal retry endpoint on index.js' },
+                    { highlight: 'Non-Retriable Fast Fail:', text: 'Corrupt files, auth errors, missing fields cleaned up immediately without wasting retry attempts' }
+                ]
+            },
+            {
+                type: 'new',
+                title: '🤖 MAINTENANCE AGENT',
+                items: [
+                    { highlight: 'Self-Healing Server:', text: 'agent.js forks on boot — runs 6 automated maintenance tasks in background' },
+                    { highlight: 'Orphan FFmpeg Killer:', text: 'Scans every 2 min, kills stuck FFmpeg processes older than 5 min (never touches active jobs)' },
+                    { highlight: 'Upload Reaper:', text: 'Deletes stale temp files >10 min old every 5 min — prevents volume fill' },
+                    { highlight: 'Log Rotation:', text: 'Trims log files >500KB to last 200 entries every 30 min' },
+                    { highlight: 'Memory Watchdog:', text: 'Warns if heap exceeds 400MB every 5 min' },
+                    { highlight: 'Health Ping:', text: 'Hits /version every 5 min, logs if response >3s' },
+                    { highlight: 'Midnight Summary:', text: 'Daily disk usage report at 23:58' },
+                    { highlight: 'Auto-Restarts:', text: 'If agent crashes, index.js respawns it after 30s' }
+                ]
+            },
+            {
+                type: 'optimize',
+                title: '🎥 VIDEO QUALITY IMPROVEMENTS',
+                items: [
+                    { highlight: '8 Mbps Recording:', text: 'Source quality raised from 5 Mbps — better input for FFmpeg enhancement' },
+                    { highlight: 'H.264 Priority:', text: 'Codec order flipped — H.264 variants tried first for Android compatibility (H.265/AV1 removed from recording list)' },
+                    { highlight: 'Force 1080p Output:', text: 'FFmpeg now applies scale=1920:1080 lanczos — devices recording at 720p get upscaled to true 1080p' },
+                    { highlight: '100MB Limit:', text: 'Upload ceiling raised from 50MB — 8 Mbps × 60s = ~60MB, well under limit' },
+                    { highlight: 'No Hard Stop:', text: 'Removed 30-second forced cutoff — timer counts up, driver stops when walk-around is complete' }
+                ]
+            },
+            {
+                type: 'optimize',
+                title: '📦 STABILIZER REWRITE',
+                items: [
+                    { highlight: '20% Zoom Buffer:', text: 'Increased from 8% — gives 192px correction range at 1080p before frame snaps' },
+                    { highlight: 'Velocity Damping:', text: 'Added friction-based correction — stops oscillation wobble from previous stabilizer' },
+                    { highlight: 'Temporal Smoothing:', text: '3-frame motion history averaged before applying correction' },
+                    { highlight: 'Pre-Allocated Canvas:', text: 'Detection canvas created once in initStabilizer, reused every frame — no GC pressure at 30fps' },
+                    { highlight: 'Higher Precision:', text: 'Detection canvas doubled from 32×18 to 64×36 — motion estimates 2× more accurate' }
+                ]
+            },
+            {
+                type: 'fix',
+                title: '🐛 SERVER FIXES',
+                items: [
+                    { highlight: 'FFmpeg Output Path:', text: 'Enhanced video now written to /tmp instead of /uploads — fixes permission error on Railway (code 234)' },
+                    { highlight: 'GDRIVE_FOLDER_ID Fix:', text: 'Retry endpoint was referencing wrong env var (GOOGLE_DRIVE_FOLDER_ID) — now uses VIDEO_DRIVE_ID like main upload' },
+                    { highlight: 'Immediate jobId Response:', text: 'Upload endpoint responds instantly with jobId — all FFmpeg + Drive work runs in background, driver never waits' },
+                    { highlight: 'Job Status Polling:', text: 'GET /api/job-status/:jobId returns live progress — driver app shows real-time status' }
+                ]
+            }
+        ]
+    },
+    {
+        version: '4.6.3',
+        date: 'March 2, 2026',
+        changes: [
+            {
+                type: 'new',
+                title: '🚦 GPS-BASED SPEED LIMIT READER',
+                items: [
+                    { highlight: 'Real-Time Speed Limits:', text: 'Automatic GPS-based speed limit detection for driver current location' },
+                    { highlight: 'Live Speed Monitoring:', text: 'Displays current speed vs posted limit with visual alerts' },
+                    { highlight: 'Violation Warnings:', text: 'Color-coded alerts — Green=Safe, Yellow=Caution, Red=Speeding' },
+                    { highlight: '75+ Roads:', text: 'Complete coverage across 27 delivery zones in 4 counties (Coweta, Fulton, Fayette, Meriwether)' },
+                    { highlight: 'Smart Caching:', text: '24-hour cache reduces API calls 90% — stays free at 300+ drivers' }
+                ]
+            },
+            {
+                type: 'new',
+                title: '📊 USAGE TRACKING & EMAIL ALERTS',
+                items: [
+                    { highlight: 'API Monitoring:', text: 'Tracks TomTom requests against 2,500/day free tier' },
+                    { highlight: 'Email Alerts:', text: 'Automatic notifications at 80%, 90%, 95% of daily limit' },
+                    { highlight: 'Hard Limit:', text: 'Blocks requests at 2,500/day — no surprise charges' }
+                ]
+            }
+        ]
+    },
+    {
+        version: '4.6.2',
+        date: 'March 1, 2026',
+        changes: [
+            {
+                type: 'new',
+                title: '🧠 SILENT LEARNING AI SYSTEM',
+                items: [
+                    { highlight: 'Invisible Classification:', text: 'AI analyzes issues in background — drivers never see it' },
+                    { highlight: 'Continuous Learning:', text: 'Remembers every classification and improves over time' },
+                    { highlight: 'Fleet Knowledge Base:', text: 'Builds database of common issues specific to SLGP fleet' },
+                    { highlight: 'Pattern Recognition:', text: 'Tracks issue frequency and adapts to fleet-specific problems' }
+                ]
+            }
+        ]
+    },
+    {
+        version: '4.6.1',
+        date: 'March 1, 2026',
+        changes: [
+            {
+                type: 'new',
+                title: '🚦 CORRIDOR TRAFFIC ALERTS',
+                items: [
+                    { highlight: 'Major Route Monitoring:', text: 'Real-time traffic on 8 major corridors (I-75, I-85, I-285, US-19/41, SR-74, US-29)' },
+                    { highlight: 'Smart Suggestions:', text: 'Automatic alternative route suggestions when heavy traffic detected' },
+                    { highlight: 'Zero Extra Cost:', text: 'Uses existing TomTom Traffic Flow API' }
+                ]
+            }
+        ]
+    },
+    {
+        version: '4.6.0',
+        date: 'February 28, 2026',
+        changes: [
+            {
+                type: 'new',
+                title: '✨ COMPLETE UI REDESIGN',
+                items: [
+                    { highlight: 'Modern Blue Theme:', text: 'Vibrant blue background (#0A6CF1) inspired by modern delivery apps' },
+                    { highlight: 'SF Pro Display Fonts:', text: "Upgraded to Apple's SF Pro typography system" },
+                    { highlight: 'Sunset Flash Detection:', text: 'Camera auto-enables flash after sunset using real-time API' }
+                ]
+            }
+        ]
+    },
+    {
+        version: '4.5.0',
+        date: 'February 27, 2026',
+        changes: [
+            {
+                type: 'new',
+                title: '✨ NEW FEATURES',
+                items: [
+                    { highlight: 'Build Notes Page:', text: 'Added comprehensive changelog to track all system updates' },
+                    { highlight: 'Auto-Scaling Design:', text: 'All forms use fluid responsive CSS with clamp() functions' },
+                    { highlight: 'Rivian VINs Updated:', text: 'Fleet corrected — 14 verified Rivian vehicles active' }
+                ]
+            }
+        ]
+    }
+];
+
+app.get('/api/build-notes', (req, res) => {
+    res.json({ success: true, notes: BUILD_NOTES, currentVersion: APP_VERSION });
 });
 
 // ============================================
@@ -1301,10 +1522,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 fs.renameSync(videoPath, inputPath);
                 videoPath = inputPath; // update ref for cleanup
 
-                // Write enhanced output to /tmp - always writable on Railway
-                // The uploads dir can block new file creation by FFmpeg (permission issue)
-                const enhancedFileName = path.basename(videoPath).replace('.mp4', '_enhanced.mp4');
-                enhancedVideoPath = path.join('/tmp', enhancedFileName);
+                // Write enhanced output to ENHANCED_DIR (/app/meshcentral-data/enhanced/)
+                // This is the mounted Railway volume - guaranteed writable, unlike /tmp
+                const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
+                enhancedVideoPath = path.join(ENHANCED_DIR, enhancedFileName);
 
                 ffmpeg.setFfmpegPath(ffmpegPath);
                 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
@@ -1716,7 +1937,7 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         const fileName     = `${driverName.replace(/\s+/g,'-')}_${vin}_${inspectionType}_${new Date().toISOString().split('T')[0]}.mp4`;
         const fileMetadata = {
             name:        fileName,
-            parents:     process.env.GOOGLE_DRIVE_FOLDER_ID ? [process.env.GOOGLE_DRIVE_FOLDER_ID] : [],
+            parents:     [VIDEO_DRIVE_ID], // uses same folder as main upload
             description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName} (retry)`
         };
         const media = { mimeType: 'video/mp4', body: fs.createReadStream(filePath) };
