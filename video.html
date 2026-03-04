@@ -1606,6 +1606,28 @@
                 return;
             }
 
+            // ── Validate required fields BEFORE recording starts ──
+            const driverCheck = document.getElementById('driverName').value.trim();
+            const vinCheck    = document.getElementById('vinInput').value.trim();
+            if (!driverCheck) {
+                document.getElementById('status').innerText = '⚠️ Enter your name before recording.';
+                document.getElementById('driverName').focus();
+                return;
+            }
+            if (!vinCheck || vinCheck.length < 4) {
+                document.getElementById('status').innerText = '⚠️ Enter your VIN (last 4 digits) before recording.';
+                document.getElementById('vinInput').focus();
+                return;
+            }
+            if (!inspectionType) {
+                document.getElementById('status').innerText = '⚠️ Please select an inspection type.';
+                return;
+            }
+
+            // Lock fields during recording so they can't be changed mid-session
+            document.getElementById('driverName').readOnly = true;
+            document.getElementById('vinInput').readOnly    = true;
+
             requestWakeLock();
 
             // H.264 first - Android Chrome encoder support is most reliable for recording
@@ -1640,6 +1662,10 @@
                     stopBrightnessMonitoring();
                     isRecording = false; // FIX 2: Update global flag
                     onRecordingStopped();  // trigger pending update if detected while recording
+
+                    // Unlock fields now recording is done
+                    document.getElementById('driverName').readOnly = false;
+                    document.getElementById('vinInput').readOnly    = false;
 
                     if (chunks.length === 0) { alert('Recording failed: No data captured'); return; }
 
@@ -1719,8 +1745,21 @@
         const driver = document.getElementById('driverName').value.trim();
         const vin    = document.getElementById('vinInput').value.trim();
 
-        if (!driver || !vin || !inspectionType || !videoBlob) {
-            alert('Please complete all fields and record a video.');
+        if (!videoBlob) {
+            document.getElementById('status').innerText = '⚠️ Please record a video first.';
+            return;
+        }
+        if (!driver || !vin || !inspectionType) {
+            // Fields were somehow empty — show them and the submit button so driver can fix and retry
+            document.getElementById('status').innerText = '⚠️ Please fill in your name and VIN, then tap Submit.';
+            document.getElementById('driverName').readOnly = false;
+            document.getElementById('vinInput').readOnly   = false;
+            const retryBtn = document.getElementById('btn-upload');
+            retryBtn.style.display = 'block';
+            retryBtn.innerText = 'SUBMIT INSPECTION';
+            retryBtn.disabled  = false;
+            if (!driver) document.getElementById('driverName').focus();
+            else if (!vin) document.getElementById('vinInput').focus();
             return;
         }
 
