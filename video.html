@@ -1639,7 +1639,8 @@
                     stopTimer();
                     stopBrightnessMonitoring();
                     isRecording = false; // FIX 2: Update global flag
-                    
+                    onRecordingStopped();  // trigger pending update if detected while recording
+
                     if (chunks.length === 0) { alert('Recording failed: No data captured'); return; }
 
                     videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
@@ -1874,46 +1875,69 @@
     });
 </script>
 
-<!-- FIX 1: Single service worker block with single version check, no duplicate setInterval -->
+<!-- AUTO-UPDATE: Checks server version every 15s, bypasses SW cache on reload -->
 <script>
+    // ── Service Worker Registration ──────────────────────────────
     if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-            try {
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                console.log('✅ Service Worker registered');
-                
-                let localVersion = null;
-
-                // FIX 1: Single checkForUpdates - skips reload when recording using global isRecording flag
-                // FIX 2: Uses global isRecording flag instead of broken window override
-                async function checkForUpdates() {
-                    if (isRecording) {
-                        console.log('⏸️  Skipping update check - recording in progress');
-                        return;
-                    }
-                    try {
-                        const res = await fetch('/version');
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (!localVersion) { localVersion = data.version; }
-                            else if (localVersion !== data.version) {
-                                console.log('🔄 New version detected - reloading...');
-                                window.location.reload(true);
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Update check failed:', err);
-                    }
-                }
-                
-                checkForUpdates();
-                setInterval(checkForUpdates, 30000);
-                
-            } catch (error) {
-                console.error('❌ Service Worker registration failed:', error);
-            }
-        });
+        navigator.serviceWorker.register('/sw.js')
+            .then(() => console.log('✅ Service Worker registered'))
+            .catch(e => console.warn('SW registration failed:', e));
     }
+
+    // ── Update Banner ────────────────────────────────────────────
+    function showUpdateBanner() {
+        if (document.getElementById('update-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'update-banner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:9999;background:#f59e0b;color:#000;text-align:center;padding:10px 16px;font-weight:700;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3)';
+        banner.innerHTML = '⚡ New version available — <span style="text-decoration:underline;cursor:pointer;" onclick="forceReload()">tap to update</span>';
+        document.body.prepend(banner);
+    }
+
+    // ── Force-reload bypassing SW cache ─────────────────────────
+    async function forceReload() {
+        try {
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+            }
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+            }
+        } catch(e) {}
+        window.location.href = window.location.pathname + '?v=' + Date.now();
+    }
+
+    // ── Version Polling ──────────────────────────────────────────
+    let _localVersion = null;
+    let _updatePending = false;
+
+    async function checkForUpdates() {
+        try {
+            const res = await fetch('/version?nocache=' + Date.now());
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!_localVersion) { _localVersion = data.version; return; }
+            if (_localVersion !== data.version && !_updatePending) {
+                _updatePending = true;
+                console.log('🔄 New version detected:', data.versionString);
+                if (isRecording) {
+                    showUpdateBanner(); // safe — reload when recording stops
+                } else {
+                    forceReload();
+                }
+            }
+        } catch(e) {}
+    }
+
+    // Called by onstop handler so pending update triggers after recording finishes
+    function onRecordingStopped() {
+        if (_updatePending) setTimeout(forceReload, 1500);
+    }
+
+    checkForUpdates();
+    setInterval(checkForUpdates, 15000);
 </script>
 
 </body>
