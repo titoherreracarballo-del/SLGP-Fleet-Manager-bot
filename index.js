@@ -17,6 +17,7 @@ const MAX_RETRY_ATTEMPTS = 3;
 function isRetriable(errMsg) {
     const msg = (errMsg || '').toLowerCase();
     return msg.includes('timeout') ||
+           msg.includes('timed out') ||
            msg.includes('network') ||
            msg.includes('econnreset') ||
            msg.includes('econnrefused') ||
@@ -1522,10 +1523,22 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 fs.renameSync(videoPath, inputPath);
                 videoPath = inputPath; // update ref for cleanup
 
-                // Write enhanced output to ENHANCED_DIR (/app/meshcentral-data/enhanced/)
-                // This is the mounted Railway volume - guaranteed writable, unlike /tmp
+                // Write enhanced output to ENHANCED_DIR.
+                // mkdirSync here (not just at startup) guarantees the dir exists
+                // even if the volume mount was slow or ensureDirectories() raced.
+                try {
+                    fs.mkdirSync(ENHANCED_DIR, { recursive: true });
+                    console.log(`📁 ENHANCED_DIR ready: ${ENHANCED_DIR} (exists: ${fs.existsSync(ENHANCED_DIR)})`);
+                } catch (mkdirErr) {
+                    console.error('❌ Could not create ENHANCED_DIR:', mkdirErr.message);
+                    // Fall back to UPLOAD_DIR if enhanced dir fails
+                    console.warn('⚠️  Falling back to UPLOAD_DIR for enhanced output');
+                }
                 const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
-                enhancedVideoPath = path.join(ENHANCED_DIR, enhancedFileName);
+                // Use UPLOAD_DIR as fallback if ENHANCED_DIR doesn't exist
+                const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
+                enhancedVideoPath = path.join(outputDir, enhancedFileName);
+                console.log(`📁 Enhanced output: ${enhancedVideoPath}`);
 
                 ffmpeg.setFfmpegPath(ffmpegPath);
                 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
@@ -1540,12 +1553,14 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         .videoBitrate('20M')
                         .videoCodec('libx264')
                         .outputOptions([
+                            '-y',                   // overwrite output if it somehow exists
                             '-preset medium',
                             '-crf 18',
                             '-profile:v high',
                             '-level 4.2',
                             '-movflags +faststart',
-                            '-pix_fmt yuv420p'
+                            '-pix_fmt yuv420p',
+                            '-f mp4'               // force mp4 container (prevents format confusion)
                         ])
                         .audioCodec('aac')
                         .audioBitrate('128k')
