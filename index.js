@@ -9,7 +9,49 @@ const { execSync, fork } = require('child_process');
 // touches a live enhancement job
 // ============================================
 const activeFfmpegPids = new Set();
-const ACTIVE_PIDS_FILE = '/app/meshcentral-data/active_pids.json';
+const ACTIVE_PIDS_FILE  = '/app/meshcentral-data/active_pids.json';
+const RETRY_QUEUE_FILE  = '/app/meshcentral-data/retry_queue.json';
+const MAX_RETRY_ATTEMPTS = 3;
+
+// Errors worth retrying — network/timeout blips, not corrupt files or auth failures
+function isRetriable(errMsg) {
+    const msg = (errMsg || '').toLowerCase();
+    return msg.includes('timeout') ||
+           msg.includes('network') ||
+           msg.includes('econnreset') ||
+           msg.includes('econnrefused') ||
+           msg.includes('etimedout') ||
+           msg.includes('socket hang up') ||
+           msg.includes('fetch failed') ||
+           msg.includes('enotfound');
+}
+
+function saveToRetryQueue(entry) {
+    try {
+        let queue = [];
+        if (fs.existsSync(RETRY_QUEUE_FILE)) {
+            queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+        }
+        // Remove any existing entry for this jobId before adding fresh
+        queue = queue.filter(e => e.jobId !== entry.jobId);
+        queue.push(entry);
+        fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(queue, null, 2));
+        console.log(`📋 Job ${entry.jobId} saved to retry queue (attempt ${entry.attemptCount}/${MAX_RETRY_ATTEMPTS})`);
+    } catch (e) {
+        console.error('Failed to write retry queue:', e.message);
+    }
+}
+
+function removeFromRetryQueue(jobId) {
+    try {
+        if (!fs.existsSync(RETRY_QUEUE_FILE)) return;
+        let queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+        queue = queue.filter(e => e.jobId !== jobId);
+        fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(queue, null, 2));
+    } catch (e) {
+        console.error('Failed to update retry queue:', e.message);
+    }
+}
 // ============================================
 // JOB TRACKING STORE
 // Decouples upload receipt from processing so
@@ -1547,20 +1589,49 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             ip: req.ip
         });
 
-        for (const p of [videoPath, enhancedVideoPath]) {
-            if (p && fs.existsSync(p)) {
-                try { fs.unlinkSync(p); } catch (e) {}
+        // ── Retry logic ─────────────────────────────────────────
+        // If error is network/timeout and the video file still exists,
+        // save to retry queue BEFORE cleanup so agent can re-attempt Drive upload
+        const survivingFile = [enhancedVideoPath, videoPath].find(p => p && fs.existsSync(p));
+        if (isRetriable(error.message) && survivingFile) {
+            console.log(`🔁 Retriable error — preserving file for agent retry: ${survivingFile}`);
+            saveToRetryQueue({
+                jobId,
+                filePath:       survivingFile,
+                driverName,
+                vin,
+                inspectionType,
+                fileSizeMB,
+                wasEnhanced,
+                failedAt:       Date.now(),
+                attemptCount:   1,
+                lastError:      error.message
+            });
+            updateJob(jobId, {
+                status:   'failed',
+                stage:    'Queued for retry',
+                progress: 0,
+                message:  'Upload failed — retrying automatically...',
+                error:    error.message
+            });
+            console.log(`🔁 Job ${jobId} queued for retry by agent`);
+        } else {
+            // Non-retriable (corrupt file, auth error, etc) — clean up and mark permanent failure
+            for (const p of [videoPath, enhancedVideoPath]) {
+                if (p && fs.existsSync(p)) {
+                    try { fs.unlinkSync(p); } catch (e) {}
+                }
             }
+            console.log('✅ Cleaned up temp files after non-retriable error');
+            updateJob(jobId, {
+                status:   'failed',
+                stage:    'Error',
+                progress: 0,
+                message:  `Upload failed: ${error.message}`,
+                error:    error.message
+            });
+            console.log(`❌ Job ${jobId} permanently failed: ${error.message}`);
         }
-        console.log('✅ Cleaned up temp files after error');
-        updateJob(jobId, {
-            status: 'failed',
-            stage: 'Error',
-            progress: 0,
-            message: `Upload failed: ${error.message}`,
-            error: error.message
-        });
-        console.log(`❌ Job ${jobId} failed: ${error.message}`);
     }
 });
 
@@ -1584,6 +1655,161 @@ app.get('/api/job-status/:jobId', (req, res) => {
         error: job.error || null,
         elapsed: Math.round((Date.now() - job.createdAt) / 1000)
     });
+});
+
+// ============================================
+// INTERNAL RETRY ENDPOINT
+// Called by agent.js to re-attempt a failed Drive
+// upload without re-uploading the file from the phone
+// ============================================
+app.post('/api/internal/retry-job/:jobId', async (req, res) => {
+    // Security: only allow calls from localhost (agent runs on same container)
+    const callerIp = req.ip || req.connection.remoteAddress || '';
+    if (!callerIp.includes('127.0.0.1') && !callerIp.includes('::1') && !callerIp.includes('localhost')) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    const { jobId } = req.params;
+
+    // Read retry queue
+    let queue = [];
+    try {
+        if (fs.existsSync(RETRY_QUEUE_FILE)) {
+            queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+        }
+    } catch (e) {
+        return res.status(500).json({ success: false, error: 'Could not read retry queue' });
+    }
+
+    const entry = queue.find(e => e.jobId === jobId);
+    if (!entry) {
+        return res.status(404).json({ success: false, error: 'Job not in retry queue' });
+    }
+
+    // Check file still exists
+    if (!fs.existsSync(entry.filePath)) {
+        console.warn(`⚠️  Retry ${jobId}: file gone (${entry.filePath}), removing from queue`);
+        removeFromRetryQueue(jobId);
+        return res.status(410).json({ success: false, error: 'Video file no longer exists' });
+    }
+
+    // Check max attempts
+    if (entry.attemptCount > MAX_RETRY_ATTEMPTS) {
+        console.warn(`⚠️  Retry ${jobId}: max attempts (${MAX_RETRY_ATTEMPTS}) reached — giving up`);
+        removeFromRetryQueue(jobId);
+        try { fs.unlinkSync(entry.filePath); } catch(e) {}
+        return res.status(410).json({ success: false, error: 'Max retry attempts exceeded' });
+    }
+
+    console.log(`🔁 Agent retry ${entry.attemptCount}/${MAX_RETRY_ATTEMPTS} for job ${jobId} (${entry.driverName} / ${entry.vin})`);
+
+    // Respond immediately — retry runs async
+    res.json({ success: true, message: `Retry ${entry.attemptCount} started`, jobId });
+
+    // ── Re-attempt Drive upload ──────────────────────────────────
+    try {
+        const { driverName, vin, inspectionType, fileSizeMB, wasEnhanced, filePath } = entry;
+        const fileStats   = fs.statSync(filePath);
+        const finalSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
+        const retryStart  = Date.now();
+
+        const fileName     = `${driverName.replace(/\s+/g,'-')}_${vin}_${inspectionType}_${new Date().toISOString().split('T')[0]}.mp4`;
+        const fileMetadata = {
+            name:        fileName,
+            parents:     process.env.GOOGLE_DRIVE_FOLDER_ID ? [process.env.GOOGLE_DRIVE_FOLDER_ID] : [],
+            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName} (retry)`
+        };
+        const media = { mimeType: 'video/mp4', body: fs.createReadStream(filePath) };
+
+        const driveResponse = await Promise.race([
+            driveClient.files.create({
+                requestBody: fileMetadata,
+                media,
+                fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
+                supportsAllDrives: true
+            }),
+            new Promise((_,reject) => setTimeout(() => reject(new Error('Google Drive upload timeout after 3 minutes')), 3*60*1000))
+        ]);
+
+        const fileId   = driveResponse.data.id;
+        const uploadTime = ((Date.now() - retryStart) / 1000).toFixed(1);
+
+        // Set permissions
+        try {
+            await driveClient.permissions.create({
+                fileId,
+                requestBody: { role: 'reader', type: 'anyone' },
+                supportsAllDrives: true
+            });
+        } catch(e) { console.warn('Retry: could not set permissions:', e.message); }
+
+        const viewLink           = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+        // Send email notification
+        try {
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+            });
+            await transporter.sendMail({
+                from:    process.env.EMAIL_USER,
+                to:      ['slgpfleetmanager@gmail.com'],
+                subject: `📹 Video Inspection Ready (retry): ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                html: `
+                    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+                        <h2 style="color:#2563EB;">✅ Video Inspection Ready</h2>
+                        <p style="color:#f59e0b;font-size:13px;">⚠️ Note: This video was retried after an initial upload failure.</p>
+                        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+                            <tr style="background:#f3f4f6;"><td style="padding:10px;font-weight:bold;">Driver</td><td style="padding:10px;">${driverName}</td></tr>
+                            <tr><td style="padding:10px;font-weight:bold;">VIN</td><td style="padding:10px;">${vin}</td></tr>
+                            <tr style="background:#f3f4f6;"><td style="padding:10px;font-weight:bold;">Type</td><td style="padding:10px;">${inspectionType}</td></tr>
+                            <tr><td style="padding:10px;font-weight:bold;">File Size</td><td style="padding:10px;">${finalSizeMB} MB</td></tr>
+                            <tr style="background:#f3f4f6;"><td style="padding:10px;font-weight:bold;">Retry #</td><td style="padding:10px;">${entry.attemptCount} of ${MAX_RETRY_ATTEMPTS}</td></tr>
+                        </table>
+                        <a href="${viewLink}" style="display:inline-block;background:#10b981;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;margin-right:10px;">📱 OPEN IN DRIVE</a>
+                        <a href="${directDownloadLink}" style="display:inline-block;background:#3b82f6;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;">⬇️ DOWNLOAD</a>
+                    </div>`
+            });
+            console.log(`✅ Retry email sent for job ${jobId}`);
+        } catch(emailErr) {
+            console.warn('Retry email failed:', emailErr.message);
+        }
+
+        // Clean up file after successful retry
+        try { fs.unlinkSync(filePath); } catch(e) {}
+
+        // Remove from retry queue
+        removeFromRetryQueue(jobId);
+
+        await appendLog(ERROR_LOG, {
+            type: 'retry_success',
+            severity: 'info',
+            message: `Job ${jobId} succeeded on retry ${entry.attemptCount}`,
+            details: { driverName, vin, inspectionType, uploadTime }
+        });
+
+        console.log(`✅ Retry ${entry.attemptCount} succeeded for job ${jobId} in ${uploadTime}s`);
+
+    } catch(retryErr) {
+        console.error(`❌ Retry ${entry.attemptCount} failed for job ${jobId}:`, retryErr.message);
+
+        if (entry.attemptCount >= MAX_RETRY_ATTEMPTS) {
+            // Exhausted — clean up and remove from queue
+            try { fs.unlinkSync(entry.filePath); } catch(e) {}
+            removeFromRetryQueue(jobId);
+            await appendLog(ERROR_LOG, {
+                type: 'retry_exhausted',
+                severity: 'error',
+                message: `Job ${jobId} failed all ${MAX_RETRY_ATTEMPTS} retries — video lost`,
+                details: { driverName: entry.driverName, vin: entry.vin, lastError: retryErr.message }
+            });
+            console.error(`💀 Job ${jobId} exhausted all retries — video not delivered`);
+        } else {
+            // Increment attempt count for next try
+            saveToRetryQueue({ ...entry, attemptCount: entry.attemptCount + 1, lastError: retryErr.message });
+        }
+    }
 });
 
 // ============================================
