@@ -827,15 +827,14 @@
     let stabCtx = null;
     let stabStream = null;          // canvas.captureStream() - what we record
     let prevFrameData = null;
-    let smoothX = 0, smoothY = 0;      // accumulated raw motion (pixels)
-    let stabTargetX = 0, stabTargetY = 0; // EMA target — tracks drift, not shake
+    let smoothX = 0, smoothY = 0;      // rolling smoothed motion correction (pixels)
     let motionHistory = [];            // rolling motion buffer for temporal smoothing
     let detectCanvas = null;           // reused detection canvas (not created per-frame)
     let detectCtx = null;
-    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 10% correction margin each side
-    const STAB_SMOOTH    = 0.95;      // EMA smoothing — higher = smoother (was 0.92 + velocity, caused bounce)
-    const STAB_MAX_SHIFT = 0.09;      // max 9% shift per axis (matches zoom budget)
-    const STAB_HISTORY   = 5;         // frames to average — more frames = less noise
+    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 128px/72px correction range
+    const STAB_SMOOTH    = 0.90;      // rolling avg smoothing — 0.90 optimal (tested)
+    const STAB_MAX_SHIFT = 0.09;      // max per-frame shift clamp (fraction of frame)
+    const STAB_HISTORY   = 5;         // frames to average for motion estimate
     const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
     const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
@@ -1068,15 +1067,12 @@
             const avgDy = motionHistory.reduce((s,m) => s + m.dy, 0) / motionHistory.length;
 
             // Velocity-based correction with friction damping
-            // Accumulate raw motion to track camera position drift
-            smoothX += avgDx * vw;
-            smoothY += avgDy * vh;
-
-            // EMA target follows drift slowly — correction cancels slow drift, lets shake through cancel
-            stabTargetX = stabTargetX * STAB_SMOOTH + smoothX * (1 - STAB_SMOOTH);
-            stabTargetY = stabTargetY * STAB_SMOOTH + smoothY * (1 - STAB_SMOOTH);
-            const corrX = -(smoothX - stabTargetX);
-            const corrY = -(smoothY - stabTargetY);
+            // Rolling average smoothing on per-frame motion (bounded, no accumulator drift)
+            // smoothX/Y tracks the smoothed correction value directly
+            smoothX = smoothX * STAB_SMOOTH + avgDx * vw * (1 - STAB_SMOOTH);
+            smoothY = smoothY * STAB_SMOOTH + avgDy * vh * (1 - STAB_SMOOTH);
+            const corrX = -smoothX;
+            const corrY = -smoothY;
 
             // Hard clamp to zoom budget (can't correct more than the zoom allows)
             const maxPx = vw * (STAB_ZOOM - 1) / 2;
@@ -1729,8 +1725,7 @@
             indicator.innerText = '⚖️ STAB ON';
             indicator.style.color = '#4ade80';
             indicator.style.borderColor = '#4ade80';
-            smoothX = 0; smoothY = 0;   // accumulated raw motion
-            stabTargetX = 0; stabTargetY = 0; // EMA target for drift
+            smoothX = 0; smoothY = 0;
             motionHistory = [];
             prevFrameData = null;
             console.log('✅ Stabilizer ON');
