@@ -1631,15 +1631,19 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
                 // scale=1920:1080 forces true 1080p even if device recorded 720p
                 // lanczos = highest quality upscaling algorithm
+                // scale: preserve aspect ratio, fit within 1920x1080, pad black if needed
+                // force_original_aspect_ratio=decrease prevents fish-eye stretch on non-16:9 sources
+                // pad=1920:1080:-1:-1 centers with black bars (letterbox/pillarbox as needed)
+                const scaleFilter = 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black';
                 const fullFilters = [
-                    'scale=1920:1080:flags=lanczos',
+                    scaleFilter,
                     'hqdn3d=4:3:6:4.5',
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
                     'unsharp=5:5:1.0:5:5:0.5'
                 ];
                 // Basic fallback: scale + color + sharpen (works with standard ffmpeg)
                 const basicFilters = [
-                    'scale=1920:1080:flags=lanczos',
+                    scaleFilter,
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
                     'unsharp=5:5:1.0:5:5:0.5'
                 ];
