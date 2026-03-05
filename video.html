@@ -831,12 +831,12 @@
     let motionHistory = [];            // rolling motion buffer for temporal smoothing
     let detectCanvas = null;           // reused detection canvas (not created per-frame)
     let detectCtx = null;
-    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 128px/72px correction range
-    const STAB_SMOOTH    = 0.90;      // rolling avg smoothing — 0.90 optimal (tested)
-    const STAB_MAX_SHIFT = 0.09;      // max per-frame shift clamp (fraction of frame)
-    const STAB_HISTORY   = 5;         // frames to average for motion estimate
-    const STAB_NOISE_FLOOR = 0.006;   // below this motion magnitude = sensor noise, decay to zero
-    const STAB_DECAY       = 0.85;    // how fast correction fades when camera is still
+    const STAB_ZOOM        = 1.20;   // 20% zoom — gives 128px/72px correction range
+    const STAB_SMOOTH      = 0.72;   // EMA factor — lower = faster response, less oscillation
+    const STAB_MAX_SHIFT   = 0.07;   // tighter clamp — prevents overcorrection on big shakes
+    const STAB_HISTORY     = 15;     // frames in rolling window — more = smoother average
+    const STAB_NOISE_FLOOR = 0.004;  // sensor noise threshold — below this, decay to zero
+    const STAB_DECAY       = 0.92;   // fade rate when still — higher = less pumping artefact
     const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
     const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
@@ -1016,21 +1016,36 @@
         const blockSize = 4;
         const searchR   = 3; // ±3px on 64px canvas = ±90 real pixels at 1920 wide
 
-        for (let y = searchR + blockSize; y < DETECT_H - searchR - blockSize; y += blockSize) {
-            for (let x = searchR + blockSize; x < DETECT_W - searchR - blockSize; x += blockSize) {
-                const idx = (y * DETECT_W + x) * 4;
-                const prevBright = prevFrameData[idx]*0.299 + prevFrameData[idx+1]*0.587 + prevFrameData[idx+2]*0.114;
+        // Helper: compute mean brightness of a blockSize×blockSize region
+        // Using block averages instead of single pixels makes matching far more
+        // robust — one noisy pixel can no longer corrupt an entire motion vector.
+        function blockBrightness(data, cx, cy) {
+            let sum = 0, n = 0;
+            for (let by = 0; by < blockSize; by++) {
+                for (let bx = 0; bx < blockSize; bx++) {
+                    const bi = ((cy + by) * DETECT_W + (cx + bx)) * 4;
+                    sum += data[bi]*0.299 + data[bi+1]*0.587 + data[bi+2]*0.114;
+                    n++;
+                }
+            }
+            return sum / n;
+        }
+
+        for (let y = searchR + blockSize; y < DETECT_H - searchR - blockSize*2; y += blockSize) {
+            for (let x = searchR + blockSize; x < DETECT_W - searchR - blockSize*2; x += blockSize) {
+                const prevBright = blockBrightness(prevFrameData, x, y);
 
                 let bestDx = 0, bestDy = 0, bestDiff = Infinity;
                 for (let dy = -searchR; dy <= searchR; dy++) {
                     for (let dx = -searchR; dx <= searchR; dx++) {
-                        const nIdx = ((y+dy) * DETECT_W + (x+dx)) * 4;
-                        const currBright = currentData[nIdx]*0.299 + currentData[nIdx+1]*0.587 + currentData[nIdx+2]*0.114;
+                        const currBright = blockBrightness(currentData, x + dx, y + dy);
                         const diff = Math.abs(currBright - prevBright);
                         if (diff < bestDiff) { bestDiff = diff; bestDx = dx; bestDy = dy; }
                     }
                 }
-                if (bestDiff < 40) { sumDx += bestDx; sumDy += bestDy; count++; }
+                // Accept match only if block variance is high enough (reject flat/uniform blocks)
+                // Flat blocks (sky, solid panels) produce unreliable motion vectors
+                if (bestDiff < 35 && prevBright > 5) { sumDx += bestDx; sumDy += bestDy; count++; }
             }
         }
 
