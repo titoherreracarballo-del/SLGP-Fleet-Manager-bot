@@ -835,6 +835,8 @@
     const STAB_SMOOTH    = 0.90;      // rolling avg smoothing — 0.90 optimal (tested)
     const STAB_MAX_SHIFT = 0.09;      // max per-frame shift clamp (fraction of frame)
     const STAB_HISTORY   = 5;         // frames to average for motion estimate
+    const STAB_NOISE_FLOOR = 0.006;   // below this motion magnitude = sensor noise, decay to zero
+    const STAB_DECAY       = 0.85;    // how fast correction fades when camera is still
     const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
     const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
@@ -1067,10 +1069,17 @@
             const avgDy = motionHistory.reduce((s,m) => s + m.dy, 0) / motionHistory.length;
 
             // Velocity-based correction with friction damping
-            // Rolling average smoothing on per-frame motion (bounded, no accumulator drift)
-            // smoothX/Y tracks the smoothed correction value directly
-            smoothX = smoothX * STAB_SMOOTH + avgDx * vw * (1 - STAB_SMOOTH);
-            smoothY = smoothY * STAB_SMOOTH + avgDy * vh * (1 - STAB_SMOOTH);
+            // Decay to zero when motion is below noise floor (eliminates still-camera jitter)
+            // When moving: rolling average tracks real motion and corrects it
+            // When still:  sensor noise stays below NOISE_FLOOR → correction fades out
+            const motionMag = Math.sqrt(avgDx * avgDx + avgDy * avgDy);
+            if (motionMag < STAB_NOISE_FLOOR) {
+                smoothX *= STAB_DECAY;
+                smoothY *= STAB_DECAY;
+            } else {
+                smoothX = smoothX * STAB_SMOOTH + avgDx * vw * (1 - STAB_SMOOTH);
+                smoothY = smoothY * STAB_SMOOTH + avgDy * vh * (1 - STAB_SMOOTH);
+            }
             const corrX = -smoothX;
             const corrY = -smoothY;
 
