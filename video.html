@@ -827,16 +827,15 @@
     let stabCtx = null;
     let stabStream = null;          // canvas.captureStream() - what we record
     let prevFrameData = null;
-    let smoothX = 0, smoothY = 0;      // smoothed correction offsets (pixels)
-    let velX = 0, velY = 0;            // velocity for friction damping
+    let smoothX = 0, smoothY = 0;      // accumulated raw motion (pixels)
+    let stabTargetX = 0, stabTargetY = 0; // EMA target — tracks drift, not shake
     let motionHistory = [];            // rolling motion buffer for temporal smoothing
     let detectCanvas = null;           // reused detection canvas (not created per-frame)
     let detectCtx = null;
-    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 10% margin each side (~192px at 1080p)
-    const STAB_SMOOTH    = 0.92;      // high smoothing — less shake bleed-through
+    const STAB_ZOOM      = 1.20;      // 20% zoom — gives 10% correction margin each side
+    const STAB_SMOOTH    = 0.95;      // EMA smoothing — higher = smoother (was 0.92 + velocity, caused bounce)
     const STAB_MAX_SHIFT = 0.09;      // max 9% shift per axis (matches zoom budget)
-    const STAB_VELOCITY  = 0.80;      // velocity friction — damps oscillation
-    const STAB_HISTORY   = 3;         // frames to average for motion estimate
+    const STAB_HISTORY   = 5;         // frames to average — more frames = less noise
     const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
     const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
@@ -1069,24 +1068,26 @@
             const avgDy = motionHistory.reduce((s,m) => s + m.dy, 0) / motionHistory.length;
 
             // Velocity-based correction with friction damping
-            // velX accumulates detected motion; friction stops oscillation
-            velX = velX * STAB_VELOCITY - avgDx * vw;
-            velY = velY * STAB_VELOCITY - avgDy * vh;
+            // Accumulate raw motion to track camera position drift
+            smoothX += avgDx * vw;
+            smoothY += avgDy * vh;
 
-            // Exponential smoothing on top of velocity for silky output
-            smoothX = smoothX * STAB_SMOOTH + velX * (1 - STAB_SMOOTH);
-            smoothY = smoothY * STAB_SMOOTH + velY * (1 - STAB_SMOOTH);
+            // EMA target follows drift slowly — correction cancels slow drift, lets shake through cancel
+            stabTargetX = stabTargetX * STAB_SMOOTH + smoothX * (1 - STAB_SMOOTH);
+            stabTargetY = stabTargetY * STAB_SMOOTH + smoothY * (1 - STAB_SMOOTH);
+            const corrX = -(smoothX - stabTargetX);
+            const corrY = -(smoothY - stabTargetY);
 
             // Hard clamp to zoom budget (can't correct more than the zoom allows)
             const maxPx = vw * (STAB_ZOOM - 1) / 2;
             const maxPy = vh * (STAB_ZOOM - 1) / 2;
-            smoothX = Math.max(-maxPx, Math.min(maxPx, smoothX));
-            smoothY = Math.max(-maxPy, Math.min(maxPy, smoothY));
+            const clampedCorrX = Math.max(-maxPx, Math.min(maxPx, corrX));
+            const clampedCorrY = Math.max(-maxPy, Math.min(maxPy, corrY));
 
             const drawW   = vw * STAB_ZOOM;
             const drawH   = vh * STAB_ZOOM;
-            const offsetX = -(drawW - vw) / 2 + smoothX;
-            const offsetY = -(drawH - vh) / 2 + smoothY;
+            const offsetX = -(drawW - vw) / 2 + clampedCorrX;
+            const offsetY = -(drawH - vh) / 2 + clampedCorrY;
 
             stabCtx.drawImage(rawVideo, offsetX, offsetY, drawW, drawH);
         } else {
@@ -1728,8 +1729,8 @@
             indicator.innerText = '⚖️ STAB ON';
             indicator.style.color = '#4ade80';
             indicator.style.borderColor = '#4ade80';
-            smoothX = 0; smoothY = 0;
-            velX = 0;    velY = 0;
+            smoothX = 0; smoothY = 0;   // accumulated raw motion
+            stabTargetX = 0; stabTargetY = 0; // EMA target for drift
             motionHistory = [];
             prevFrameData = null;
             console.log('✅ Stabilizer ON');
