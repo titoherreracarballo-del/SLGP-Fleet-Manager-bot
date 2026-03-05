@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
 const { execSync, fork } = require('child_process');
+const { Pool } = require('pg');
 
 // ============================================
 // ACTIVE FFMPEG PID TRACKING
@@ -212,6 +213,61 @@ async function getRecentLogs(logFile, limit = 50) {
 
 // ============================================
 // DISCORD BOT SETUP
+// ── Streamlit DB connection (fire-and-forget inspection sync) ──────────────
+// Set STREAMLIT_DB_URL on this Railway service to point at the Streamlit PostgreSQL.
+// If not set, sync is silently skipped — Node.js keeps working normally.
+let streamlitPool = null;
+if (process.env.STREAMLIT_DB_URL) {
+    streamlitPool = new Pool({
+        connectionString: process.env.STREAMLIT_DB_URL,
+        ssl: { rejectUnauthorized: false },
+        max: 2,              // tiny pool — only used for sync writes
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000
+    });
+    streamlitPool.on('error', (err) => {
+        console.warn('⚠️  Streamlit DB pool error (non-fatal):', err.message);
+    });
+    console.log('✅ Streamlit DB sync enabled');
+} else {
+    console.log('ℹ️  STREAMLIT_DB_URL not set — Streamlit sync disabled');
+}
+
+// Writes one row to Streamlit's vehicle_inspections table.
+// Completely fire-and-forget: never throws, never blocks the upload response.
+async function syncInspectionToStreamlit({ driverName, vin, inspectionType, fileName, fileId, viewLink, directDownloadLink }) {
+    if (!streamlitPool) return;
+    try {
+        // Migration: add Drive columns if they don't exist yet (idempotent)
+        await streamlitPool.query(`
+            ALTER TABLE vehicle_inspections
+                ADD COLUMN IF NOT EXISTS drive_file_id  VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS drive_url       VARCHAR(500),
+                ADD COLUMN IF NOT EXISTS drive_download  VARCHAR(500)
+        `);
+
+        await streamlitPool.query(`
+            INSERT INTO vehicle_inspections
+                (vehicle_id, driver_name, inspection_type, inspection_date,
+                 video_filename, drive_file_id, drive_url, drive_download,
+                 status, created_by)
+            VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, $7, 'pending_review', 'fleet-app')
+        `, [
+            vin || 'UNKNOWN',
+            driverName,
+            inspectionType || 'post-trip',
+            fileName,
+            fileId,
+            viewLink,
+            directDownloadLink
+        ]);
+        console.log(`✅ Synced inspection to Streamlit DB: ${driverName} / ${vin}`);
+    } catch (err) {
+        // Log but never crash — Drive upload already succeeded
+        console.warn('⚠️  Streamlit sync failed (non-fatal):', err.message);
+    }
+}
+
 // ============================================
 const DISCORD_BOT_TOKEN = process.env.FLEET_BOT_SECRET;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
@@ -1815,6 +1871,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             });
         }
 
+        // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
+        syncInspectionToStreamlit({
+            driverName,
+            vin,
+            inspectionType,
+            fileName,
+            fileId,
+            viewLink,
+            directDownloadLink
+        });
+
         // Clean up all temp files
         for (const p of [videoPath, enhancedVideoPath]) {
             if (p && fs.existsSync(p)) {
@@ -2045,6 +2112,17 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         } catch(emailErr) {
             console.warn('Retry email failed:', emailErr.message);
         }
+
+        // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
+        syncInspectionToStreamlit({
+            driverName,
+            vin,
+            inspectionType,
+            fileName: entry.fileName || path.basename(filePath),
+            fileId:   fileId,
+            viewLink,
+            directDownloadLink
+        });
 
         // Clean up file after successful retry
         try { fs.unlinkSync(filePath); } catch(e) {}
