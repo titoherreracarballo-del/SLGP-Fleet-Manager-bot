@@ -1540,62 +1540,92 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 enhancedVideoPath = path.join(outputDir, enhancedFileName);
                 console.log(`📁 Enhanced output: ${enhancedVideoPath}`);
 
-                ffmpeg.setFfmpegPath(ffmpegPath);
-                if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
-
-                // Resilient filter runner with PID tracking + 4-min hard timeout
+                // ── Enhancement via spawn + pipe → Node writeStream ──────────────────
+                // Railway restricts FFmpeg subprocesses from writing directly to volume paths.
+                // Node.js CAN write to the volume (proven by multer uploads).
+                // Fix: pipe FFmpeg stdout → Node.js writeStream → volume file.
                 const FFMPEG_TIMEOUT_MS = 4 * 60 * 1000;
+                const { spawn: spawnFfmpeg } = require('child_process');
+
                 const runFFmpeg = (filters) => new Promise((resolve, reject) => {
-                    let ffmpegPid = null;
-                    let killTimer = null;
-                    const proc = ffmpeg(videoPath)
-                        .videoFilters(filters)
-                        .videoBitrate('20M')
-                        .videoCodec('libx264')
-                        .outputOptions([
-                            '-y',                   // overwrite output if it somehow exists
-                            '-preset medium',
-                            '-crf 18',
-                            '-profile:v high',
-                            '-level 4.2',
-                            '-movflags +faststart',
-                            '-pix_fmt yuv420p',
-                            '-f mp4'               // force mp4 container (prevents format confusion)
-                        ])
-                        .audioCodec('aac')
-                        .audioBitrate('128k')
-                        .output(enhancedVideoPath)
-                        .on('start', () => {
-                            try { if (proc._ffmpegProc && proc._ffmpegProc.pid) { ffmpegPid=proc._ffmpegProc.pid; registerPid(ffmpegPid); } } catch(e) {}
-                            console.log('🎬 FFmpeg started (PID: '+(ffmpegPid||'unknown')+(')'));
-                            killTimer = setTimeout(() => {
-                                console.error('❌ FFmpeg 4-min timeout - killing');
-                                if (ffmpegPid) unregisterPid(ffmpegPid);
-                                try { proc.kill('SIGKILL'); } catch(e) {}
-                                reject(new Error('FFmpeg timeout - exceeded 4 minutes'));
-                            }, FFMPEG_TIMEOUT_MS);
-                        })
-                        .on('progress', (p) => {
-                            const pct = Math.round(p.percent || 0);
-                            console.log(`⏳ Enhancing: ${pct}%`);
-                            updateJob(jobId, {
-                                status: 'enhancing',
-                                stage: 'Enhancing video',
-                                progress: Math.min(5 + Math.round(pct * 0.6), 65),
-                                message: `Enhancing video quality... ${pct}%`
-                            });
-                        })
-                        .on('end', () => {
-                            clearTimeout(killTimer);
-                            if (ffmpegPid) unregisterPid(ffmpegPid);
+                    const args = [
+                        '-y', '-i', videoPath,
+                        '-vf', filters.join(','),
+                        '-b:v', '20M', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+                        '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
+                        '-c:a', 'aac', '-b:a', '128k',
+                        '-f', 'mp4',
+                        '-movflags', 'frag_keyframe+empty_moov', // streamable mp4 - works over pipe
+                        'pipe:1'  // output to stdout so Node.js can write to volume
+                    ];
+
+                    const proc      = spawnFfmpeg(ffmpegPath, args);
+                    let   outStream;
+                    try {
+                        outStream = fs.createWriteStream(enhancedVideoPath);
+                    } catch(streamOpenErr) {
+                        reject(new Error(`Cannot open output stream: ${streamOpenErr.message}`));
+                        return;
+                    }
+                    let   stderrBuf = '';
+                    let   bytesOut  = 0;
+                    const pid       = proc.pid;
+                    if (pid) registerPid(pid);
+                    console.log(`🎬 FFmpeg started (PID: ${pid || 'unknown'})`);
+
+                    // Handle stream write errors (e.g. dir vanishes, disk full)
+                    outStream.on('error', streamErr => {
+                        console.error('❌ Output stream error:', streamErr.message);
+                        clearTimeout(killTimer);
+                        if (pid) unregisterPid(pid);
+                        try { proc.kill('SIGKILL'); } catch(e) {}
+                        try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
+                        reject(new Error(`Output stream error: ${streamErr.message}`));
+                    });
+
+                    const killTimer = setTimeout(() => {
+                        console.error('❌ FFmpeg 4-min timeout - killing');
+                        if (pid) unregisterPid(pid);
+                        try { proc.kill('SIGKILL'); } catch(e) {}
+                        outStream.destroy();
+                        reject(new Error('FFmpeg timeout - exceeded 4 minutes'));
+                    }, FFMPEG_TIMEOUT_MS);
+
+                    proc.stdout.on('data', chunk => {
+                        bytesOut += chunk.length;
+                        outStream.write(chunk);
+                        // Approximate progress from bytes (rough estimate)
+                        const approxPct = Math.min(Math.round(bytesOut / 50000), 90);
+                        updateJob(jobId, {
+                            status: 'enhancing', stage: 'Enhancing video',
+                            progress: approxPct, message: `Enhancing video quality...`
+                        });
+                    });
+                    proc.stderr.on('data', d => { stderrBuf += d.toString(); });
+
+                    proc.on('close', code => {
+                        clearTimeout(killTimer);
+                        if (pid) unregisterPid(pid);
+                        outStream.end();
+                        if (code === 0 && bytesOut > 10000) {
                             const enhancedStats = fs.statSync(enhancedVideoPath);
-                            const enhancedMB = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                            const enhanceTime = ((Date.now() - enhanceStart) / 1000).toFixed(1);
+                            const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                            const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
                             console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
                             resolve();
-                        })
-                        .on('error', (err) => { clearTimeout(killTimer); if (ffmpegPid) unregisterPid(ffmpegPid); reject(err); })
-                        .run();
+                        } else {
+                            // Clean up partial file
+                            try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
+                            const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
+                            reject(new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
+                        }
+                    });
+                    proc.on('error', err => {
+                        clearTimeout(killTimer);
+                        if (pid) unregisterPid(pid);
+                        outStream.destroy();
+                        reject(err);
+                    });
                 });
 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
