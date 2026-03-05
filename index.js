@@ -1607,7 +1607,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     const args = [
                         '-y', '-i', videoPath,
                         '-vf', filters.join(','),
-                        '-b:v', '20M', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+                        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',  // no bitrate cap — CRF controls quality
                         '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
                         '-c:a', 'aac', '-b:a', '128k',
                         '-f', 'mp4',
@@ -1693,15 +1693,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 const scaleFilter = 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black';
                 const fullFilters = [
                     scaleFilter,
-                    'hqdn3d=4:3:6:4.5',
+                    'hqdn3d=2:1.5:3:2',               // gentle spatial+temporal denoise — removes grain, no ghosting
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
-                    'unsharp=5:5:1.0:5:5:0.5'
+                    'unsharp=3:3:1.0:3:3:0.0'         // 3x3 kernel, 1.0 luma — crisp edges, no ringing (3x3 prevents halos that 5x5 caused)
                 ];
                 // Basic fallback: scale + color + sharpen (works with standard ffmpeg)
                 const basicFilters = [
                     scaleFilter,
                     'eq=brightness=0.05:contrast=1.08:saturation=1.1',
-                    'unsharp=5:5:1.0:5:5:0.5'
+                    'unsharp=3:3:1.0:3:3:0.0'         // 3x3 kernel, 1.0 luma — crisp edges, no ringing (3x3 prevents halos that 5x5 caused)
                 ];
                 try {
                     console.log('🎨 Attempting full enhancement (hqdn3d + color + sharpen)...');
