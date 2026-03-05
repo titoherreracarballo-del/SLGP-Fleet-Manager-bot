@@ -13,6 +13,7 @@ const { execSync } = require('child_process');
 // ── Paths (must match index.js) ──────────────────────────────
 const VOLUME_PATH       = '/app/meshcentral-data';
 const UPLOAD_DIR        = path.join(VOLUME_PATH, 'uploads');
+const ENHANCED_DIR      = path.join(VOLUME_PATH, 'enhanced');
 const LOGS_DIR          = path.join(VOLUME_PATH, 'logs');
 const ACTIVE_PIDS_FILE  = path.join(VOLUME_PATH, 'active_pids.json');
 const RETRY_QUEUE_FILE  = path.join(VOLUME_PATH, 'retry_queue.json');
@@ -42,16 +43,29 @@ const MIDNIGHT_HOUR          = 23;
 const MIDNIGHT_MIN           = 58;
 
 // ── Utilities ────────────────────────────────────────────────
-function agentLog(category, message, data = {}) {
-    const entry = { category, message, ...data, ts: new Date().toISOString() };
-    console.log(`🤖 [Agent/${category}] ${message}`);
+// In-memory buffer — flushes every 5s instead of every log call
+const _logBuffer = [];
+let   _logFlushTimer = null;
+
+function _flushLogs() {
+    if (_logBuffer.length === 0) return;
+    const toWrite = _logBuffer.splice(0);
     try {
         let logs = [];
         try { logs = JSON.parse(fs.readFileSync(AGENT_LOG_FILE, 'utf8')); } catch(e) {}
-        logs.push(entry);
+        logs.push(...toWrite);
         if (logs.length > 500) logs = logs.slice(-500);
-        fs.writeFileSync(AGENT_LOG_FILE, JSON.stringify(logs, null, 2));
+        fs.writeFileSync(AGENT_LOG_FILE, JSON.stringify(logs)); // compact, not pretty-printed
     } catch(e) {}
+}
+
+function agentLog(category, message, data = {}) {
+    const entry = { category, message, ...data, ts: new Date().toISOString() };
+    console.log(`🤖 [Agent/${category}] ${message}`);
+    _logBuffer.push(entry);
+    // Debounce: flush 5s after last log call
+    clearTimeout(_logFlushTimer);
+    _logFlushTimer = setTimeout(_flushLogs, 5000);
 }
 
 function getActivePids() {
@@ -118,39 +132,41 @@ function killOrphanFFmpeg() {
 }
 
 // ── TASK 2: Upload Dir Reaper ────────────────────────────────
-function reapStaleUploads() {
-    if (!fs.existsSync(UPLOAD_DIR)) return;
+function reapDir(dirPath, label, staleMs) {
+    if (!fs.existsSync(dirPath)) return { reaped: 0, totalMB: 0 };
+    const now = Date.now();
+    let reaped = 0, totalMB = 0;
     try {
-        const files  = fs.readdirSync(UPLOAD_DIR);
-        const now    = Date.now();
-        let reaped   = 0;
-        let totalMB  = 0;
-
-        for (const file of files) {
-            // Skip non-media files (PDFs and logs managed separately)
+        for (const file of fs.readdirSync(dirPath)) {
             const ext = path.extname(file).toLowerCase();
             if (!['.mp4', '.webm', '.mov', ''].includes(ext)) continue;
-
-            const filePath = path.join(UPLOAD_DIR, file);
+            const filePath = path.join(dirPath, file);
             try {
                 const stat = fs.statSync(filePath);
                 if (!stat.isFile()) continue;
-
                 const ageMs = now - stat.mtimeMs;
-                if (ageMs > UPLOAD_STALE_AGE_MS) {
+                if (ageMs > staleMs) {
                     const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
                     fs.unlinkSync(filePath);
                     reaped++;
                     totalMB += parseFloat(sizeMB);
-                    agentLog('REAPER', `Deleted stale upload: ${file} (${sizeMB}MB, age: ${(ageMs/1000/60).toFixed(1)}min)`, { file, sizeMB, ageMs });
+                    agentLog('REAPER', `Deleted stale ${label}: ${file} (${sizeMB}MB, ${(ageMs/1000/60).toFixed(1)}min old)`, { file, sizeMB, ageMs });
                 }
             } catch(e) {}
         }
-
-        if (reaped > 0) agentLog('REAPER', `Upload reap: removed ${reaped} file(s), freed ${totalMB.toFixed(2)}MB`, { reaped, totalMB });
     } catch(e) {
-        agentLog('REAPER', `Upload reap error: ${e.message}`);
+        agentLog('REAPER', `Reap error in ${label}: ${e.message}`);
     }
+    return { reaped, totalMB };
+}
+
+function reapStaleUploads() {
+    // Reap both upload temps and enhanced files (enhanced dir leak if Drive upload fails)
+    const uploads  = reapDir(UPLOAD_DIR,   'upload',   UPLOAD_STALE_AGE_MS);
+    const enhanced = reapDir(ENHANCED_DIR, 'enhanced', UPLOAD_STALE_AGE_MS);
+    const total    = uploads.reaped + enhanced.reaped;
+    const totalMB  = uploads.totalMB + enhanced.totalMB;
+    if (total > 0) agentLog('REAPER', `Reap complete: removed ${total} file(s), freed ${totalMB.toFixed(2)}MB`, { uploads: uploads.reaped, enhanced: enhanced.reaped, totalMB });
 }
 
 // ── TASK 3: Log Rotation ─────────────────────────────────────
@@ -420,6 +436,7 @@ setInterval(processRetryQueue,   RETRY_CHECK_INTERVAL); // watch for failed jobs
 // ── Graceful shutdown ────────────────────────────────────────
 process.on('SIGTERM', () => {
     agentLog('SHUTDOWN', 'Agent received SIGTERM - shutting down');
+    _flushLogs(); // flush any buffered logs before exit
     process.exit(0);
 });
 
