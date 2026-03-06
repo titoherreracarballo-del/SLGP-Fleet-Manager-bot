@@ -1736,7 +1736,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 const interpFilter = needsInterpolation
                     ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
                     : null;
-                console.log(\`Input: \${inputFps}fps → \${needsInterpolation ? 'interpolating to 30fps' : 'no interpolation needed'}\`);
+                console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'interpolating to 30fps' : 'no interpolation needed'));
 
                 // Full filter chain: interpolate (if needed) + vidstab + color grade + denoise + sharpen
                 const stabFilter = hasStab
