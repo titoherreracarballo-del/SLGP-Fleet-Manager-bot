@@ -2766,6 +2766,14 @@ app.use((err, req, res, next) => {
 // ============================================
 // START SERVER
 // ============================================
+// ============================================
+// HEALTH CHECK ENDPOINT
+// Railway uses this to confirm app is running
+// ============================================
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: Math.floor(process.uptime()), ts: Date.now() });
+});
+
 const PORT = process.env.PORT || 8080;
 
 // ============================================
