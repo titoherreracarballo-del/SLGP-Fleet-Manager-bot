@@ -416,13 +416,137 @@ if (!fs.existsSync(UPLOAD_DIR)) { try { fs.mkdirSync(UPLOAD_DIR, { recursive: tr
 // Initialize PID file
 try { if (!fs.existsSync(ACTIVE_PIDS_FILE)) fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
 
+// ============================================
+// INTERRUPTED JOB RECOVERY
+// Scans UPLOAD_DIR for *.manifest.json files
+// with status 'pending' or 'enhancing' or 'uploading'
+// — these are jobs that were mid-flight when Railway
+// deployed a new version and restarted the container.
+// We requeue them so no driver inspection is lost.
+// ============================================
+async function recoverInterruptedJobs() {
+    agentLog('RECOVERY', 'Scanning for interrupted jobs...');
+
+    let manifestFiles;
+    try {
+        const allFiles = fs.readdirSync(UPLOAD_DIR);
+        manifestFiles = allFiles.filter(f => f.endsWith('.manifest.json'));
+    } catch (e) {
+        agentLog('RECOVERY', 'Could not read UPLOAD_DIR', { error: e.message });
+        return;
+    }
+
+    if (manifestFiles.length === 0) {
+        agentLog('RECOVERY', 'No manifest files found — nothing to recover');
+        return;
+    }
+
+    agentLog('RECOVERY', `Found ${manifestFiles.length} manifest file(s)`);
+
+    const RECOVERABLE_STATUSES = ['pending', 'enhancing', 'uploading'];
+    let recovered = 0;
+
+    for (const mFile of manifestFiles) {
+        const mPath = path.join(UPLOAD_DIR, mFile);
+        let manifest;
+        try {
+            manifest = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+        } catch (e) {
+            agentLog('RECOVERY', `Could not parse manifest ${mFile}`, { error: e.message });
+            continue;
+        }
+
+        const { jobId, driverName, vin, inspectionType, videoFile, status, submittedAt } = manifest;
+
+        // Skip already complete or permanently failed jobs
+        if (!RECOVERABLE_STATUSES.includes(status)) {
+            // Clean up old completed manifests (older than 24h)
+            const age = Date.now() - new Date(submittedAt || 0).getTime();
+            if (age > 24 * 60 * 60 * 1000) {
+                try { fs.unlinkSync(mPath); } catch(_) {}
+                agentLog('RECOVERY', `Cleaned up old manifest: ${mFile}`);
+            }
+            continue;
+        }
+
+        // Check the video file still exists on disk
+        const videoPath = path.join(UPLOAD_DIR, videoFile);
+        if (!fs.existsSync(videoPath)) {
+            agentLog('RECOVERY', `Video file missing for ${jobId} — marking as unrecoverable`, { videoFile });
+            try {
+                manifest.status = 'failed_permanent';
+                manifest.error  = 'Video file missing after restart';
+                fs.writeFileSync(mPath, JSON.stringify(manifest, null, 2));
+            } catch(_) {}
+            continue;
+        }
+
+        // How old is this job?
+        const ageMs  = Date.now() - new Date(submittedAt || 0).getTime();
+        const ageMins = Math.round(ageMs / 60000);
+
+        agentLog('RECOVERY', `Recovering interrupted job ${jobId}`, {
+            driver: driverName, vin, status, ageMins
+        });
+
+        // Push to retry queue so index.js picks it up
+        try {
+            let queue = [];
+            if (fs.existsSync(RETRY_QUEUE_FILE)) {
+                queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+            }
+
+            // Don't double-queue
+            const alreadyQueued = queue.some(e => e.jobId === jobId);
+            if (alreadyQueued) {
+                agentLog('RECOVERY', `Job ${jobId} already in retry queue — skipping`);
+                continue;
+            }
+
+            queue.push({
+                jobId,
+                driverName,
+                vin,
+                inspectionType,
+                videoFile,       // agent passes this so index.js knows the file
+                attemptCount: 1,
+                queuedAt:     Date.now(),
+                reason:       'interrupted_by_deploy',
+                lastError:    `Job was ${status} when server restarted`,
+            });
+
+            fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(queue, null, 2));
+
+            // Update manifest so we don't re-add it on next scan
+            manifest.status    = 'queued_for_recovery';
+            manifest.recoveredAt = new Date().toISOString();
+            fs.writeFileSync(mPath, JSON.stringify(manifest, null, 2));
+
+            agentLog('RECOVERY', `Job ${jobId} queued for recovery`, { driver: driverName, vin });
+            recovered++;
+
+        } catch (e) {
+            agentLog('RECOVERY', `Failed to queue recovery for ${jobId}`, { error: e.message });
+        }
+    }
+
+    if (recovered > 0) {
+        agentLog('RECOVERY', `✅ Queued ${recovered} interrupted job(s) for reprocessing`);
+        // Trigger immediate retry processing rather than waiting for the interval
+        setTimeout(() => processRetryQueue(), 5000);
+    } else {
+        agentLog('RECOVERY', 'No interrupted jobs found — all clear');
+    }
+}
+
 // Run all tasks once on startup (staggered to avoid burst)
 setTimeout(() => killOrphanFFmpeg(),   5000);
 setTimeout(() => reapStaleUploads(),  10000);
 setTimeout(() => rotateLogs(),        15000);
 setTimeout(() => checkMemory(),       20000);
 setTimeout(() => healthPing(),        30000);
-setTimeout(() => processRetryQueue(), 45000); // check retry queue after server fully warms up
+setTimeout(() => processRetryQueue(),      45000); // check retry queue after server fully warms up
+setTimeout(() => recoverInterruptedJobs(), 60000); // scan for jobs interrupted by deploy/restart
 
 // ── Scheduled intervals ──────────────────────────────────────
 setInterval(killOrphanFFmpeg,    ORPHAN_CHECK_INTERVAL);
