@@ -753,7 +753,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       16000000, // 16 Mbps — matches 1080p@30fps camera capability (30s = ~60MB, under 100MB limit)
+        VIDEO_BITRATE:       10000000, // 10 Mbps — reliable ceiling for Android MediaRecorder at 1080p@30fps
         VIDEO_WIDTH:         1920,
         VIDEO_HEIGHT:        1080,
         VIDEO_FPS:           30,       // explicitly request 30fps — device supports 1080p@30fps
@@ -822,7 +822,7 @@
     // ========================================
     // IMAGE STABILIZATION SYSTEM
     // ========================================
-    let stabEnabled = true;
+    let stabEnabled = false; // disabled — JS can't distinguish pan from shake; backend vidstab handles it
     let stabAnimFrame = null;
     let stabCanvas = null;
     let stabCtx = null;
@@ -832,8 +832,8 @@
     let motionHistory = [];            // rolling motion buffer for temporal smoothing
     let detectCanvas = null;           // reused detection canvas (not created per-frame)
     let detectCtx = null;
-    const STAB_ZOOM        = 1.15;   // 15% zoom — tighter crop but less distortion
-    const STAB_SMOOTH      = 0.68;   // EMA factor — tuned for 30fps with this device
+    const STAB_ZOOM        = 1.20;   // 20% zoom — gives 10% correction room each side
+    const STAB_SMOOTH      = 0.72;   // EMA factor — balanced response for 30fps
     const STAB_MAX_SHIFT   = 0.06;   // tight clamp — max 6% frame shift before hard stop
     const STAB_HISTORY     = 12;     // 12 frames @ 30fps = 0.4s window — responsive but smooth
     const STAB_NOISE_FLOOR = 0.003;  // tighter noise floor — only correct real shake
@@ -998,14 +998,17 @@
             detectCanvas.height = DETECT_H;
             detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
         }
-        console.log('📐 Stabilizer initialized (ZOOM:' + STAB_ZOOM + ' SMOOTH:' + STAB_SMOOTH + ')');
+        // Set UI to match default stabEnabled=false
+        const stabInd = document.getElementById('stab-indicator');
+        if (stabInd) {
+            stabInd.innerText = '⚖️ STAB OFF';
+            stabInd.style.color = '#6b7280';
+            stabInd.style.borderColor = '#6b7280';
+        }
+        console.log('📐 Stabilizer initialized — JS stab OFF by default (backend vidstab handles it)');
     }
 
-    // Skip alternate frames for motion detection — halves CPU cost, imperceptible at 30fps
-    let _detectFrameCount = 0, _lastMotion = { dx: 0, dy: 0 };
     function detectMotion() {
-        _detectFrameCount++;
-        if (_detectFrameCount % 2 === 0) return _lastMotion; // reuse last vector on skipped frames
         // Reuse pre-allocated detection canvas - no GC pressure per frame
         const rawVideo = document.getElementById('preview-raw');
         if (!rawVideo || rawVideo.readyState < 2) return { dx: 0, dy: 0 };
@@ -1056,8 +1059,7 @@
 
         prevFrameData = new Uint8ClampedArray(currentData);
         if (count < 2) return { dx: 0, dy: 0 };
-        _lastMotion = { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
-        return _lastMotion;
+        return { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
     }
 
     function stabFrame() {
@@ -1115,6 +1117,7 @@
             const offsetX = -(drawW - vw) / 2 + clampedCorrX;
             const offsetY = -(drawH - vh) / 2 + clampedCorrY;
 
+            stabCtx.clearRect(0, 0, stabCanvas.width, stabCanvas.height);
             stabCtx.drawImage(rawVideo, offsetX, offsetY, drawW, drawH);
         } else {
             stabCtx.drawImage(rawVideo, 0, 0, vw, vh);
@@ -1182,7 +1185,7 @@
                     facingMode: REAR_CAMERA_ONLY,
                     width:     { ideal: 1920, min: 1280 },
                     height:    { ideal: 1080, min: 720 },
-                    frameRate: { ideal: 30, min: 24 }   // explicitly request 30fps
+                    frameRate: { ideal: 30 }            // request 30fps, no minimum (avoids stream failure on Android)
                 },
                 audio: true
             };
@@ -1248,7 +1251,7 @@
                 // Device can't meet resolution - retry without resolution constraints
                 console.warn('OverconstrainedError - retrying with basic constraints');
                 try {
-                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', frameRate: { ideal: 30, min: 24 } }, audio: true });
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', frameRate: { ideal: 30 } }, audio: true });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
                     try { await document.getElementById('preview-raw').play(); } catch(pe) {}
@@ -1339,7 +1342,7 @@
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 }, frameRate: { ideal: 30 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1353,7 +1356,7 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
+                        video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 }, frameRate: { ideal: 30 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1484,7 +1487,7 @@
         
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
+                video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 }, frameRate: { ideal: 30 } },
                 audio: true
             });
             currentVideoTrack = currentStream.getVideoTracks()[0];
