@@ -66,4 +66,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # ── Start ────────────────────────────────────────────────────
-CMD node index.js
+CMD ["node", "index.js"]
