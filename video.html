@@ -753,11 +753,12 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       8000000, // 8 Mbps source - server enhances to 20Mbps (30s@8Mbps = ~30MB, under 100MB limit)
-        VIDEO_WIDTH: 1920,
-        VIDEO_HEIGHT: 1080,
-        MAX_RETRY_ATTEMPTS: 3,
-        CAMERA_TIMEOUT: 15000,
+        VIDEO_BITRATE:       16000000, // 16 Mbps — matches 1080p@30fps camera capability (30s = ~60MB, under 100MB limit)
+        VIDEO_WIDTH:         1920,
+        VIDEO_HEIGHT:        1080,
+        VIDEO_FPS:           30,       // explicitly request 30fps — device supports 1080p@30fps
+        MAX_RETRY_ATTEMPTS:  3,
+        CAMERA_TIMEOUT:      15000,
         BRIGHTNESS_THRESHOLD: 70,
         BRIGHTNESS_CHECK_INTERVAL: 2000
     };
@@ -831,12 +832,12 @@
     let motionHistory = [];            // rolling motion buffer for temporal smoothing
     let detectCanvas = null;           // reused detection canvas (not created per-frame)
     let detectCtx = null;
-    const STAB_ZOOM        = 1.20;   // 20% zoom — gives 128px/72px correction range
-    const STAB_SMOOTH      = 0.72;   // EMA factor — lower = faster response, less oscillation
-    const STAB_MAX_SHIFT   = 0.07;   // tighter clamp — prevents overcorrection on big shakes
-    const STAB_HISTORY     = 15;     // frames in rolling window — more = smoother average
-    const STAB_NOISE_FLOOR = 0.004;  // sensor noise threshold — below this, decay to zero
-    const STAB_DECAY       = 0.92;   // fade rate when still — higher = less pumping artefact
+    const STAB_ZOOM        = 1.15;   // 15% zoom — tighter crop but less distortion
+    const STAB_SMOOTH      = 0.68;   // EMA factor — tuned for 30fps with this device
+    const STAB_MAX_SHIFT   = 0.06;   // tight clamp — max 6% frame shift before hard stop
+    const STAB_HISTORY     = 12;     // 12 frames @ 30fps = 0.4s window — responsive but smooth
+    const STAB_NOISE_FLOOR = 0.003;  // tighter noise floor — only correct real shake
+    const STAB_DECAY       = 0.94;   // slow fade — prevents pumping when camera pauses
     const DETECT_W       = 64;        // detection canvas width (2× prev = 2× precision)
     const DETECT_H       = 36;        // detection canvas height
     const REAR_CAMERA_ONLY = "environment";
@@ -1000,7 +1001,11 @@
         console.log('📐 Stabilizer initialized (ZOOM:' + STAB_ZOOM + ' SMOOTH:' + STAB_SMOOTH + ')');
     }
 
+    // Skip alternate frames for motion detection — halves CPU cost, imperceptible at 30fps
+    let _detectFrameCount = 0, _lastMotion = { dx: 0, dy: 0 };
     function detectMotion() {
+        _detectFrameCount++;
+        if (_detectFrameCount % 2 === 0) return _lastMotion; // reuse last vector on skipped frames
         // Reuse pre-allocated detection canvas - no GC pressure per frame
         const rawVideo = document.getElementById('preview-raw');
         if (!rawVideo || rawVideo.readyState < 2) return { dx: 0, dy: 0 };
@@ -1014,7 +1019,7 @@
 
         let sumDx = 0, sumDy = 0, count = 0;
         const blockSize = 4;
-        const searchR   = 3; // ±3px on 64px canvas = ±90 real pixels at 1920 wide
+        const searchR   = 2; // ±2px on 64px canvas — 25 vs 49 candidates, 49% less work; sufficient at 30fps
 
         // Helper: compute mean brightness of a blockSize×blockSize region
         // Using block averages instead of single pixels makes matching far more
@@ -1051,7 +1056,8 @@
 
         prevFrameData = new Uint8ClampedArray(currentData);
         if (count < 2) return { dx: 0, dy: 0 };
-        return { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
+        _lastMotion = { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
+        return _lastMotion;
     }
 
     function stabFrame() {
@@ -1126,7 +1132,7 @@
         initStabilizer();
 
         // Capture stream from canvas for recording (+ original audio)
-        stabStream = stabCanvas.captureStream(30); // 30fps - canvas must match camera resolution before this call
+        stabStream = stabCanvas.captureStream(CONFIG.VIDEO_FPS); // match actual camera fps (30fps requested)
 
         // Add audio tracks from camera stream
         if (currentStream) {
@@ -1174,8 +1180,9 @@
             const constraints = {
                 video: {
                     facingMode: REAR_CAMERA_ONLY,
-                    width: { ideal: 1920, min: 640 },
-                    height: { ideal: 1080, min: 480 }
+                    width:     { ideal: 1920, min: 1280 },
+                    height:    { ideal: 1080, min: 720 },
+                    frameRate: { ideal: 30, min: 24 }   // explicitly request 30fps
                 },
                 audio: true
             };
@@ -1241,7 +1248,7 @@
                 // Device can't meet resolution - retry without resolution constraints
                 console.warn('OverconstrainedError - retrying with basic constraints');
                 try {
-                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', frameRate: { ideal: 30, min: 24 } }, audio: true });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
                     try { await document.getElementById('preview-raw').play(); } catch(pe) {}
@@ -1332,7 +1339,7 @@
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1346,7 +1353,7 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                        video: { facingMode: 'environment', width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1477,7 +1484,7 @@
         
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                video: { facingMode: 'environment', width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } },
                 audio: true
             });
             currentVideoTrack = currentStream.getVideoTracks()[0];
