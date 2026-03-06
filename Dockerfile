@@ -45,6 +45,9 @@ RUN mkdir -p /opt/rife && \
 # ── App directory ────────────────────────────────────────────
 WORKDIR /app
 
+# Verify node is working at build time
+RUN node --version && npm --version
+
 # ── Node dependencies ────────────────────────────────────────
 COPY package*.json ./
 RUN npm install --omit=dev
@@ -66,4 +69,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # ── Start ────────────────────────────────────────────────────
-CMD ["node", "index.js"]
+CMD ["node", "--unhandled-rejections=strict", "index.js"]
