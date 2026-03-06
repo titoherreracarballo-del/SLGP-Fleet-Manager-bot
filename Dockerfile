@@ -53,7 +53,7 @@ RUN npm ci --omit=dev
 COPY . .
 
 # ── Runtime volume (uploads, logs, enhanced output) ──────────
-VOLUME ["/app/meshcentral-data"]
+# Volume mounted via Railway dashboard → /app/meshcentral-data
 
 # ── Environment: point app to AI tool locations ──────────────
 ENV ESRGAN_BIN=/opt/realesrgan/realesrgan-ncnn-vulkan
