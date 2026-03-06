@@ -345,6 +345,58 @@ function detectFFmpeg() {
 }
 detectFFmpeg();
 
+// ========================================
+// AI TOOL DETECTION
+// ========================================
+let esrganPath  = null;
+let esrganModels = null;
+let rifePath    = null;
+let rifeModels  = null;
+
+function detectAITools() {
+    const { execSync: es } = require('child_process');
+
+    // Real-ESRGAN — check env path first, then common locations
+    const esrganCandidates = [
+        process.env.ESRGAN_BIN,
+        '/opt/realesrgan/realesrgan-ncnn-vulkan',
+        '/usr/local/bin/realesrgan-ncnn-vulkan',
+    ].filter(Boolean);
+    for (const p of esrganCandidates) {
+        try { es(`"${p}" --help 2>&1 || true`); esrganPath = p; break; } catch (_) {}
+        // binary exists but --help exits non-zero — check file exists
+        try {
+            if (require('fs').existsSync(p)) { esrganPath = p; break; }
+        } catch (_) {}
+    }
+    if (esrganPath) {
+        esrganModels = process.env.ESRGAN_MODELS || require('path').dirname(esrganPath) + '/models';
+        console.log(`✅ Real-ESRGAN found: ${esrganPath}`);
+        console.log(`   Models: ${esrganModels}`);
+    } else {
+        console.warn('⚠️  Real-ESRGAN not found — AI upscaling disabled');
+    }
+
+    // RIFE — AI frame interpolation
+    const rifeCandidates = [
+        process.env.RIFE_BIN,
+        '/opt/rife/rife-ncnn-vulkan',
+        '/usr/local/bin/rife-ncnn-vulkan',
+    ].filter(Boolean);
+    for (const p of rifeCandidates) {
+        try {
+            if (require('fs').existsSync(p)) { rifePath = p; break; }
+        } catch (_) {}
+    }
+    if (rifePath) {
+        rifeModels = process.env.RIFE_MODELS || require('path').dirname(rifePath) + '/models';
+        console.log(`✅ RIFE found: ${rifePath}`);
+    } else {
+        console.warn('⚠️  RIFE not found — using FFmpeg framerate filter for interpolation');
+    }
+}
+detectAITools();
+
 function initializeDrive() {
     try {
         if (!process.env.GCP_SA_KEY) {
@@ -1553,6 +1605,27 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     createJob(jobId, { driverName, vin, inspectionType, fileSizeMB });
     res.json({ success: true, jobId, message: 'Upload received — processing started' });
 
+    // ── Write manifest to volume BEFORE processing starts ─────────────────────
+    // This survives a Railway deploy/restart. agent.js scans for manifests
+    // with status != 'complete' on startup and requeues them automatically.
+    const manifestPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+    const manifestData = {
+        jobId,
+        driverName,
+        vin,
+        inspectionType,
+        videoFile:   req.file.filename,  // relative filename in UPLOAD_DIR
+        submittedAt: new Date().toISOString(),
+        status:      'pending',
+        version:     process.env.APP_VERSION || 'unknown',
+    };
+    try {
+        fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2));
+        console.log(`📋 Manifest written: ${manifestPath}`);
+    } catch (mErr) {
+        console.warn('⚠️  Could not write manifest:', mErr.message);
+    }
+
     // ── All heavy processing runs in background ────────────────
     let videoPath = req.file.path;
     let enhancedVideoPath = null;
@@ -1603,6 +1676,32 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 const FFMPEG_TIMEOUT_MS = 4 * 60 * 1000;
                 const { spawn: spawnFfmpeg } = require('child_process');
 
+                // ── Pre-pass: Auto-detect and crop baked black borders ────────────
+                // The JS canvas stabilizer sometimes bakes black borders into recordings.
+                // cropdetect finds them automatically so the enhancer can crop+rescale.
+                let cropFilter = null;
+                try {
+                    const { execFileSync: efCrop } = require('child_process');
+                    efCrop(ffmpegPath, [
+                        '-y', '-i', videoPath,
+                        '-vf', 'cropdetect=limit=16:round=16:skip=2',
+                        '-frames:v', '60', '-f', 'null', '-'
+                    ], { timeout: 30000, stdio: ['pipe','pipe','pipe'] });
+                } catch (cdErr) {
+                    const stderr = cdErr && cdErr.stderr ? cdErr.stderr.toString() : '';
+                    const cropMatches = [...stderr.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+                    if (cropMatches.length > 0) {
+                        const last = cropMatches[cropMatches.length - 1];
+                        const cw = parseInt(last[1]), ch = parseInt(last[2]);
+                        const cx = parseInt(last[3]), cy = parseInt(last[4]);
+                        const blackPixels = (1920 - cw) + (1080 - ch);
+                        if (blackPixels > 50 && cw > 800 && ch > 400) {
+                            cropFilter = 'crop=' + cw + ':' + ch + ':' + cx + ':' + cy + ',scale=1920:1080:flags=lanczos';
+                            console.log('🔲 Black border detected (' + blackPixels + 'px) — auto-cropping: ' + cw + 'x' + ch);
+                        }
+                    }
+                }
+
                 // ── Pass 1: Motion analysis (vidstab) ──────────────────────
                 const stabTrfPath = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
                 try {
@@ -1626,6 +1725,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     const args = [
                         '-y', '-i', videoPath,
                         '-vf', filters.join(','),
+                        '-r', '30',
                         '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',  // no bitrate cap — CRF controls quality
                         '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
                         '-c:a', 'aac', '-b:a', '128k',
@@ -1705,11 +1805,53 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
                 // scale=1920:1080 forces true 1080p even if device recorded 720p
-                // lanczos = highest quality upscaling algorithm
-                // scale: preserve aspect ratio, fit within 1920x1080, pad black if needed
-                // force_original_aspect_ratio=decrease prevents fish-eye stretch on non-16:9 sources
-                // pad=1920:1080:-1:-1 centers with black bars (letterbox/pillarbox as needed)
-                const scaleFilter = 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black';
+                // ── Scene detection: measure brightness from first frame ────────────
+                // Drives adaptive pipeline — dark warehouse vs outdoor daylight need
+                // completely different treatment.
+                let srcBrightness = 128;
+                let srcPortrait   = false;  // portrait video with pillarboxes
+                try {
+                    const { execFileSync: efProbe } = require('child_process');
+                    // Sample a small frame for speed
+                    const probeRaw = efProbe(ffmpegPath, [
+                        '-y', '-i', videoPath, '-vframes', '1',
+                        '-vf', 'scale=160:90', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'
+                    ], { timeout: 15000, maxBuffer: 160*90*3 + 1024 });
+                    if (probeRaw.length >= 160*90*3) {
+                        let total = 0, px = 160*90;
+                        // Measure brightness of center strip only (ignore pillarboxes)
+                        for (let i = 0; i < px*3; i+=3)
+                            total += probeRaw[i]*0.299 + probeRaw[i+1]*0.587 + probeRaw[i+2]*0.114;
+                        srcBrightness = total / px;
+
+                        // Detect portrait pillarboxes: check if left/right 40% is near-black
+                        let leftDark=0, rightDark=0, rows=90, cols=160;
+                        for (let r=0; r<rows; r++) {
+                            for (let c=0; c<cols*0.4; c++) {
+                                const i = (r*cols+c)*3;
+                                if (probeRaw[i]*0.299+probeRaw[i+1]*0.587+probeRaw[i+2]*0.114 < 8) leftDark++;
+                            }
+                            for (let c=Math.floor(cols*0.6); c<cols; c++) {
+                                const i = (r*cols+c)*3;
+                                if (probeRaw[i]*0.299+probeRaw[i+1]*0.587+probeRaw[i+2]*0.114 < 8) rightDark++;
+                            }
+                        }
+                        const leftFrac  = leftDark  / (rows * cols*0.4);
+                        const rightFrac = rightDark / (rows * cols*0.4);
+                        srcPortrait = leftFrac > 0.85 && rightFrac > 0.85;
+                        console.log('📊 Scene: brightness=' + srcBrightness.toFixed(0) +
+                            ' portrait=' + srcPortrait + ' left=' + (leftFrac*100).toFixed(0) + '%dark');
+                    }
+                } catch(e) { console.warn('Scene probe failed, using defaults:', e.message); }
+
+                const isDark = srcBrightness < 80;
+
+                // ── Scale filter: strip pillarboxes if portrait, else normal scale ──
+                // Portrait: crop the 9:16 center strip → upscale to fill 1080x1920
+                // Landscape: standard 1920x1080 with aspect-ratio-safe padding
+                const scaleFilter = srcPortrait
+                    ? 'crop=iw*0.316:ih:iw*0.342:0,scale=1080:1920:flags=lanczos'  // strip pillarboxes
+                    : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black';
                 // vidstab transform file written by pass 1 (if available)
                 const stabTrf = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
                 const hasStab = fs.existsSync(stabTrf);
@@ -1724,52 +1866,265 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     const { execFileSync } = require('child_process');
                     const probe = execFileSync(ffprobePath, [
                         '-v', 'quiet', '-select_streams', 'v:0',
-                        '-show_entries', 'stream=r_frame_rate',
+                        '-show_entries', 'stream=avg_frame_rate',
                         '-of', 'default=noprint_wrappers=1',
                         videoPath
                     ], { timeout: 10000 }).toString().trim();
-                    const match = probe.match(/r_frame_rate=(\d+)\/(\d+)/);
-                    if (match) inputFps = Math.round(parseInt(match[1]) / parseInt(match[2]));
+                    // avg_frame_rate is VFR-safe; r_frame_rate returns garbage on iPhone VFR
+                    const match = probe.match(/avg_frame_rate=(\d+)\/(\d+)/);
+                    if (match) {
+                        const num = parseInt(match[1]), den = parseInt(match[2]);
+                        inputFps = den > 0 ? Math.round(num / den) : 30;
+                    }
                 } catch(e) { console.warn('fps probe failed, assuming 30fps'); }
 
                 const needsInterpolation = inputFps < 25;
-                const interpFilter = needsInterpolation
-                    ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
-                    : null;
-                console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'interpolating to 30fps' : 'no interpolation needed'));
+                console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'needs interpolation' : 'no interpolation needed'));
 
-                // Full filter chain: interpolate (if needed) + vidstab + color grade + denoise + sharpen
                 const stabFilter = hasStab
                     ? 'vidstabtransform=input=' + stabTrf + ':zoom=0:smoothing=60:optzoom=1:interpol=bicubic'
                     : null;
-                const fullFilters = [
+
+                console.log('🎨 Scene mode: ' + (isDark ? 'DARK/INDOOR' : 'OUTDOOR') + ' (brightness=' + srcBrightness.toFixed(0) + ')');
+                console.log('🤖 AI tools: ESRGAN=' + (esrganPath ? 'YES' : 'NO') + ' RIFE=' + (rifePath ? 'YES' : 'NO'));
+
+                // ── AI pipeline helper ──────────────────────────────────────────────
+                // Runs Real-ESRGAN on extracted frames then reassembles with FFmpeg.
+                // Pipeline: FFmpeg decode → PNG frames → ESRGAN → FFmpeg encode+grade
+                const runAIPipeline = async () => {
+                    const { execFileSync: efAI, spawn: spawnAI } = require('child_process');
+                    const os   = require('os');
+                    const framesDir  = path.join(os.tmpdir(), 'esrgan_in_'  + Date.now());
+                    const outDir     = path.join(os.tmpdir(), 'esrgan_out_' + Date.now());
+                    const rifeDir    = path.join(os.tmpdir(), 'rife_out_'   + Date.now());
+                    fs.mkdirSync(framesDir, { recursive: true });
+                    fs.mkdirSync(outDir,    { recursive: true });
+
+                    try {
+                        // ── Step A: RIFE frame interpolation (if needed + available) ──
+                        // RIFE generates intermediate frames using optical flow — far smoother
+                        // than FFmpeg's linear framerate filter. Only runs for low-fps clips.
+                        let interpSource = videoPath;
+                        if (needsInterpolation && rifePath) {
+                            console.log('🎞️  RIFE: interpolating ' + inputFps + 'fps → 30fps...');
+                            fs.mkdirSync(rifeDir, { recursive: true });
+
+                            // Extract input frames for RIFE
+                            const rifeInDir = path.join(os.tmpdir(), 'rife_in_' + Date.now());
+                            fs.mkdirSync(rifeInDir, { recursive: true });
+                            efAI(ffmpegPath, [
+                                '-y', '-i', videoPath,
+                                '-vf', scaleFilter,  // scale first so RIFE works on correct resolution
+                                path.join(rifeInDir, '%08d.png')
+                            ], { timeout: 120000, maxBuffer: 1024 * 1024 * 512 });
+
+                            // Run RIFE — -g -1 forces CPU mode (no Vulkan needed)
+                            const rifeModel = 'rife-v4.6';
+                            efAI(rifePath, [
+                                '-i', rifeInDir,
+                                '-o', rifeDir,
+                                '-m', rifeModel,
+                                '-g', '-1',   // CPU-only
+                                '-f', '0',    // multiplier: auto to reach 30fps
+                                '-s', '2.0',  // 2x frame count
+                            ], { timeout: 300000, maxBuffer: 1024 * 1024 * 1024 });
+
+                            // Reassemble RIFE frames to temp video for ESRGAN input
+                            const rifeTmp = path.join(os.tmpdir(), 'rife_tmp_' + Date.now() + '.mp4');
+                            efAI(ffmpegPath, [
+                                '-y', '-r', '30', '-i', path.join(rifeDir, '%08d.png'),
+                                '-i', videoPath,   // audio source
+                                '-map', '0:v', '-map', '1:a',
+                                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+                                '-c:a', 'copy', rifeTmp
+                            ], { timeout: 120000, maxBuffer: 1024 * 1024 * 512 });
+
+                            interpSource = rifeTmp;
+                            console.log('✅ RIFE interpolation complete');
+
+                            // Cleanup rife frame dirs
+                            try { fs.rmSync(rifeInDir, { recursive: true, force: true }); } catch(_) {}
+                            try { fs.rmSync(rifeDir,   { recursive: true, force: true }); } catch(_) {}
+                        }
+
+                        // ── Step B: Extract frames for ESRGAN ────────────────────────
+                        // Apply scale + crop + basic stabilization before ESRGAN
+                        // ESRGAN works on PNG frames, so we extract here
+                        console.log('🖼️  Extracting frames for Real-ESRGAN...');
+                        const preFilters = [
+                            ...(interpSource === videoPath ? [scaleFilter] : []), // already scaled by RIFE
+                            ...(cropFilter   ? [cropFilter]   : []),
+                            ...(stabFilter   ? [stabFilter]   : []),
+                            // Pre-denoise dark footage lightly before ESRGAN
+                            // ESRGAN handles noise, but very heavy grain confuses the model
+                            isDark ? 'nlmeans=s=4:p=3:r=5' : 'hqdn3d=1:0.7:1.5:1',
+                        ].filter(Boolean);
+
+                        efAI(ffmpegPath, [
+                            '-y', '-i', interpSource,
+                            '-vf', preFilters.join(','),
+                            path.join(framesDir, '%08d.png')
+                        ], { timeout: 180000, maxBuffer: 1024 * 1024 * 1024 });
+
+                        const frameCount = fs.readdirSync(framesDir).filter(f => f.endsWith('.png')).length;
+                        console.log('🖼️  Extracted ' + frameCount + ' frames — running Real-ESRGAN...');
+
+                        // ── Step C: Real-ESRGAN AI upscale/denoise ────────────────────
+                        // realesr-animevideov3 x2: upscales 1080p → 2160p then we downscale
+                        // This produces far cleaner 1080p than direct 1:1 processing
+                        // -g -1 = CPU mode, -t 0 = auto tile size for memory management
+                        const esrganModel = 'realesr-animevideov3';
+                        await new Promise((res, rej) => {
+                            const eProc = spawnAI(esrganPath, [
+                                '-i', framesDir,
+                                '-o', outDir,
+                                '-n', esrganModel,
+                                '-s', '2',        // 2x scale (→ 2160p)
+                                '-f', 'png',
+                                '-g', '-1',       // CPU mode
+                                '-t', '0',        // auto tile
+                            ]);
+                            let eLog = '';
+                            eProc.stderr.on('data', d => {
+                                eLog += d.toString();
+                                // Log progress every ~10 frames
+                                const m = eLog.match(/(\d+)\/(\d+)/);
+                                if (m && parseInt(m[1]) % 10 === 0)
+                                    updateJob(jobId, { status: 'enhancing', stage: 'AI Enhancement', progress: Math.round(parseInt(m[1])/parseInt(m[2])*60)+5, message: 'Real-ESRGAN: frame ' + m[1] + '/' + m[2] });
+                            });
+                            const killT = setTimeout(() => { eProc.kill(); rej(new Error('ESRGAN timeout')); }, 10 * 60 * 1000);
+                            eProc.on('close', code => {
+                                clearTimeout(killT);
+                                code === 0 ? res() : rej(new Error('ESRGAN exit ' + code));
+                            });
+                            eProc.on('error', rej);
+                        });
+                        console.log('✅ Real-ESRGAN complete');
+                        updateJob(jobId, { status: 'enhancing', stage: 'Encoding', progress: 70, message: 'AI enhancement done — encoding...' });
+
+                        // ── Step D: Reassemble + color grade + final encode ───────────
+                        // ESRGAN output is 2x scale — downscale back to target res with lanczos
+                        // Apply color grade and sharpening after ESRGAN (better results than before)
+                        const targetRes = srcPortrait ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
+                        const colorFilters = isDark ? [
+                            targetRes,
+                            'eq=brightness=0.10:contrast=1.25:saturation=1.15:gamma=0.80',
+                            "curves=all='0/0 0.08/0.32 0.4/0.65 1/1'",
+                            'unsharp=3:3:1.0:3:3:0.0',   // lighter sharpen — ESRGAN already sharpened
+                        ] : [
+                            targetRes,
+                            "curves=r='0/0 0.5/0.54 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/0.93'",
+                            'exposure=exposure=0.15:black=0.01',
+                            'vibrance=intensity=0.25',
+                            'colorbalance=rs=0.02:gs=0.02:bs=-0.04',
+                            'unsharp=3:3:0.8:3:3:0.0',
+                        ];
+
+                        await new Promise((res, rej) => {
+                            const args = [
+                                '-y',
+                                '-r', '30', '-i', path.join(outDir, '%08d.png'),
+                                '-i', videoPath,   // original audio
+                                '-map', '0:v', '-map', '1:a',
+                                '-vf', colorFilters.join(','),
+                                '-r', '30',
+                                '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
+                                '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
+                                '-c:a', 'aac', '-b:a', '128k',
+                                '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov',
+                                'pipe:1'
+                            ];
+                            const proc    = spawnAI(ffmpegPath, args);
+                            let outStream;
+                            try {
+                                outStream = fs.createWriteStream(enhancedVideoPath);
+                            } catch(e) { rej(e); return; }
+                            outStream.on('error', e => { try { proc.kill(); } catch(_){} rej(e); });
+                            proc.stdout.pipe(outStream);
+                            proc.stderr.on('data', () => {});
+                            const killT = setTimeout(() => { proc.kill(); rej(new Error('Encode timeout')); }, 8 * 60 * 1000);
+                            proc.on('close', code => {
+                                clearTimeout(killT);
+                                outStream.end();
+                                if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
+                                else rej(new Error('Final encode exit ' + code));
+                            });
+                            proc.on('error', rej);
+                        });
+
+                    } finally {
+                        // Always clean up temp frame directories
+                        try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(_) {}
+                        try { fs.rmSync(outDir,    { recursive: true, force: true }); } catch(_) {}
+                    }
+                };
+
+                // ── FFmpeg-only filter chains (fallback) ──────────────────────────
+                const interpFilter = needsInterpolation
+                    ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
+                    : null;
+
+                const darkFilters = [
                     scaleFilter,
+                    ...(cropFilter   ? [cropFilter]   : []),
                     ...(interpFilter ? [interpFilter] : []),
-                    ...(stabFilter  ? [stabFilter]  : []),
+                    ...(stabFilter   ? [stabFilter]   : []),
+                    'nlmeans=s=8:p=5:pc=5:r=9',
+                    'eq=brightness=0.12:contrast=1.3:saturation=1.15:gamma=0.75',
+                    "curves=all='0/0 0.08/0.32 0.4/0.62 1/1'",
+                    'unsharp=5:5:1.8:5:5:0.0',
+                ];
+                const outdoorFilters = [
+                    scaleFilter,
+                    ...(cropFilter   ? [cropFilter]   : []),
+                    ...(interpFilter ? [interpFilter] : []),
+                    ...(stabFilter   ? [stabFilter]   : []),
                     'hqdn3d=2:1.5:3:2',
                     "curves=r='0/0 0.5/0.54 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/0.93'",
                     'exposure=exposure=0.2:black=0.01',
                     'vibrance=intensity=0.3',
                     'colorbalance=rs=0.02:gs=0.02:bs=-0.04',
-                    'unsharp=3:3:1.0:3:3:0.0'
+                    'unsharp=3:3:1.2:3:3:0.0',
                 ];
-                // Basic fallback: interpolate (if needed) + outdoor color + sharpen
+                const fullFilters = isDark ? darkFilters : outdoorFilters;
                 const basicFilters = [
                     scaleFilter,
+                    ...(cropFilter   ? [cropFilter]   : []),
                     ...(interpFilter ? [interpFilter] : []),
-                    "curves=r='0/0 0.5/0.54 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/0.93'",
-                    'exposure=exposure=0.2:black=0.01',
-                    'unsharp=3:3:1.0:3:3:0.0'
+                    isDark ? 'eq=brightness=0.12:contrast=1.3:gamma=0.75' : 'hqdn3d=2:1.5:3:2',
+                    'unsharp=3:3:1.2:3:3:0.0',
                 ];
-                try {
-                    console.log('🎨 Attempting full enhancement (hqdn3d + color + sharpen)...');
-                    await runFFmpeg(fullFilters);
-                    console.log('✅ Full enhancement applied (hqdn3d active)');
-                } catch (filterErr) {
-                    console.warn(`⚠️  Full filters failed, retrying basic: ${filterErr.message.substring(0,80)}`);
-                    if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                    await runFFmpeg(basicFilters);
-                    console.log('✅ Basic enhancement applied');
+
+                // ── Execute: AI pipeline → FFmpeg full → FFmpeg basic ─────────────
+                if (esrganPath) {
+                    try {
+                        console.log('🤖 Running AI pipeline (Real-ESRGAN + RIFE)...');
+                        await runAIPipeline();
+                        console.log('✅ AI pipeline complete');
+                    } catch (aiErr) {
+                        console.warn('⚠️  AI pipeline failed, falling back to FFmpeg: ' + aiErr.message);
+                        if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
+                        try {
+                            await runFFmpeg(fullFilters);
+                            console.log('✅ FFmpeg full enhancement applied (AI fallback)');
+                        } catch (filterErr) {
+                            console.warn('⚠️  Full filters failed, retrying basic: ' + filterErr.message.substring(0,80));
+                            if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
+                            await runFFmpeg(basicFilters);
+                            console.log('✅ FFmpeg basic enhancement applied');
+                        }
+                    }
+                } else {
+                    try {
+                        console.log('🎨 Running FFmpeg enhancement (no AI tools)...');
+                        await runFFmpeg(fullFilters);
+                        console.log('✅ FFmpeg full enhancement applied');
+                    } catch (filterErr) {
+                        console.warn('⚠️  Full filters failed, retrying basic: ' + filterErr.message.substring(0,80));
+                        if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
+                        await runFFmpeg(basicFilters);
+                        console.log('✅ FFmpeg basic enhancement applied');
+                    }
                 }
 
                 finalVideoPath = enhancedVideoPath;
@@ -1779,6 +2134,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 console.warn('⚠️  Enhancement failed, uploading original:', enhanceError.message);
                 finalVideoPath = videoPath; // fall back to original
                 enhancedVideoPath = null;
+            } finally {
+                // Clean up .trf transform file — not needed after enhancement
+                const trfPath = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
+                try { if (fs.existsSync(trfPath)) fs.unlinkSync(trfPath); } catch(e) {}
             }
         } else {
             console.log('⏩ FFmpeg not available - uploading original');
@@ -2002,6 +2361,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 attemptCount:   1,
                 lastError:      error.message
             });
+            // Manifest stays status:'pending' — agent will requeue on next startup
+            // (already in retry_queue.json — agent handles it)
             updateJob(jobId, {
                 status:   'failed',
                 stage:    'Queued for retry',
@@ -2018,6 +2379,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 }
             }
             console.log('✅ Cleaned up temp files after non-retriable error');
+            // Mark manifest as permanently failed — agent will not requeue
+            try {
+                const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+                if (fs.existsSync(mPath)) {
+                    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                    m.status = 'failed_permanent';
+                    m.failedAt = new Date().toISOString();
+                    m.error = error.message;
+                    fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+                }
+            } catch (_) {}
             updateJob(jobId, {
                 status:   'failed',
                 stage:    'Error',
