@@ -47,7 +47,7 @@ WORKDIR /app
 
 # ── Node dependencies ────────────────────────────────────────
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # ── Application code ─────────────────────────────────────────
 COPY . .
