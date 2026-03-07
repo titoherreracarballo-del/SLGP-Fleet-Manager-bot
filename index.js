@@ -2826,3 +2826,41 @@ process.on('SIGTERM', () => {
     try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
     process.exit(0);
 });
+
+// ============================================
+// UNHANDLED REJECTION & EXCEPTION HANDLERS
+// Keeps the server alive on async promise failures
+// and logs everything to errors.json before exit
+// ============================================
+process.on('unhandledRejection', (reason) => {
+    const msg = reason?.message || String(reason);
+    console.error('⚠️  Unhandled rejection:', msg);
+    try {
+        let errors = [];
+        try { errors = JSON.parse(fs.readFileSync(ERROR_LOG, 'utf8')); } catch(e) {}
+        errors.push({
+            type: 'unhandled_rejection', severity: 'error',
+            message: msg, stack: reason?.stack || null,
+            source: 'index', timestamp: new Date().toISOString(), serverTime: Date.now()
+        });
+        if (errors.length > 1000) errors = errors.slice(-1000);
+        fs.writeFileSync(ERROR_LOG, JSON.stringify(errors, null, 2));
+    } catch(e) {}
+    // Do NOT exit — server stays alive
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught exception:', err.message, err.stack);
+    try {
+        let errors = [];
+        try { errors = JSON.parse(fs.readFileSync(ERROR_LOG, 'utf8')); } catch(e) {}
+        errors.push({
+            type: 'uncaught_exception', severity: 'critical',
+            message: err.message, stack: err.stack || null,
+            source: 'index', timestamp: new Date().toISOString(), serverTime: Date.now()
+        });
+        if (errors.length > 1000) errors = errors.slice(-1000);
+        fs.writeFileSync(ERROR_LOG, JSON.stringify(errors, null, 2));
+    } catch(e) {}
+    setTimeout(() => process.exit(1), 500);
+});
