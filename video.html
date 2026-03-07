@@ -763,7 +763,8 @@
 
     async function checkSunsetAndEnableFlash() {
         try {
-            const lat = 33.3770;  // Newnan, GA
+            // Hardcoded to Newnan, GA — SLGP primary delivery area
+            const lat = 33.3770;
             const lng = -84.7697;
 
             const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&formatted=0`);
@@ -817,6 +818,12 @@
     // Tracks which VIN last triggered a tow modal so we never
     // show the same modal twice on repeated keystrokes / re-entry.
     let _lastModalVin = null;
+
+    // ── Inspection type override guard ───────────────────────────
+    // Set to true when the driver manually picks Pre/Post-Trip.
+    // Prevents autoSelectInspection() from stomping their choice
+    // when they re-enter the VIN field after manual selection.
+    let _userChoseType = false;
 
     // ========================================
     // IMAGE STABILIZATION SYSTEM
@@ -1104,8 +1111,9 @@
 
     function startStabilizer() {
         if (stabAnimFrame) cancelAnimationFrame(stabAnimFrame);
+        // FIX: removed dangling velX/velY assignments (vars were never declared
+        // or read anywhere — dead code from an earlier velocity-damping draft)
         smoothX = 0; smoothY = 0;
-        velX = 0;    velY = 0;
         motionHistory = [];
         prevFrameData = null;
         initStabilizer();
@@ -1537,7 +1545,12 @@
         towBox.innerText = 'Pending VIN...';
 
         if (vin.length < 4) {
-            typeBox.value = '';
+            typeBox.value  = '';
+            _userChoseType = false;
+            // Only fully reset the modal guard when VIN is completely cleared.
+            // Partial edits (e.g. 3 chars while backspacing) should NOT reset it —
+            // the driver already acknowledged the modal for this VIN.
+            if (vin.length === 0) _lastModalVin = null;
             return;
         }
 
@@ -1562,7 +1575,7 @@
         if (found) {
             typeBox.value = found.type;
             typeBox.classList.add(found.fuel + '-mode');
-            autoSelectInspection(); // ← auto-select Pre/Post based on time of day
+            autoSelectInspection(); // ← respects _userChoseType guard
 
             if (found.tow) {
                 towBox.innerText = 'COVERAGE ACTIVE';
@@ -1582,8 +1595,9 @@
         } else {
             typeBox.value    = 'Unknown Vehicle';
             towBox.innerText = 'Unknown Status';
-            // Reset guard so modal fires again if driver corrects VIN
+            // Reset both guards so modal + auto-type fire again if driver corrects VIN
             _lastModalVin = null;
+            _userChoseType = false;
         }
     }
 
@@ -1592,6 +1606,8 @@
     }
 
     function selectType(type) {
+        // Mark that the driver made a deliberate choice — suppress future auto-selects
+        _userChoseType = true;
         inspectionType = type;
         document.getElementById('btn-pre').classList.remove('selected');
         document.getElementById('btn-post').classList.remove('selected');
@@ -1599,8 +1615,15 @@
     }
 
     function autoSelectInspection() {
+        // Skip if driver has already manually chosen an inspection type
+        if (_userChoseType) return;
         const hour = new Date().getHours();
-        selectType(hour < 13 ? 'Pre-Trip' : 'Post-Trip');
+        // Don't call selectType() here — that would set _userChoseType = true.
+        // Set inspectionType and UI directly so auto-select stays overridable.
+        inspectionType = hour < 13 ? 'Pre-Trip' : 'Post-Trip';
+        document.getElementById('btn-pre').classList.remove('selected');
+        document.getElementById('btn-post').classList.remove('selected');
+        document.getElementById(inspectionType === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
     }
 
     function startTimer() {
@@ -1878,7 +1901,6 @@
                                 }
                             } catch(e) { reject(new Error('Invalid server response')); }
                         } else if (xhr.status === 400) {
-                            clearTimeout(simTimer);
                             try {
                                 const err = JSON.parse(xhr.responseText);
                                 reject(new Error(err.error || `Error ${xhr.status}`));
