@@ -362,27 +362,49 @@ let rifePath    = null;
 let rifeModels  = null;
 
 function detectAITools() {
-    const { execSync: es } = require('child_process');
+    const { execSync: es, spawnSync } = require('child_process');
+    const fsLocal = require('fs');
+    const pathLocal = require('path');
+    const osLocal = require('os');
 
-    // Real-ESRGAN — check env path first, then common locations
+    // Real-ESRGAN — smoke test with a real frame to verify Vulkan/CPU actually works.
+    // --help always exits 0 even on GPU-less Railway hosts, so it's useless for detection.
     const esrganCandidates = [
         process.env.ESRGAN_BIN,
         '/opt/realesrgan/realesrgan-ncnn-vulkan',
         '/usr/local/bin/realesrgan-ncnn-vulkan',
     ].filter(Boolean);
     for (const p of esrganCandidates) {
-        try { es(`"${p}" --help 2>&1 || true`); esrganPath = p; break; } catch (_) {}
-        // binary exists but --help exits non-zero — check file exists
+        if (!fsLocal.existsSync(p)) continue;
         try {
-            if (require('fs').existsSync(p)) { esrganPath = p; break; }
+            const testIn  = pathLocal.join(osLocal.tmpdir(), `esrgan_probe_in_${Date.now()}`);
+            const testOut = pathLocal.join(osLocal.tmpdir(), `esrgan_probe_out_${Date.now()}`);
+            fsLocal.mkdirSync(testIn,  { recursive: true });
+            fsLocal.mkdirSync(testOut, { recursive: true });
+            // Generate a 4x4 test PNG via FFmpeg
+            const ffBin = ffmpegPath || 'ffmpeg';
+            try { es(`"${ffBin}" -y -f lavfi -i color=white:size=4x4:duration=0.04 -frames:v 1 "${testIn}/probe.png" 2>/dev/null`); } catch(_) {}
+            const result = spawnSync(p, [
+                '-i', testIn, '-o', testOut,
+                '-n', 'realesr-animevideov3',
+                '-s', '2', '-f', 'png', '-g', '-1'
+            ], { timeout: 20000 });
+            try { fsLocal.rmSync(testIn,  { recursive: true, force: true }); } catch (_) {}
+            try { fsLocal.rmSync(testOut, { recursive: true, force: true }); } catch (_) {}
+            if (result.status === 0) {
+                esrganPath = p;
+                break;
+            } else {
+                console.warn(`⚠️  Real-ESRGAN at ${p} failed smoke test (exit ${result.status}) — Vulkan likely unavailable on this host`);
+            }
         } catch (_) {}
     }
     if (esrganPath) {
-        esrganModels = process.env.ESRGAN_MODELS || require('path').dirname(esrganPath) + '/models';
+        esrganModels = process.env.ESRGAN_MODELS || pathLocal.dirname(esrganPath) + '/models';
         console.log(`✅ Real-ESRGAN found: ${esrganPath}`);
         console.log(`   Models: ${esrganModels}`);
     } else {
-        console.warn('⚠️  Real-ESRGAN not found — AI upscaling disabled');
+        console.warn('⚠️  Real-ESRGAN not available — AI upscaling disabled (using FFmpeg enhancement)');
     }
 
     // RIFE — AI frame interpolation
@@ -2016,6 +2038,28 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         // ── Step B: Extract frames for ESRGAN ────────────────────────
                         // Apply scale + crop + basic stabilization before ESRGAN
                         // ESRGAN works on PNG frames, so we extract here
+
+                        // Safety cap: 1080x1920 PNG ≈ 6MB each. 150 frames = ~900MB.
+                        // Beyond that we risk filling Railway's ephemeral /tmp and crashing.
+                        // At 20fps that's ~7.5s of video — longer clips fall back to FFmpeg.
+                        const MAX_ESRGAN_FRAMES = 150;
+                        let durationSec = 0;
+                        try {
+                            const durProbe = efAI(ffprobePath, [
+                                '-v', 'error', '-select_streams', 'v:0',
+                                '-show_entries', 'format=duration',
+                                '-of', 'default=noprint_wrappers=1',
+                                interpSource
+                            ], { timeout: 10000 }).toString().trim();
+                            const dm = durProbe.match(/duration=([\d.]+)/);
+                            if (dm) durationSec = parseFloat(dm[1]);
+                        } catch(_) {}
+                        const estimatedFrames = Math.ceil(durationSec * inputFps);
+                        if (estimatedFrames > MAX_ESRGAN_FRAMES) {
+                            console.warn(`⚠️  Video too long for ESRGAN (est. ${estimatedFrames} frames > ${MAX_ESRGAN_FRAMES} cap) — skipping AI pipeline`);
+                            throw new Error(`ESRGAN frame cap exceeded (${estimatedFrames} frames)`);
+                        }
+
                         console.log('🖼️  Extracting frames for Real-ESRGAN...');
                         const preFilters = [
                             ...(interpSource === videoPath ? [scaleFilter] : []), // already scaled by RIFE
@@ -2061,7 +2105,16 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                             const killT = setTimeout(() => { eProc.kill(); rej(new Error('ESRGAN timeout')); }, 10 * 60 * 1000);
                             eProc.on('close', code => {
                                 clearTimeout(killT);
-                                code === 0 ? res() : rej(new Error('ESRGAN exit ' + code));
+                                if (code === 0) {
+                                    res();
+                                } else {
+                                    if (code === 255) {
+                                        // Vulkan init failure — disable for entire session so future jobs skip immediately
+                                        console.warn('⚠️  Real-ESRGAN exit 255 (Vulkan unavailable) — disabling AI upscaling for this session');
+                                        esrganPath = null;
+                                    }
+                                    rej(new Error('ESRGAN exit ' + code));
+                                }
                             });
                             eProc.on('error', rej);
                         });
@@ -2998,17 +3051,30 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
                     const age = Date.now() - new Date(m.submittedAt).getTime();
                     if (age < 2 * 60 * 1000) continue;
 
-                    // Find the video file (enhanced or raw)
+                    // Find the video file — check manifest's stored enhanced filename first,
+                    // then fall back to raw upload. The old '_enhanced' suffix pattern was wrong;
+                    // actual enhanced files are named enhanced_<timestamp>_<original>.
                     const videoFile = m.videoFile || '';
-                    const rawPath = path.join(UPLOAD_DIR, videoFile);
-                    const enhPath = path.join(ENHANCED_DIR, videoFile.replace(/(\.[^.]+)$/, '_enhanced$1'));
-                    const survivingFile = [enhPath, rawPath].find(p => fs.existsSync(p));
+                    const rawPath   = path.join(UPLOAD_DIR, videoFile);
+                    const enhPath   = m.enhancedVideoFile
+                        ? path.join(ENHANCED_DIR, m.enhancedVideoFile)
+                        : null;
+                    const survivingFile = [enhPath, rawPath].filter(Boolean).find(p => fs.existsSync(p));
 
                     if (!survivingFile) {
                         console.warn(`⚠️  Startup recovery: manifest ${m.jobId} has no video file — marking failed`);
                         m.status = 'failed_permanent';
                         m.error  = 'Video file missing after restart';
                         fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+                        // Notify fleet manager so driver can be asked to resubmit
+                        if (process.env.EMAIL_USER) {
+                            mailTransport.sendMail({
+                                from: process.env.EMAIL_USER,
+                                to: ['slgpfleetmanager@gmail.com'],
+                                subject: `⚠️ Walk-Around Lost: ${m.driverName} — Please Resubmit`,
+                                text: `A walk-around video was lost during a server restart and cannot be recovered.\n\nDriver: ${m.driverName}\nVIN: ${m.vin}\nType: ${m.inspectionType}\nSubmitted: ${m.submittedAt}\nJob ID: ${m.jobId}\n\nPlease ask the driver to resubmit their walk-around video.`
+                            }).catch(e => console.warn('⚠️  Failed to send recovery failure email:', e.message));
+                        }
                         continue;
                     }
 
