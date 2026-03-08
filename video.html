@@ -806,6 +806,7 @@
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
+    let selectedMimeType = 'video/mp4'; // updated when recording starts
     let timerInterval;
     let seconds = 0;
     let inspectionType = '';
@@ -970,8 +971,9 @@
     }
 
     async function toggleFlash() {
-        const success = await setFlash(!flashEnabled);
-        if (success) updateFlashUI(!flashEnabled);
+        const intended = !flashEnabled;
+        const success  = await setFlash(intended);
+        if (success) updateFlashUI(intended);
     }
 
     function updateFlashUI(enabled) {
@@ -1576,11 +1578,13 @@
 
         if (vin.length < 4) {
             typeBox.value  = '';
-            _userChoseType = false;
-            // Only fully reset the modal guard when VIN is completely cleared.
-            // Partial edits (e.g. 3 chars while backspacing) should NOT reset it —
-            // the driver already acknowledged the modal for this VIN.
-            if (vin.length === 0) _lastModalVin = null;
+            // Only clear _userChoseType when VIN is fully empty (driver started over).
+            // Clearing it on a mid-edit backspace silently overrides a manual type selection
+            // the next time a character is typed — driver loses their choice without knowing.
+            if (vin.length === 0) {
+                _userChoseType = false;
+                _lastModalVin  = null;
+            }
             return;
         }
 
@@ -1714,9 +1718,15 @@
             ];
 
             let selectedOption = codecOptions.find(opt => MediaRecorder.isTypeSupported(opt.mimeType));
-            if (!selectedOption) { alert('No supported video codec found!'); return; }
+            if (!selectedOption) {
+                document.getElementById('driverName').readOnly = false;
+                document.getElementById('vinInput').readOnly    = false;
+                alert('No supported video codec found!');
+                return;
+            }
 
             console.log(`🎥 Recording with: ${selectedOption.name} @ ${(CONFIG.VIDEO_BITRATE / 1000000).toFixed(1)} Mbps`);
+            selectedMimeType = selectedOption.mimeType;
 
             try {
                 // Record from raw camera — preview canvas stays stabilized for viewing.
@@ -1791,6 +1801,8 @@
                 
             } catch (error) {
                 console.error('❌ Failed to start recording:', error);
+                document.getElementById('driverName').readOnly = false;
+                document.getElementById('vinInput').readOnly    = false;
                 alert('Failed to start recording: ' + error.message);
             }
         }
@@ -1823,6 +1835,9 @@
     }
 
     async function uploadVideo() {
+        // Cancel any pending auto-reload — upload is in progress, don't interrupt it
+        if (_reloadTimer) { clearTimeout(_reloadTimer); _reloadTimer = null; }
+
         const driver = document.getElementById('driverName').value.trim();
         const vin    = document.getElementById('vinInput').value.trim();
 
@@ -1878,7 +1893,8 @@
         setProgress(0, 'Preparing upload...');
 
         const formData = new FormData();
-        formData.append('video', videoBlob, 'inspection.mp4');
+        const ext = selectedMimeType.startsWith('video/webm') ? 'webm' : 'mp4';
+        formData.append('video', videoBlob, `inspection.${ext}`);
         formData.append('driverName', driver);
         formData.append('vin', vin);
         formData.append('inspectionType', inspectionType);
@@ -2062,8 +2078,11 @@
         } catch(e) {}
     }
 
+    let _reloadTimer = null;
     function onRecordingStopped() {
-        if (_updatePending && !isUploading) setTimeout(forceReload, 1500);
+        if (_updatePending && !isUploading) {
+            _reloadTimer = setTimeout(forceReload, 1500);
+        }
     }
 
     checkForUpdates();
