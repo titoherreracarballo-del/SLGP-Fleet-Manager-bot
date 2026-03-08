@@ -923,7 +923,7 @@
             const avgBrightness = totalBrightness / (canvas.width * canvas.height);
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 AUTO-FLASH ON (dark scene detected)');\
+                console.log('🔦 AUTO-FLASH ON (dark scene detected)');
                 setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
             } else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
                 console.log('💡 AUTO-FLASH OFF (bright enough)');
