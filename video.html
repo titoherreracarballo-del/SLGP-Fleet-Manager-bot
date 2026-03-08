@@ -1111,6 +1111,29 @@
 
     function startStabilizer() {
         if (stabAnimFrame) cancelAnimationFrame(stabAnimFrame);
+
+        // Check if the device has hardware EIS/OIS already active.
+        // Running our JS stabilizer on top of hardware stabilization causes
+        // conflicting corrections — the two systems fight each other and produce jitter.
+        // If hardware stabilization is detected, skip JS stab and show raw preview directly.
+        if (currentVideoTrack) {
+            try {
+                const caps     = currentVideoTrack.getCapabilities();
+                const settings = currentVideoTrack.getSettings();
+                if (caps.stabilizationMode || settings.stabilizationMode) {
+                    console.log('📷 Hardware stabilization detected — skipping JS stabilizer to avoid jitter');
+                    const rawVideo      = document.getElementById('preview-raw');
+                    const previewCanvas = document.getElementById('preview');
+                    if (rawVideo && previewCanvas) {
+                        previewCanvas.style.display = 'none';
+                        rawVideo.style.cssText += ';display:block;width:100%;height:100%;object-fit:cover;';
+                    }
+                    stabStream = null;
+                    return;
+                }
+            } catch(_) {}
+        }
+
         // FIX: removed dangling velX/velY assignments (vars were never declared
         // or read anywhere — dead code from an earlier velocity-damping draft)
         smoothX = 0; smoothY = 0;
