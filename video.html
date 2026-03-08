@@ -1203,7 +1203,7 @@
 
     function startOrSkipStabilizer() {
         if (stabEnabled) {
-            startOrSkipStabilizer();
+            startStabilizer();
         } else {
             // Stab is OFF — skip canvas loop entirely to reduce CPU/thermal load.
             // Just show the raw preview directly.
@@ -1213,6 +1213,8 @@
             console.log('📷 Preview: raw passthrough (stab OFF)');
         }
     }
+
+    function stopStabilizer() {
         if (stabAnimFrame) {
             cancelAnimationFrame(stabAnimFrame);
             stabAnimFrame = null;
