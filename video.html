@@ -752,12 +752,12 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       8000000,
+        VIDEO_BITRATE:       12000000,
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
         CAMERA_TIMEOUT: 15000,
-        BRIGHTNESS_THRESHOLD: 70,
+        BRIGHTNESS_THRESHOLD: 82,
         BRIGHTNESS_CHECK_INTERVAL: 5000
     };
 
@@ -927,10 +927,9 @@
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
                 console.log('🔦 AUTO-FLASH ON (dark scene detected)');
                 setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
-            } else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
-                console.log('💡 AUTO-FLASH OFF (bright enough)');
-                setFlash(false).then(ok => { if (ok) updateFlashUI(false); });
             }
+            // Note: auto shutoff removed — repeated torch toggling creates inconsistent
+            // lighting mid-inspection. Driver can manually turn off via flash button.
         } catch (e) {
             console.log('Brightness detection failed:', e.message);
         }
@@ -1180,7 +1179,40 @@
         console.log('🎯 Stabilizer active');
     }
 
-    function stopStabilizer() {
+    // Apply the correct preview display depending on whether stab is active.
+    // When OFF: show rawVideo directly (zero canvas overhead).
+    // When ON:  hide rawVideo, show stabCanvas (JS correction loop running).
+    function applyPreviewMode() {
+        const rawVideo      = document.getElementById('preview-raw');
+        const previewCanvas = document.getElementById('preview');
+        if (!rawVideo || !previewCanvas) return;
+        if (stabEnabled) {
+            previewCanvas.style.display = 'block';
+            rawVideo.style.display      = 'none';
+            rawVideo.style.width        = '';
+            rawVideo.style.height       = '';
+            rawVideo.style.objectFit    = '';
+        } else {
+            previewCanvas.style.display = 'none';
+            rawVideo.style.display      = 'block';
+            rawVideo.style.width        = '100%';
+            rawVideo.style.height       = '100%';
+            rawVideo.style.objectFit    = 'cover';
+        }
+    }
+
+    function startOrSkipStabilizer() {
+        if (stabEnabled) {
+            startOrSkipStabilizer();
+        } else {
+            // Stab is OFF — skip canvas loop entirely to reduce CPU/thermal load.
+            // Just show the raw preview directly.
+            if (stabAnimFrame) { cancelAnimationFrame(stabAnimFrame); stabAnimFrame = null; }
+            stabStream = null;
+            applyPreviewMode();
+            console.log('📷 Preview: raw passthrough (stab OFF)');
+        }
+    }
         if (stabAnimFrame) {
             cancelAnimationFrame(stabAnimFrame);
             stabAnimFrame = null;
@@ -1219,7 +1251,7 @@
                     facingMode: { ideal: 'environment' },
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
-                    frameRate: { ideal: 30, min: 24 }
+                    frameRate: { ideal: 30, max: 30 }
                 },
                 audio: true
             };
@@ -1250,7 +1282,7 @@
                 console.warn('Video load promise failed:', e);
             }
             
-            startStabilizer();
+            startOrSkipStabilizer();
             
             try {
                 const capabilities = currentVideoTrack.getCapabilities();
@@ -1265,6 +1297,16 @@
             statusEl.className = 'ready';
             statusEl.style.display = 'block';
             setTimeout(() => { if (statusEl.className === 'ready') statusEl.style.display = 'none'; }, 3000);
+
+            // Log actual achieved camera settings so we can verify the device
+            // is really delivering 1920x1080 @ 30fps and not silently falling back.
+            console.log('📷 Camera achieved settings:', {
+                width:      settings.width,
+                height:     settings.height,
+                frameRate:  settings.frameRate,
+                facingMode: settings.facingMode,
+                deviceId:   settings.deviceId
+            });
 
             startBrightnessMonitoring();
             checkCameraFacing();
@@ -1286,7 +1328,7 @@
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
                     try { await document.getElementById('preview-raw').play(); } catch(pe) {}
-                    startStabilizer(); startBrightnessMonitoring();
+                    startOrSkipStabilizer(); startBrightnessMonitoring();
                     const s2 = currentVideoTrack.getSettings();
                     loadingOverlay.style.display = 'none';
                     statusEl.innerText = 'Ready (' + s2.width + 'x' + s2.height + ')';
@@ -1376,13 +1418,13 @@
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
                     try { await document.getElementById('preview-raw').play(); } catch(pe) {}
-                    startStabilizer();
+                    startOrSkipStabilizer();
                     repairSuccess = true;
                 } catch (e) { console.log('Attempt 1 failed:', e.message); }
             }
@@ -1390,13 +1432,13 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
+                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
                     document.getElementById('preview-raw').srcObject = currentStream;
                     await document.getElementById('preview-raw').play();
-                    startStabilizer();
+                    startOrSkipStabilizer();
                     repairSuccess = true;
                 } catch (e) { console.log('Attempt 2 failed:', e.message); }
             }
@@ -1528,7 +1570,7 @@
             const rawVid = document.getElementById('preview-raw');
             rawVid.srcObject = currentStream;
             try { await rawVid.play(); } catch(pe) { console.warn("play() non-fatal:",pe.message); }
-            startStabilizer();
+            startOrSkipStabilizer();
             const settings = currentVideoTrack.getSettings();
             overlay.innerHTML = `
                 <div class="repair-warning">✅</div>
@@ -1762,7 +1804,8 @@
                 const recordStream = currentStream;
                 mediaRecorder = new MediaRecorder(recordStream, {
                     mimeType: selectedOption.mimeType,
-                    videoBitsPerSecond: CONFIG.VIDEO_BITRATE
+                    videoBitsPerSecond: CONFIG.VIDEO_BITRATE,
+                    audioBitsPerSecond: 128000
                 });
                 chunks = [];
 
@@ -1852,11 +1895,15 @@
             smoothX = 0; smoothY = 0;
             motionHistory = [];
             prevFrameData = null;
+            startStabilizer(); // start canvas loop now that user enabled it
             console.log('✅ Stabilizer ON');
         } else {
             indicator.innerText = '⚖️ STAB OFF';
             indicator.style.color = '#6b7280';
             indicator.style.borderColor = '#6b7280';
+            if (stabAnimFrame) { cancelAnimationFrame(stabAnimFrame); stabAnimFrame = null; }
+            stabStream = null;
+            applyPreviewMode(); // switch back to raw passthrough
             console.log('⏸️  Stabilizer OFF');
         }
     }
