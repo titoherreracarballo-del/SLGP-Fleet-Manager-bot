@@ -758,7 +758,7 @@
         MAX_RETRY_ATTEMPTS: 3,
         CAMERA_TIMEOUT: 15000,
         BRIGHTNESS_THRESHOLD: 70,
-        BRIGHTNESS_CHECK_INTERVAL: 2000
+        BRIGHTNESS_CHECK_INTERVAL: 5000
     };
 
     async function checkSunsetAndEnableFlash() {
@@ -839,10 +839,10 @@
     let motionHistory = [];
     let detectCanvas = null;
     let detectCtx = null;
-    const STAB_ZOOM        = 1.20;
-    const STAB_SMOOTH      = 0.72;
-    const STAB_MAX_SHIFT   = 0.07;
-    const STAB_HISTORY     = 15;
+    const STAB_ZOOM        = 1.08;
+    const STAB_SMOOTH      = 0.82;
+    const STAB_MAX_SHIFT   = 0.035;
+    const STAB_HISTORY     = 8;
     const STAB_NOISE_FLOOR = 0.004;
     const STAB_DECAY       = 0.92;
     const DETECT_W       = 64;
@@ -906,6 +906,7 @@
     }
 
     function detectBrightness() {
+        if (isRecording) return; // skip during recording — reduces CPU pressure on capture
         const video = document.getElementById('preview-raw');
         if (!video.srcObject || video.readyState < 2) return;
         try {
@@ -1163,9 +1164,10 @@
         try {
             const constraints = {
                 video: {
-                    facingMode: REAR_CAMERA_ONLY,
-                    width: { ideal: 1920, min: 640 },
-                    height: { ideal: 1080, min: 480 }
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30, min: 24 }
                 },
                 audio: true
             };
@@ -1254,11 +1256,16 @@
         const settings = currentVideoTrack.getSettings();
         const facingMode = settings.facingMode;
         const label = currentVideoTrack.label.toLowerCase();
-        
-        const isDefinitelyFront = facingMode === 'user' || label.includes('front') || label.includes('selfie') || label.includes('user');
-        const isDefinitelyRear = facingMode === 'environment' || label.includes('back') || label.includes('rear') || label.includes('environment') || label.includes('main') || /camera2? 0/i.test(label);
-        const isFrontCamera = isDefinitelyFront && !isDefinitelyRear;
-        
+
+        // Trust facingMode first — it's the authoritative API value.
+        // Fall back to label heuristics only as a weak hint, never as a hard trigger.
+        const isFrontByApi = facingMode === 'user';
+        const isFrontByLabel = !isFrontByApi && facingMode === undefined &&
+            (label.includes('front') || label.includes('selfie')) &&
+            !label.includes('back') && !label.includes('rear') && !label.includes('environment');
+
+        const isFrontCamera = isFrontByApi || isFrontByLabel;
+
         if (isFrontCamera) {
             console.warn('⚠️ FRONT CAMERA DETECTED - INITIATING AUTOMATIC REPAIR!');
             const statusEl = document.getElementById('camera-status');
@@ -1267,7 +1274,8 @@
             statusEl.style.display = 'block';
             await automaticCameraRepair();
         } else {
-            console.log('✅ Rear camera confirmed');
+            if (facingMode === undefined) console.warn('⚠️ facingMode undefined — assuming rear camera');
+            else console.log('✅ Rear camera confirmed');
         }
     }
     
@@ -1316,7 +1324,7 @@
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1330,7 +1338,7 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1688,7 +1696,10 @@
             console.log(`🎥 Recording with: ${selectedOption.name} @ ${(CONFIG.VIDEO_BITRATE / 1000000).toFixed(1)} Mbps`);
 
             try {
-                const recordStream = stabStream || currentStream;
+                // Record from raw camera — preview canvas stays stabilized for viewing.
+                // Recording stab+raw doubles the stabilization on the server (canvas jitter
+                // baked in + vidstab on top) and bakes black borders into the video stream.
+                const recordStream = currentStream;
                 mediaRecorder = new MediaRecorder(recordStream, {
                     mimeType: selectedOption.mimeType,
                     videoBitsPerSecond: CONFIG.VIDEO_BITRATE
