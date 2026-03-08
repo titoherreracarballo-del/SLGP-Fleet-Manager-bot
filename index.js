@@ -61,7 +61,7 @@ function removeFromRetryQueue(jobId) {
 // for live status instead of waiting blindly
 // ============================================
 const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
-const JOB_CLEANUP_MS = 10 * 60 * 1000; // remove completed jobs after 10 min
+const JOB_CLEANUP_MS = 35 * 60 * 1000; // remove completed jobs after 35 min (pipeline can take 21+ min)
 
 function createJob(jobId, meta) {
     jobStore.set(jobId, {
@@ -1617,7 +1617,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         videoFile:   req.file.filename,  // relative filename in UPLOAD_DIR
         submittedAt: new Date().toISOString(),
         status:      'pending',
-        version:     process.env.APP_VERSION || 'unknown',
+        version:     VERSION_STRING,
     };
     try {
         fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2));
@@ -1696,7 +1696,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         const cx = parseInt(last[3]), cy = parseInt(last[4]);
                         const blackPixels = (1920 - cw) + (1080 - ch);
                         if (blackPixels > 50 && cw > 800 && ch > 400) {
-                            cropFilter = 'crop=' + cw + ':' + ch + ':' + cx + ':' + cy + ',scale=1920:1080:flags=lanczos';
+                            const [tW, tH] = srcPortrait ? [1080, 1920] : [1920, 1080];
+                            cropFilter = 'crop=' + cw + ':' + ch + ':' + cx + ':' + cy + ',scale=' + tW + ':' + tH + ':flags=lanczos';
                             console.log('🔲 Black border detected (' + blackPixels + 'px) — auto-cropping: ' + cw + 'x' + ch);
                         }
                     }
@@ -1805,43 +1806,35 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
                 // scale=1920:1080 forces true 1080p even if device recorded 720p
-                // ── Scene detection: measure brightness from first frame ────────────
-                // Drives adaptive pipeline — dark warehouse vs outdoor daylight need
-                // completely different treatment.
                 let srcBrightness = 128;
-                let srcPortrait   = false;  // portrait video with pillarboxes
+                let srcPortrait   = false;  // true when source is taller than wide (9:16 phone video)
                 try {
                     const { execFileSync: efProbe } = require('child_process');
-                    // Sample a small frame for speed
+                    // ── Portrait detection: read actual stream dimensions via ffprobe ──
+                    // The old pixel-sniff (scale=160:90 + pillarbox check) was unreliable:
+                    // native portrait videos (1080x1920) have no pillarboxes to detect.
+                    const dimProbe = efProbe(ffprobePath, [
+                        '-v', 'quiet', '-select_streams', 'v:0',
+                        '-show_entries', 'stream=width,height',
+                        '-of', 'csv=p=0', videoPath
+                    ], { timeout: 10000 }).toString().trim();
+                    const [srcW, srcH] = dimProbe.split(',').map(Number);
+                    srcPortrait = srcH > srcW;
+
+                    // ── Brightness: sample a small frame for adaptive pipeline ──
                     const probeRaw = efProbe(ffmpegPath, [
                         '-y', '-i', videoPath, '-vframes', '1',
                         '-vf', 'scale=160:90', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'
-                    ], { timeout: 15000, maxBuffer: 160*90*3 + 1024 });
+                    ], { timeout: 15000, maxBuffer: 160*90*3 + 1024,
+                         stdio: ['pipe', 'pipe', 'ignore'] });
                     if (probeRaw.length >= 160*90*3) {
                         let total = 0, px = 160*90;
-                        // Measure brightness of center strip only (ignore pillarboxes)
                         for (let i = 0; i < px*3; i+=3)
                             total += probeRaw[i]*0.299 + probeRaw[i+1]*0.587 + probeRaw[i+2]*0.114;
                         srcBrightness = total / px;
-
-                        // Detect portrait pillarboxes: check if left/right 40% is near-black
-                        let leftDark=0, rightDark=0, rows=90, cols=160;
-                        for (let r=0; r<rows; r++) {
-                            for (let c=0; c<cols*0.4; c++) {
-                                const i = (r*cols+c)*3;
-                                if (probeRaw[i]*0.299+probeRaw[i+1]*0.587+probeRaw[i+2]*0.114 < 8) leftDark++;
-                            }
-                            for (let c=Math.floor(cols*0.6); c<cols; c++) {
-                                const i = (r*cols+c)*3;
-                                if (probeRaw[i]*0.299+probeRaw[i+1]*0.587+probeRaw[i+2]*0.114 < 8) rightDark++;
-                            }
-                        }
-                        const leftFrac  = leftDark  / (rows * cols*0.4);
-                        const rightFrac = rightDark / (rows * cols*0.4);
-                        srcPortrait = leftFrac > 0.85 && rightFrac > 0.85;
-                        console.log('📊 Scene: brightness=' + srcBrightness.toFixed(0) +
-                            ' portrait=' + srcPortrait + ' left=' + (leftFrac*100).toFixed(0) + '%dark');
                     }
+                    console.log('📊 Scene: brightness=' + srcBrightness.toFixed(0) +
+                        ' portrait=' + srcPortrait + ' dims=' + srcW + 'x' + srcH);
                 } catch(e) { console.warn('Scene probe failed, using defaults:', e.message); }
 
                 const isDark = srcBrightness < 80;
@@ -1936,7 +1929,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 '-i', videoPath,   // audio source
                                 '-map', '0:v', '-map', '1:a',
                                 '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
-                                '-c:a', 'copy', rifeTmp
+                                '-c:a', 'aac', '-b:a', '128k', rifeTmp
                             ], { timeout: 120000, maxBuffer: 1024 * 1024 * 512 });
 
                             interpSource = rifeTmp;
