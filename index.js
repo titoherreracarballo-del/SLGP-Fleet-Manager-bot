@@ -2191,9 +2191,9 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     scaleFilter,
                     ...(cropFilter   ? [cropFilter]   : []),
                     ...(interpFilter ? [interpFilter] : []),
-                    isDark ? 'nlmeans=s=4:p=3:r=5' : 'hqdn3d=1.2:1.0:2.0:1.5',
-                    isDark ? 'eq=brightness=0.06:contrast=1.12:gamma=0.92' : null,
-                    'unsharp=3:3:0.6:3:3:0.0',
+                    isDark ? 'hqdn3d=0.8:0.6:1.2:1.0' : 'hqdn3d=0.9:0.7:1.4:1.1',
+                    isDark ? 'eq=brightness=0.10:contrast=1.18:saturation=1.08:gamma=0.96' : 'eq=brightness=0.03:contrast=1.06:saturation=1.03',
+                    'unsharp=5:5:0.8:3:3:0.0',
                 ].filter(Boolean);
 
                 // ── Execute: AI pipeline → FFmpeg full → FFmpeg basic ─────────────
