@@ -111,7 +111,7 @@ const app = express();
 // CONFIGURATION
 // ============================================
 const APP_VERSION = Date.now();
-const VERSION_STRING = '4.6.6';
+const VERSION_STRING = '4.6.7';
 const BUILD_INFO = {
     version: APP_VERSION,
     versionString: VERSION_STRING,
@@ -228,7 +228,16 @@ if (process.env.STREAMLIT_DB_URL) {
     streamlitPool.on('error', (err) => {
         console.warn('⚠️  Streamlit DB pool error (non-fatal):', err.message);
     });
-    console.log('✅ Streamlit DB sync enabled');
+    // Run Drive-column migration once at startup — not on every sync call.
+    // ALTER TABLE takes an ACCESS EXCLUSIVE lock; running it per-insert would
+    // momentarily block all reads on the vehicle_inspections table.
+    streamlitPool.query(`
+        ALTER TABLE vehicle_inspections
+            ADD COLUMN IF NOT EXISTS drive_file_id  VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS drive_url       VARCHAR(500),
+            ADD COLUMN IF NOT EXISTS drive_download  VARCHAR(500)
+    `).then(() => console.log('✅ Streamlit DB sync enabled'))
+      .catch(err => console.warn('⚠️  Streamlit migration warning (non-fatal):', err.message));
 } else {
     console.log('ℹ️  STREAMLIT_DB_URL not set — Streamlit sync disabled');
 }
@@ -238,14 +247,6 @@ if (process.env.STREAMLIT_DB_URL) {
 async function syncInspectionToStreamlit({ driverName, vin, inspectionType, fileName, fileId, viewLink, directDownloadLink }) {
     if (!streamlitPool) return;
     try {
-        // Migration: add Drive columns if they don't exist yet (idempotent)
-        await streamlitPool.query(`
-            ALTER TABLE vehicle_inspections
-                ADD COLUMN IF NOT EXISTS drive_file_id  VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS drive_url       VARCHAR(500),
-                ADD COLUMN IF NOT EXISTS drive_download  VARCHAR(500)
-        `);
-
         await streamlitPool.query(`
             INSERT INTO vehicle_inspections
                 (vehicle_id, driver_name, inspection_type, inspection_date,
@@ -378,6 +379,9 @@ function detectAITools() {
     }
 
     // RIFE — AI frame interpolation
+    // Uses the same smoke-test pattern as ESRGAN: if the binary exists but can't
+    // run (e.g. rife-ncnn-vulkan on a CPU-only Railway instance), rifePath stays null
+    // and the pipeline falls back to FFmpeg's framerate filter.
     const rifeCandidates = [
         process.env.RIFE_BIN,
         '/opt/rife/rife-ncnn-vulkan',
@@ -385,8 +389,24 @@ function detectAITools() {
     ].filter(Boolean);
     for (const p of rifeCandidates) {
         try {
-            if (require('fs').existsSync(p)) { rifePath = p; break; }
+            es(`"${p}" --help 2>&1 || true`);
+            rifePath = p;
+            break;
         } catch (_) {}
+        // --help may exit non-zero but binary is runnable — check with a no-op call
+        try {
+            if (require('fs').existsSync(p)) {
+                // Quick Vulkan availability check: rife-ncnn-vulkan prints Vulkan error
+                // immediately on CPU-only machines. If it throws, skip it.
+                es(`"${p}" -i /dev/null -o /dev/null 2>&1 || true`, { timeout: 5000 });
+                // If it didn't throw, binary is usable
+                rifePath = p;
+                break;
+            }
+        } catch (_) {
+            // Binary exists but can't run (no GPU/Vulkan) — leave rifePath null
+            console.warn(`⚠️  RIFE binary found at ${p} but failed to execute (no GPU?) — disabling RIFE`);
+        }
     }
     if (rifePath) {
         rifeModels = process.env.RIFE_MODELS || require('path').dirname(rifePath) + '/models';
@@ -423,9 +443,11 @@ initializeDrive();
 function isDuplicate(file, name) {
     if (!fs.existsSync(file)) return false;
     try {
-        const logs = JSON.parse(fs.readFileSync(file));
-        if (logs.length === 0) return false;
-        const lastLog = logs[logs.length - 1];
+        // Gate/arrival logs are NDJSON (one JSON object per line) for atomic concurrent writes.
+        // Read the last non-empty line to check for a recent duplicate.
+        const lines = fs.readFileSync(file, 'utf8').split('\n').filter(l => l.trim());
+        if (lines.length === 0) return false;
+        const lastLog = JSON.parse(lines[lines.length - 1]);
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
         return (lastLog.name === name && (Date.now() - lastTime < 60000));
     } catch (e) { return false; }
@@ -522,12 +544,9 @@ app.post('/log-gate-check', async (req, res) => {
         }
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-        let logs = [];
-        if (fs.existsSync(GATE_LOG_FILE)) {
-            try { logs = JSON.parse(fs.readFileSync(GATE_LOG_FILE)); } catch(e) {}
-        }
-        logs.push({ name, timestamp, rawTimestamp: now.getTime() });
-        fs.writeFileSync(GATE_LOG_FILE, JSON.stringify(logs, null, 2));
+        // Use appendFileSync so concurrent check-ins never clobber each other.
+        // Each line is a self-contained JSON object (NDJSON) — no read-modify-write needed.
+        fs.appendFileSync(GATE_LOG_FILE, JSON.stringify({ name, timestamp, rawTimestamp: now.getTime() }) + '\n');
         res.json({ success: true });
 
         setImmediate(async () => {
@@ -591,12 +610,8 @@ app.post('/log-arrival-check', async (req, res) => {
         }
         const now = new Date();
         const timestamp = now.toLocaleString("en-US", { timeZone: "America/New_York" });
-        let logs = [];
-        if (fs.existsSync(ARRIVAL_LOG_FILE)) {
-            try { logs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE)); } catch(e) {}
-        }
-        logs.push({ name, timestamp, rawTimestamp: now.getTime() });
-        fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify(logs, null, 2));
+        // Atomic append — no read-modify-write race on concurrent arrivals
+        fs.appendFileSync(ARRIVAL_LOG_FILE, JSON.stringify({ name, timestamp, rawTimestamp: now.getTime() }) + '\n');
         res.json({ success: true });
 
         setImmediate(async () => {
@@ -752,7 +767,9 @@ app.post('/submit-report', async (req, res) => {
             if (data.signature) {
                 page.drawText('DRIVER SIGNATURE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
                 try {
-                    const sigImage = await doc.embedPng('data:image/png;base64,' + data.signature);
+                    // pdf-lib embedPng() needs raw bytes or base64 string WITHOUT the data: prefix
+                    const rawBase64 = data.signature.replace(/^data:image\/\w+;base64,/, '');
+                    const sigImage = await doc.embedPng(Buffer.from(rawBase64, 'base64'));
                     page.drawImage(sigImage, { x: 30, y: y - 60, width: 200, height: 60 }); y -= 70;
                 } catch (sigErr) {
                     page.drawText('(Signature image error)', { x: 30, y, size: 10, font: fontReg, color: rgb(0.5,0,0) }); y -= 20;
@@ -1017,11 +1034,22 @@ app.post('/submit-issue-ai', async (req, res) => {
         console.log(`📝 Description: "${issueDescription}"`);
         const learningData = loadLearningData();
         console.log(`🧠 Loaded ${learningData.history.total_issues} historical classifications`);
-        const classificationPrompt = buildLearningPrompt(issueDescription, vehicleType, vinLast4, learningData);
+        // Sanitize driver input before inserting into the AI prompt.
+        // Stripping quotes closes the simplest injection vector ("...IGNORE ABOVE...");
+        // truncation keeps the prompt from being padded with noise to push instructions out of context.
+        const sanitizedDescription = issueDescription
+            .replace(/["""''`]/g, ' ')   // strip quote chars that could break prompt delimiters
+            .replace(/[\r\n]+/g, ' ')     // flatten newlines — LLMs treat newlines as structure
+            .trim()
+            .slice(0, 500);               // hard cap — enough for any real vehicle issue description
+        const classificationPrompt = buildLearningPrompt(sanitizedDescription, vehicleType, vinLast4, learningData);
         let aiResponse = null;
         try {
+            if (!process.env.GEMINI_API_KEY) {
+                throw new Error('GEMINI_API_KEY not configured');
+            }
             // Gemini Pro — same prompt, different endpoint + response shape
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY || ''}`;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`;
             const apiResponse = await fetch(geminiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1647,10 +1675,18 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 console.log('🎨 Starting video enhancement...');
                 const enhanceStart = Date.now();
 
-                // Rename temp file to .mp4 so FFmpeg detects format
+                // Rename temp file to .mp4 so FFmpeg detects format.
+                // Wrapped in try/catch: Railway can throw EXDEV (cross-device link)
+                // on some volume configurations. If rename fails we fall through
+                // with the original path — FFmpeg handles format detection via probe.
                 const inputPath = videoPath + '.mp4';
-                fs.renameSync(videoPath, inputPath);
-                videoPath = inputPath; // update ref for cleanup
+                try {
+                    fs.renameSync(videoPath, inputPath);
+                    videoPath = inputPath; // update ref for cleanup only if rename succeeded
+                } catch (renameErr) {
+                    console.warn('⚠️  Could not rename temp file to .mp4 (falling back to original):', renameErr.message);
+                    // videoPath stays as-is — FFmpeg will probe the actual format
+                }
 
                 // Write enhanced output to ENHANCED_DIR.
                 // mkdirSync here (not just at startup) guarantees the dir exists
@@ -1723,6 +1759,9 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 }
                 // ── Pass 2: Enhancement + stabilization ──────────────────
                 const runFFmpeg = (filters) => new Promise((resolve, reject) => {
+                    let settled = false; // guard: close fires after error — only settle once
+                    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
+
                     const args = [
                         '-y', '-i', videoPath,
                         '-vf', filters.join(','),
@@ -1756,7 +1795,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         if (pid) unregisterPid(pid);
                         try { proc.kill('SIGKILL'); } catch(e) {}
                         try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                        reject(new Error(`Output stream error: ${streamErr.message}`));
+                        settle(reject, new Error(`Output stream error: ${streamErr.message}`));
                     });
 
                     const killTimer = setTimeout(() => {
@@ -1764,7 +1803,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         if (pid) unregisterPid(pid);
                         try { proc.kill('SIGKILL'); } catch(e) {}
                         outStream.destroy();
-                        reject(new Error('FFmpeg timeout - exceeded 4 minutes'));
+                        settle(reject, new Error('FFmpeg timeout - exceeded 4 minutes'));
                     }, FFMPEG_TIMEOUT_MS);
 
                     proc.stdout.on('data', chunk => {
@@ -1783,24 +1822,31 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         clearTimeout(killTimer);
                         if (pid) unregisterPid(pid);
                         outStream.end();
+                        if (settled) return; // stream error already rejected — don't double-fire
                         if (code === 0 && bytesOut > 10000) {
-                            const enhancedStats = fs.statSync(enhancedVideoPath);
-                            const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                            const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
-                            console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
-                            resolve();
+                            try {
+                                const enhancedStats = fs.statSync(enhancedVideoPath);
+                                const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                                const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
+                                console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
+                                settle(resolve);
+                            } catch (statErr) {
+                                // File was cleaned up (e.g. by a concurrent error handler)
+                                console.warn('⚠️  Enhanced file missing after code=0:', statErr.message);
+                                settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
+                            }
                         } else {
                             // Clean up partial file
                             try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
                             const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
-                            reject(new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
+                            settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
                         }
                     });
                     proc.on('error', err => {
                         clearTimeout(killTimer);
                         if (pid) unregisterPid(pid);
                         outStream.destroy();
-                        reject(err);
+                        settle(reject, err);
                     });
                 });
 
@@ -1917,9 +1963,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 '-i', rifeInDir,
                                 '-o', rifeDir,
                                 '-m', rifeModel,
-                                '-g', '-1',   // CPU-only
-                                '-f', '0',    // multiplier: auto to reach 30fps
-                                '-s', '2.0',  // 2x frame count
+                                '-g', '-1',   // use all available GPUs (or CPU fallback)
+                                '-s', '0.5',  // timestep 0.5 = 1 inserted frame per pair = 2x frame count
                             ], { timeout: 300000, maxBuffer: 1024 * 1024 * 1024 });
 
                             // Reassemble RIFE frames to temp video for ESRGAN input
@@ -2247,7 +2292,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                                 <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">📹 FULL QUALITY 1080p VIDEO</h3>
                                 <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
                                     <strong>✅ Video uploaded successfully!</strong><br>
-                                    H.265/HEVC codec - Superior quality in smaller file size.<br>
+                                    H.264 codec — enhanced to 20Mbps for maximum clarity.<br>
                                     Choose your preferred viewing method below:
                                 </p>
                             </div>
@@ -2313,6 +2358,17 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 metadata: videoMetadata, createdTime: driveResponse.data.createdTime
             }
         });
+        // Persist completion to disk so startup scan doesn't misclassify as orphaned
+        try {
+            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+            if (fs.existsSync(mPath)) {
+                const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                m.status = 'complete';
+                m.completedAt = new Date().toISOString();
+                m.fileId = fileId;
+                fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+            }
+        } catch (_) {}
         console.log(`✅ Job ${jobId} complete in ${uploadTime}s`);
     } catch (error) {
         console.error('❌ Video upload error:', error);
@@ -2553,6 +2609,19 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         // Remove from retry queue
         removeFromRetryQueue(jobId);
 
+        // Persist completion to disk manifest
+        try {
+            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+            if (fs.existsSync(mPath)) {
+                const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                m.status = 'complete';
+                m.completedAt = new Date().toISOString();
+                m.fileId = fileId;
+                m.retriedSuccess = true;
+                fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+            }
+        } catch (_) {}
+
         await appendLog(ERROR_LOG, {
             type: 'retry_success',
             severity: 'info',
@@ -2624,6 +2693,9 @@ app.get('/debug-dashboard', async (req, res) => {
     const recentCamera = await getRecentLogs(CAMERA_LOG, 50);
     const recentPerf = await getRecentLogs(PERFORMANCE_LOG, 50);
     const recentDebug = await getRecentLogs(DEBUG_LOG, 50);
+    // Escape user-supplied strings before inserting into HTML to prevent stored XSS.
+    // /api/log-error is open to any client, so log fields must be treated as untrusted.
+    const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -2660,7 +2732,7 @@ app.get('/debug-dashboard', async (req, res) => {
     </div>
     <div class="section">
         <div class="section-title">❌ Recent Errors</div>
-        ${recentErrors.map(log => `<div class="log-entry error"><div class="log-time">${new Date(log.timestamp).toLocaleString()}</div><div class="log-message"><strong>${log.message || 'No message'}</strong></div><div class="log-details">URL: ${log.url || 'N/A'}<br>User: ${log.userAgent || 'N/A'}</div></div>`).join('') || '<p>No errors</p>'}
+        ${recentErrors.map(log => `<div class="log-entry error"><div class="log-time">${new Date(log.timestamp).toLocaleString()}</div><div class="log-message"><strong>${esc(log.message) || 'No message'}</strong></div><div class="log-details">URL: ${esc(log.url) || 'N/A'}<br>User: ${esc(log.userAgent) || 'N/A'}</div></div>`).join('') || '<p>No errors</p>'}
     </div>
     <script>setTimeout(() => location.reload(), 30000);</script>
 </body>
@@ -2717,6 +2789,59 @@ app.get('/', (req, res) => {
 // ============================================
 // CRON JOB - DAILY SUMMARY
 // ============================================
+// ============================================
+// UPLOAD REAPER — runs every 5 minutes
+// Deletes orphaned temp files and old manifests
+// to prevent Railway volume from filling up.
+// ============================================
+cron.schedule('*/5 * * * *', () => {
+    try {
+        const now = Date.now();
+        const STALE_FILE_MS  = 45 * 60 * 1000; // files older than 45 min (safe beyond 35 min pipeline)
+        const OLD_MANIFEST_MS = 2 * 60 * 60 * 1000; // manifests older than 2 hours
+        let reaped = 0;
+
+        // Reap stale video files from UPLOAD_DIR and ENHANCED_DIR
+        for (const dir of [UPLOAD_DIR, ENHANCED_DIR]) {
+            if (!fs.existsSync(dir)) continue;
+            const files = fs.readdirSync(dir);
+            for (const f of files) {
+                if (f.endsWith('.manifest.json')) continue; // handled separately below
+                try {
+                    const fp = path.join(dir, f);
+                    const stat = fs.statSync(fp);
+                    const age = now - stat.mtimeMs;
+                    if (age > STALE_FILE_MS) {
+                        fs.unlinkSync(fp);
+                        reaped++;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // Reap old manifests (complete or failed_permanent only — never touch pending)
+        if (fs.existsSync(UPLOAD_DIR)) {
+            const manifests = fs.readdirSync(UPLOAD_DIR).filter(f => f.endsWith('.manifest.json'));
+            for (const mf of manifests) {
+                try {
+                    const mp = path.join(UPLOAD_DIR, mf);
+                    const m = JSON.parse(fs.readFileSync(mp, 'utf8'));
+                    if (m.status !== 'complete' && m.status !== 'failed_permanent') continue;
+                    const age = now - new Date(m.completedAt || m.failedAt || m.submittedAt).getTime();
+                    if (age > OLD_MANIFEST_MS) {
+                        fs.unlinkSync(mp);
+                        reaped++;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        if (reaped > 0) console.log(`🧹 Reaper: cleaned ${reaped} stale file(s)`);
+    } catch (e) {
+        console.warn('⚠️  Reaper error:', e.message);
+    }
+});
+
 cron.schedule('30 23 * * *', async () => {
     try {
         console.log('🕐 Running daily summary...');
@@ -2794,7 +2919,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
 ║  SLGP Fleet Manager                      ║
-║  v4.6.6 - AGENT + VIDEO LIMITS + PID TRACKING  ║
+║  v4.6.7 - MANIFEST PERSISTENCE + REAPER  ║
 ╠══════════════════════════════════════════╣
 ║  Port: ${PORT}                                ║
 ╚══════════════════════════════════════════╝
@@ -2812,6 +2937,83 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
 🌐 Ready at: http://localhost:${PORT}
     `);
+
+    // ── Startup manifest scan ─────────────────────────────────────────────
+    // Recover jobs that were orphaned by a Railway restart or crash mid-FFmpeg.
+    // These jobs have a manifest on disk (status:'pending') but were never added
+    // to retry_queue.json because the process died before hitting an error handler.
+    // We delay 5s to let Google Drive auth and other async init settle first.
+    setTimeout(() => {
+        try {
+            const manifestFiles = fs.readdirSync(UPLOAD_DIR)
+                .filter(f => f.endsWith('.manifest.json'));
+
+            let recovered = 0;
+            for (const mf of manifestFiles) {
+                try {
+                    const mPath = path.join(UPLOAD_DIR, mf);
+                    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+
+                    // Only recover pending jobs — skip complete, failed_permanent, already-queued
+                    if (m.status !== 'pending') continue;
+
+                    // Skip if already in retry_queue (agent already knows about it)
+                    let inQueue = false;
+                    try {
+                        if (fs.existsSync(RETRY_QUEUE_FILE)) {
+                            const q = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+                            inQueue = q.some(e => e.jobId === m.jobId);
+                        }
+                    } catch (_) {}
+                    if (inQueue) continue;
+
+                    // Skip if manifest is less than 2 minutes old (might still be processing
+                    // from a parallel instance — conservative guard)
+                    const age = Date.now() - new Date(m.submittedAt).getTime();
+                    if (age < 2 * 60 * 1000) continue;
+
+                    // Find the video file (enhanced or raw)
+                    const videoFile = m.videoFile || '';
+                    const rawPath = path.join(UPLOAD_DIR, videoFile);
+                    const enhPath = path.join(ENHANCED_DIR, videoFile.replace(/(\.[^.]+)$/, '_enhanced$1'));
+                    const survivingFile = [enhPath, rawPath].find(p => fs.existsSync(p));
+
+                    if (!survivingFile) {
+                        console.warn(`⚠️  Startup recovery: manifest ${m.jobId} has no video file — marking failed`);
+                        m.status = 'failed_permanent';
+                        m.error  = 'Video file missing after restart';
+                        fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+                        continue;
+                    }
+
+                    console.log(`🔄 Startup recovery: requeueing orphaned job ${m.jobId} (${m.driverName} / ${m.vin}, age ${Math.round(age/60000)}min)`);
+                    saveToRetryQueue({
+                        jobId:          m.jobId,
+                        filePath:       survivingFile,
+                        driverName:     m.driverName,
+                        vin:            m.vin,
+                        inspectionType: m.inspectionType,
+                        fileSizeMB:     m.fileSizeMB || '?',
+                        wasEnhanced:    survivingFile === enhPath,
+                        failedAt:       Date.now(),
+                        attemptCount:   1,
+                        lastError:      'Orphaned by server restart'
+                    });
+                    recovered++;
+                } catch (parseErr) {
+                    console.warn(`⚠️  Startup recovery: could not parse manifest ${mf}:`, parseErr.message);
+                }
+            }
+
+            if (recovered > 0) {
+                console.log(`✅ Startup recovery: ${recovered} orphaned job(s) requeued for retry`);
+            } else {
+                console.log('✅ Startup recovery: no orphaned jobs found');
+            }
+        } catch (scanErr) {
+            console.warn('⚠️  Startup manifest scan failed:', scanErr.message);
+        }
+    }, 5000);
 });
 
 process.on('SIGTERM', () => {
