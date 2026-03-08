@@ -395,6 +395,7 @@ function detectAITools() {
                 break;
             } else {
                 console.warn(`⚠️  Real-ESRGAN at ${p} failed smoke test (exit ${result.status}) — Vulkan likely unavailable on this host`);
+                break; // Vulkan failure is host-level — no point testing other candidates
             }
         } catch (_) {}
     }
