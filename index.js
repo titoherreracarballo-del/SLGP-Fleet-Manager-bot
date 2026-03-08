@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express = require('express');
-const ffmpeg = require('fluent-ffmpeg');
 const { execSync, fork } = require('child_process');
 const { Pool } = require('pg');
 
@@ -61,6 +60,7 @@ function removeFromRetryQueue(jobId) {
 // for live status instead of waiting blindly
 // ============================================
 const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
+const pendingRetries = new Map(); // jobId -> setTimeout handle for scheduled retries
 const JOB_CLEANUP_MS = 35 * 60 * 1000; // remove completed jobs after 35 min (pipeline can take 21+ min)
 
 function createJob(jobId, meta) {
@@ -104,6 +104,13 @@ const stream = require('stream');
 const cron = require('node-cron');
 const webpush = require('web-push');
 const { Client, GatewayIntentBits, Events } = require('discord.js');
+
+// Shared nodemailer transporter — created once at startup, reused for all sends.
+// Endpoints that need a different mailbox create their own transporter locally.
+const mailTransport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+});
 
 const app = express();
 
@@ -440,14 +447,25 @@ initializeDrive();
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
+// isDuplicate: for NDJSON files (gate/arrival logs - one JSON object per line)
 function isDuplicate(file, name) {
     if (!fs.existsSync(file)) return false;
     try {
-        // Gate/arrival logs are NDJSON (one JSON object per line) for atomic concurrent writes.
-        // Read the last non-empty line to check for a recent duplicate.
         const lines = fs.readFileSync(file, 'utf8').split('\n').filter(l => l.trim());
         if (lines.length === 0) return false;
         const lastLog = JSON.parse(lines[lines.length - 1]);
+        const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
+        return (lastLog.name === name && (Date.now() - lastTime < 60000));
+    } catch (e) { return false; }
+}
+
+// isDuplicateJsonArray: for JSON array files (daily_data.json)
+function isDuplicateJsonArray(file, name) {
+    if (!fs.existsSync(file)) return false;
+    try {
+        const logs = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (!Array.isArray(logs) || logs.length === 0) return false;
+        const lastLog = logs[logs.length - 1];
         const lastTime = new Date(lastLog.rawTimestamp || Date.now()).getTime();
         return (lastLog.name === name && (Date.now() - lastTime < 60000));
     } catch (e) { return false; }
@@ -580,7 +598,7 @@ app.post('/log-gate-check', async (req, res) => {
                 const pdfBytes = await doc.save();
                 const snapshotPath = path.join(UPLOAD_DIR, `Gate_${Date.now()}.pdf`);
                 fs.writeFileSync(snapshotPath, pdfBytes);
-                const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+                const transporter = mailTransport;
                 await transporter.sendMail({
                     from: process.env.EMAIL_USER,
                     to: ['slgpfleetmanager@gmail.com'],
@@ -648,7 +666,7 @@ app.post('/log-arrival-check', async (req, res) => {
                 const pdfBytes = await doc.save();
                 const snapshotPath = path.join(UPLOAD_DIR, `Arrival_${Date.now()}.pdf`);
                 fs.writeFileSync(snapshotPath, pdfBytes);
-                const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+                const transporter = mailTransport;
                 await transporter.sendMail({
                     from: process.env.EMAIL_USER,
                     to: ['slgpfleetmanager@gmail.com'],
@@ -676,7 +694,7 @@ app.post('/log-arrival-check', async (req, res) => {
 app.post('/submit-report', async (req, res) => {
     try {
         const data = req.body;
-        if (isDuplicate(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
+        if (isDuplicateJsonArray(DAILY_LOG_FILE, (data.vinLast4 || '') + (data.reportType || ''))) {
             return res.json({ success: true });
         }
         let currentLogs = [];
@@ -1123,7 +1141,7 @@ app.post('/submit-issue-ai', async (req, res) => {
                 } catch (e) { console.error(`❌ File ${i+1} attachment failed:`, e.message); }
             }
         }
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        const transporter = mailTransport;
         const priorityEmoji = aiResponse.priority === 'HIGH_PRIORITY' ? '🚨' : aiResponse.priority === 'EDV_ELECTRIC' ? '⚡' : '📋';
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
@@ -1210,7 +1228,7 @@ const BUILD_NOTES = [
                     { highlight: 'Upload Reaper:', text: 'Deletes stale temp files >10 min old every 5 min — prevents volume fill' },
                     { highlight: 'Log Rotation:', text: 'Trims log files >500KB to last 200 entries every 30 min' },
                     { highlight: 'Memory Watchdog:', text: 'Warns if heap exceeds 400MB every 5 min' },
-                    { highlight: 'Health Ping:', text: 'Hits /version every 5 min, logs if response >3s' },
+                    { highlight: 'Health Ping:', text: 'Hits /health every 5 min, logs if response >3s' },
                     { highlight: 'Midnight Summary:', text: 'Daily disk usage report at 23:58' },
                     { highlight: 'Auto-Restarts:', text: 'If agent crashes, index.js respawns it after 30s' }
                 ]
@@ -1388,7 +1406,7 @@ async function trackAPIRequest(apiName = 'TomTom') {
 
 async function sendUsageAlert(currentUsage, threshold) {
     try {
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        const transporter = mailTransport;
         const percent = (threshold * 100).toFixed(0);
         const remaining = DAILY_LIMIT - currentUsage;
         let urgency = '⚠️ WARNING';
@@ -1712,6 +1730,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 const FFMPEG_TIMEOUT_MS = 4 * 60 * 1000;
                 const { spawn: spawnFfmpeg } = require('child_process');
 
+                // Hoist srcPortrait/srcBrightness above cropdetect so cropFilter can use srcPortrait.
+                // They were previously declared AFTER this block, causing srcPortrait=undefined there.
+                let srcBrightness = 128;
+                let srcPortrait   = false;  // true when source is taller than wide (9:16 phone video)
+
                 // ── Pre-pass: Auto-detect and crop baked black borders ────────────
                 // The JS canvas stabilizer sometimes bakes black borders into recordings.
                 // cropdetect finds them automatically so the enhancer can crop+rescale.
@@ -1733,7 +1756,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         const blackPixels = (1920 - cw) + (1080 - ch);
                         if (blackPixels > 50 && cw > 800 && ch > 400) {
                             const [tW, tH] = srcPortrait ? [1080, 1920] : [1920, 1080];
-                            cropFilter = 'crop=' + cw + ':' + ch + ':' + cx + ':' + cy + ',scale=' + tW + ':' + tH + ':flags=lanczos';
+                            cropFilter = `crop=${cw}:${ch}:${cx}:${cy}`;
                             console.log('🔲 Black border detected (' + blackPixels + 'px) — auto-cropping: ' + cw + 'x' + ch);
                         }
                     }
@@ -1808,7 +1831,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                     proc.stdout.on('data', chunk => {
                         bytesOut += chunk.length;
-                        outStream.write(chunk);
+                        const ok = outStream.write(chunk);
+                        if (!ok) {
+                            proc.stdout.pause();
+                            outStream.once('drain', () => proc.stdout.resume());
+                        }
                         // Approximate progress from bytes (rough estimate)
                         const approxPct = Math.min(Math.round(bytesOut / 50000), 90);
                         updateJob(jobId, {
@@ -1852,8 +1879,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                 // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
                 // scale=1920:1080 forces true 1080p even if device recorded 720p
-                let srcBrightness = 128;
-                let srcPortrait   = false;  // true when source is taller than wide (9:16 phone video)
                 try {
                     const { execFileSync: efProbe } = require('child_process');
                     // ── Portrait detection: read actual stream dimensions via ffprobe ──
@@ -1885,12 +1910,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
 
                 const isDark = srcBrightness < 80;
 
-                // ── Scale filter: strip pillarboxes if portrait, else normal scale ──
-                // Portrait: crop the 9:16 center strip → upscale to fill 1080x1920
-                // Landscape: standard 1920x1080 with aspect-ratio-safe padding
+                // ── Scale filter: aspect-ratio safe pad to target resolution ─────
+                // force_original_aspect_ratio=decrease scales to fit within the target box,
+                // pad fills any remaining space with black — no stretch, no crop of content.
                 const scaleFilter = srcPortrait
-                    ? 'crop=iw*0.316:ih:iw*0.342:0,scale=1080:1920:flags=lanczos'  // strip pillarboxes
-                    : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black';
+                    ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
+                    : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
                 // vidstab transform file written by pass 1 (if available)
                 const stabTrf = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
                 const hasStab = fs.existsSync(stabTrf);
@@ -1917,12 +1942,15 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     }
                 } catch(e) { console.warn('fps probe failed, assuming 30fps'); }
 
-                const needsInterpolation = inputFps < 25;
+                const needsInterpolation = inputFps < 20;
                 console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'needs interpolation' : 'no interpolation needed'));
 
-                const stabFilter = hasStab
-                    ? 'vidstabtransform=input=' + stabTrf + ':zoom=0:smoothing=60:optzoom=1:interpol=bicubic'
-                    : null;
+                // ── Server stabilization: DISABLED ───────────────────────────────
+                // Recording now uses raw camera stream (not stabilized canvas), so
+                // vidstab would be the only pass — but it still interacts badly with
+                // the browser's own gyro-compensated video stream. Disabled until
+                // a clean single-pass stab approach is confirmed to help.
+                const stabFilter = null;
 
                 console.log('🎨 Scene mode: ' + (isDark ? 'DARK/INDOOR' : 'OUTDOOR') + ' (brightness=' + srcBrightness.toFixed(0) + ')');
                 console.log('🤖 AI tools: ESRGAN=' + (esrganPath ? 'YES' : 'NO') + ' RIFE=' + (rifePath ? 'YES' : 'NO'));
@@ -2098,40 +2126,20 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                 };
 
                 // ── FFmpeg-only filter chains (fallback) ──────────────────────────
+                // Simplified per ChatGPT audit: fewer passes = less artificial look,
+                // less processing time, less chance of introducing motion artifacts.
                 const interpFilter = needsInterpolation
                     ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
                     : null;
 
-                const darkFilters = [
+                const fullFilters = [
                     scaleFilter,
                     ...(cropFilter   ? [cropFilter]   : []),
                     ...(interpFilter ? [interpFilter] : []),
-                    ...(stabFilter   ? [stabFilter]   : []),
-                    'nlmeans=s=8:p=5:pc=5:r=9',
-                    'eq=brightness=0.12:contrast=1.3:saturation=1.15:gamma=0.75',
-                    "curves=all='0/0 0.08/0.32 0.4/0.62 1/1'",
-                    'unsharp=5:5:1.8:5:5:0.0',
-                ];
-                const outdoorFilters = [
-                    scaleFilter,
-                    ...(cropFilter   ? [cropFilter]   : []),
-                    ...(interpFilter ? [interpFilter] : []),
-                    ...(stabFilter   ? [stabFilter]   : []),
-                    'hqdn3d=2:1.5:3:2',
-                    "curves=r='0/0 0.5/0.54 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/0.93'",
-                    'exposure=exposure=0.2:black=0.01',
-                    'vibrance=intensity=0.3',
-                    'colorbalance=rs=0.02:gs=0.02:bs=-0.04',
-                    'unsharp=3:3:1.2:3:3:0.0',
-                ];
-                const fullFilters = isDark ? darkFilters : outdoorFilters;
-                const basicFilters = [
-                    scaleFilter,
-                    ...(cropFilter   ? [cropFilter]   : []),
-                    ...(interpFilter ? [interpFilter] : []),
-                    isDark ? 'eq=brightness=0.12:contrast=1.3:gamma=0.75' : 'hqdn3d=2:1.5:3:2',
-                    'unsharp=3:3:1.2:3:3:0.0',
-                ];
+                    isDark ? 'nlmeans=s=4:p=3:r=5' : 'hqdn3d=1.2:1.0:2.0:1.5',
+                    isDark ? 'eq=brightness=0.06:contrast=1.12:gamma=0.92' : null,
+                    'unsharp=3:3:0.6:3:3:0.0',
+                ].filter(Boolean);
 
                 // ── Execute: AI pipeline → FFmpeg full → FFmpeg basic ─────────────
                 if (esrganPath) {
@@ -2142,31 +2150,32 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     } catch (aiErr) {
                         console.warn('⚠️  AI pipeline failed, falling back to FFmpeg: ' + aiErr.message);
                         if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                        try {
-                            await runFFmpeg(fullFilters);
-                            console.log('✅ FFmpeg full enhancement applied (AI fallback)');
-                        } catch (filterErr) {
-                            console.warn('⚠️  Full filters failed, retrying basic: ' + filterErr.message.substring(0,80));
-                            if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                            await runFFmpeg(basicFilters);
-                            console.log('✅ FFmpeg basic enhancement applied');
-                        }
+                        await runFFmpeg(fullFilters);
+                        console.log('✅ FFmpeg enhancement applied (AI fallback)');
                     }
                 } else {
                     try {
                         console.log('🎨 Running FFmpeg enhancement (no AI tools)...');
                         await runFFmpeg(fullFilters);
-                        console.log('✅ FFmpeg full enhancement applied');
+                        console.log('✅ FFmpeg enhancement applied');
                     } catch (filterErr) {
-                        console.warn('⚠️  Full filters failed, retrying basic: ' + filterErr.message.substring(0,80));
+                        console.warn('⚠️  FFmpeg enhancement failed: ' + filterErr.message.substring(0,80));
                         if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                        await runFFmpeg(basicFilters);
-                        console.log('✅ FFmpeg basic enhancement applied');
+                        throw filterErr; // let outer catch fall back to original
                     }
                 }
 
                 finalVideoPath = enhancedVideoPath;
                 wasEnhanced = true;
+                // Record enhanced filename in manifest so startup recovery can find it
+                try {
+                    const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+                    if (fs.existsSync(mPath)) {
+                        const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                        m.enhancedVideoFile = path.basename(enhancedVideoPath);
+                        fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+                    }
+                } catch (_) {}
                 updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 68, message: 'Enhancement complete — uploading to Google Drive...' });
             } catch (enhanceError) {
                 console.warn('⚠️  Enhancement failed, uploading original:', enhanceError.message);
@@ -2797,9 +2806,18 @@ app.get('/', (req, res) => {
 cron.schedule('*/5 * * * *', () => {
     try {
         const now = Date.now();
-        const STALE_FILE_MS  = 45 * 60 * 1000; // files older than 45 min (safe beyond 35 min pipeline)
-        const OLD_MANIFEST_MS = 2 * 60 * 60 * 1000; // manifests older than 2 hours
+        const STALE_FILE_MS  = 45 * 60 * 1000;
+        const OLD_MANIFEST_MS = 2 * 60 * 60 * 1000;
         let reaped = 0;
+
+        // Load retry queue paths so we never delete a file pending retry
+        const protectedPaths = (() => {
+            try {
+                if (!fs.existsSync(RETRY_QUEUE_FILE)) return new Set();
+                const queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+                return new Set(queue.map(e => e.filePath).filter(Boolean));
+            } catch { return new Set(); }
+        })();
 
         // Reap stale video files from UPLOAD_DIR and ENHANCED_DIR
         for (const dir of [UPLOAD_DIR, ENHANCED_DIR]) {
@@ -2811,7 +2829,7 @@ cron.schedule('*/5 * * * *', () => {
                     const fp = path.join(dir, f);
                     const stat = fs.statSync(fp);
                     const age = now - stat.mtimeMs;
-                    if (age > STALE_FILE_MS) {
+                    if (age > STALE_FILE_MS && !protectedPaths.has(fp)) {
                         fs.unlinkSync(fp);
                         reaped++;
                     }
@@ -2845,22 +2863,30 @@ cron.schedule('*/5 * * * *', () => {
 cron.schedule('30 23 * * *', async () => {
     try {
         console.log('🕐 Running daily summary...');
+
+        // Gate/arrival logs are NDJSON — read line-by-line
+        function readNdjson(file) {
+            if (!fs.existsSync(file)) return [];
+            return fs.readFileSync(file, 'utf8')
+                .split('\n')
+                .filter(Boolean)
+                .map(line => { try { return JSON.parse(line); } catch { return null; } })
+                .filter(Boolean);
+        }
+
         let summaryText = "\n--- DEPARTURE LOGS ---\n";
-        if (fs.existsSync(GATE_LOG_FILE)) {
-            const gateLogs = JSON.parse(fs.readFileSync(GATE_LOG_FILE));
-            gateLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
-            fs.writeFileSync(GATE_LOG_FILE, JSON.stringify([]));
-        }
+        const gateLogs = readNdjson(GATE_LOG_FILE);
+        gateLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
+        fs.writeFileSync(GATE_LOG_FILE, '');
+
         summaryText += "\n--- ARRIVAL LOGS ---\n";
-        if (fs.existsSync(ARRIVAL_LOG_FILE)) {
-            const arrLogs = JSON.parse(fs.readFileSync(ARRIVAL_LOG_FILE));
-            arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
-            fs.writeFileSync(ARRIVAL_LOG_FILE, JSON.stringify([]));
-        }
+        const arrLogs = readNdjson(ARRIVAL_LOG_FILE);
+        arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
+        fs.writeFileSync(ARRIVAL_LOG_FILE, '');
         if (!fs.existsSync(DAILY_LOG_FILE)) return;
         const allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
         if (allLogs.length === 0 && summaryText.length < 40) return;
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+        const transporter = mailTransport;
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: ['slgpfleetmanager@gmail.com'],
@@ -3019,6 +3045,11 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received - shutting down gracefully');
     try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
+    // Clear any pending retry timers so they don't fire into a dying process
+    try {
+        for (const handle of pendingRetries.values()) clearTimeout(handle);
+        pendingRetries.clear();
+    } catch(e) {}
     process.exit(0);
 });
 
