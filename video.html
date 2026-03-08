@@ -778,8 +778,8 @@
                 if (now > sunset || now < sunrise) {
                     console.log('🌙 After sunset - Auto-enabling flash');
                     if (!flashEnabled) {
-                        setFlash(true);
-                        updateFlashUI(true);
+                        const ok = await setFlash(true);
+                        if (ok) updateFlashUI(true);
                     }
                     return true;
                 } else {
@@ -793,8 +793,8 @@
             if (hour >= 18 || hour < 6) {
                 console.log('🌙 Using time-based fallback - Auto-enabling flash');
                 if (!flashEnabled) {
-                    setFlash(true);
-                    updateFlashUI(true);
+                    const ok = await setFlash(true);
+                    if (ok) updateFlashUI(true);
                 }
                 return true;
             }
@@ -923,13 +923,11 @@
             const avgBrightness = totalBrightness / (canvas.width * canvas.height);
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 AUTO-FLASH ON (dark scene detected)');
-                setFlash(true);
-                updateFlashUI(true);
+                console.log('🔦 AUTO-FLASH ON (dark scene detected)');\
+                setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
             } else if (avgBrightness > (CONFIG.BRIGHTNESS_THRESHOLD + 30) && flashEnabled) {
                 console.log('💡 AUTO-FLASH OFF (bright enough)');
-                setFlash(false);
-                updateFlashUI(false);
+                setFlash(false).then(ok => { if (ok) updateFlashUI(false); });
             }
         } catch (e) {
             console.log('Brightness detection failed:', e.message);
@@ -970,9 +968,9 @@
         }
     }
 
-    function toggleFlash() {
-        setFlash(!flashEnabled);
-        updateFlashUI(!flashEnabled);
+    async function toggleFlash() {
+        const success = await setFlash(!flashEnabled);
+        if (success) updateFlashUI(!flashEnabled);
     }
 
     function updateFlashUI(enabled) {
@@ -1708,7 +1706,17 @@
                     document.getElementById('driverName').readOnly = false;
                     document.getElementById('vinInput').readOnly    = false;
 
-                    if (chunks.length === 0) { alert('Recording failed: No data captured'); return; }
+                    if (chunks.length === 0) {
+                        alert('Recording failed: No data captured. Please try again.');
+                        // Restore UI so driver can re-record
+                        document.getElementById('btn-record').style.display = 'flex';
+                        document.getElementById('btn-stop').style.display   = 'none';
+                        document.getElementById('flash-toggle').style.display = 'none';
+                        document.getElementById('status').innerText = 'Recording failed — tap Record to try again.';
+                        document.getElementById('driverName').readOnly = false;
+                        document.getElementById('vinInput').readOnly   = false;
+                        return;
+                    }
 
                     videoBlob = new Blob(chunks, { type: selectedOption.mimeType });
                     console.log(`✅ Recording complete: ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB`);
