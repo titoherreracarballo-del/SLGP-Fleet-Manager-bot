@@ -708,7 +708,7 @@
         <div id="camera-status">Initializing...</div>
         <div id="timer-display">00:00</div>
         <div id="current-camera-label">REAR</div>
-        <div id="stab-indicator" style="position:absolute;bottom:clamp(130px,35vw,150px);right:var(--space-sm);background:rgba(0,0,0,0.8);padding:var(--space-xs) var(--space-sm);border-radius:clamp(16px,4vw,20px);font-size:var(--font-xs);font-weight:700;color:#4ade80;z-index:5;border:1px solid #4ade80;cursor:pointer;" onclick="toggleStabilizer()">⚖️ STAB ON</div>
+        <div id="stab-indicator" style="position:absolute;bottom:clamp(130px,35vw,150px);right:var(--space-sm);background:rgba(0,0,0,0.8);padding:var(--space-xs) var(--space-sm);border-radius:clamp(16px,4vw,20px);font-size:var(--font-xs);font-weight:700;color:#6b7280;z-index:5;border:1px solid #6b7280;cursor:pointer;" onclick="toggleStabilizer()">⚖️ STAB OFF</div>
         <button id="flash-toggle" onclick="toggleFlash()">💡</button>
         
         <div id="camera-repair-overlay">
@@ -830,7 +830,7 @@
     // ========================================
     // IMAGE STABILIZATION SYSTEM
     // ========================================
-    let stabEnabled = true;
+    let stabEnabled = false; // OFF by default — warehouse walkarounds work better without JS stab fighting hardware EIS
     let stabAnimFrame = null;
     let stabCanvas = null;
     let stabCtx = null;
@@ -840,12 +840,12 @@
     let motionHistory = [];
     let detectCanvas = null;
     let detectCtx = null;
-    const STAB_ZOOM        = 1.08;
-    const STAB_SMOOTH      = 0.82;
-    const STAB_MAX_SHIFT   = 0.035;
-    const STAB_HISTORY     = 8;
-    const STAB_NOISE_FLOOR = 0.004;
-    const STAB_DECAY       = 0.92;
+    const STAB_ZOOM        = 1.12;
+    const STAB_SMOOTH      = 0.68;
+    const STAB_MAX_SHIFT   = 0.020;
+    const STAB_HISTORY     = 3;
+    const STAB_NOISE_FLOOR = 0.006;
+    const STAB_DECAY       = 0.82;
     const DETECT_W       = 64;
     const DETECT_H       = 36;
     const REAR_CAMERA_ONLY = "environment";
@@ -1020,8 +1020,8 @@
         }
 
         let sumDx = 0, sumDy = 0, count = 0;
-        const blockSize = 4;
-        const searchR   = 3;
+        const blockSize = 6;
+        const searchR   = 2;
 
         function blockBrightness(data, cx, cy) {
             let sum = 0, n = 0;
@@ -1047,7 +1047,7 @@
                         if (diff < bestDiff) { bestDiff = diff; bestDx = dx; bestDy = dy; }
                     }
                 }
-                if (bestDiff < 35 && prevBright > 5) { sumDx += bestDx; sumDy += bestDy; count++; }
+                if (bestDiff < 22 && prevBright > 12) { sumDx += bestDx; sumDy += bestDy; count++; }
             }
         }
 
@@ -1083,15 +1083,29 @@
             const avgDy = motionHistory.reduce((s,m) => s + m.dy, 0) / motionHistory.length;
 
             const motionMag = Math.sqrt(avgDx * avgDx + avgDy * avgDy);
+
+            // Convert normalized motion into pixel correction target
+            const targetX = avgDx * vw;
+            const targetY = avgDy * vh;
+
             if (motionMag < STAB_NOISE_FLOOR) {
+                // Settle faster when nearly still — no springy rebound
                 smoothX *= STAB_DECAY;
                 smoothY *= STAB_DECAY;
             } else {
-                smoothX = smoothX * STAB_SMOOTH + avgDx * vw * (1 - STAB_SMOOTH);
-                smoothY = smoothY * STAB_SMOOTH + avgDy * vh * (1 - STAB_SMOOTH);
+                // Simpler low-pass: move toward target by (1-STAB_SMOOTH) each frame
+                // Much less springy than the previous weighted-accumulation approach
+                smoothX += (targetX - smoothX) * (1 - STAB_SMOOTH);
+                smoothY += (targetY - smoothY) * (1 - STAB_SMOOTH);
             }
-            const corrX = -smoothX;
-            const corrY = -smoothY;
+
+            // Hard deadband — stops micro-bounce from sub-pixel noise
+            if (Math.abs(smoothX) < 0.35) smoothX = 0;
+            if (Math.abs(smoothY) < 0.35) smoothY = 0;
+
+            // Vertical damping — walking bob is mostly Y-axis, reduce it more aggressively
+            const corrX = -smoothX * 0.90;
+            const corrY = -smoothY * 0.65;
 
             const maxPx = vw * (STAB_ZOOM - 1) / 2;
             const maxPy = vh * (STAB_ZOOM - 1) / 2;
@@ -1114,6 +1128,18 @@
     function startStabilizer() {
         if (stabAnimFrame) cancelAnimationFrame(stabAnimFrame);
 
+        // Always restore default display state first so re-entry after
+        // a hardware-EIS branch doesn't leave the canvas permanently hidden.
+        const rawVideoEl      = document.getElementById('preview-raw');
+        const previewCanvasEl = document.getElementById('preview');
+        if (rawVideoEl && previewCanvasEl) {
+            previewCanvasEl.style.display = 'block';
+            rawVideoEl.style.display      = 'none';
+            rawVideoEl.style.width        = '';
+            rawVideoEl.style.height       = '';
+            rawVideoEl.style.objectFit    = '';
+        }
+
         // Check if the device has hardware EIS/OIS already active.
         // Running our JS stabilizer on top of hardware stabilization causes
         // conflicting corrections — the two systems fight each other and produce jitter.
@@ -1124,11 +1150,12 @@
                 const settings = currentVideoTrack.getSettings();
                 if (caps.stabilizationMode || settings.stabilizationMode) {
                     console.log('📷 Hardware stabilization detected — skipping JS stabilizer to avoid jitter');
-                    const rawVideo      = document.getElementById('preview-raw');
-                    const previewCanvas = document.getElementById('preview');
-                    if (rawVideo && previewCanvas) {
-                        previewCanvas.style.display = 'none';
-                        rawVideo.style.cssText += ';display:block;width:100%;height:100%;object-fit:cover;';
+                    if (rawVideoEl && previewCanvasEl) {
+                        previewCanvasEl.style.display = 'none';
+                        rawVideoEl.style.display      = 'block';
+                        rawVideoEl.style.width        = '100%';
+                        rawVideoEl.style.height       = '100%';
+                        rawVideoEl.style.objectFit    = 'cover';
                     }
                     stabStream = null;
                     return;
