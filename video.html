@@ -1052,7 +1052,7 @@
         }
 
         prevFrameData = new Uint8ClampedArray(currentData);
-        if (count < 2) return { dx: 0, dy: 0 };
+        if (count < 6) return { dx: 0, dy: 0 };
         return { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
     }
 
@@ -1100,8 +1100,8 @@
             }
 
             // Hard deadband — stops micro-bounce from sub-pixel noise
-            if (Math.abs(smoothX) < 0.35) smoothX = 0;
-            if (Math.abs(smoothY) < 0.35) smoothY = 0;
+            if (Math.abs(smoothX) < 1.25) smoothX = 0;
+            if (Math.abs(smoothY) < 1.25) smoothY = 0;
 
             // Vertical damping — walking bob is mostly Y-axis, reduce it more aggressively
             const corrX = -smoothX * 0.90;
