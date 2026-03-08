@@ -60,7 +60,6 @@ function removeFromRetryQueue(jobId) {
 // for live status instead of waiting blindly
 // ============================================
 const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
-const pendingRetries = new Map(); // jobId -> setTimeout handle for scheduled retries
 const JOB_CLEANUP_MS = 35 * 60 * 1000; // remove completed jobs after 35 min (pipeline can take 21+ min)
 
 function createJob(jobId, meta) {
@@ -721,7 +720,7 @@ app.post('/submit-report', async (req, res) => {
         }
         let currentLogs = [];
         if (fs.existsSync(DAILY_LOG_FILE)) {
-            try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE)); } catch(e) {}
+            try { currentLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE, 'utf8')); } catch(e) {}
         }
         data.timestamp = new Date();
         data.rawTimestamp = Date.now();
@@ -1777,7 +1776,6 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                         const cx = parseInt(last[3]), cy = parseInt(last[4]);
                         const blackPixels = (1920 - cw) + (1080 - ch);
                         if (blackPixels > 50 && cw > 800 && ch > 400) {
-                            const [tW, tH] = srcPortrait ? [1080, 1920] : [1920, 1080];
                             cropFilter = `crop=${cw}:${ch}:${cx}:${cy}`;
                             console.log('🔲 Black border detected (' + blackPixels + 'px) — auto-cropping: ' + cw + 'x' + ch);
                         }
@@ -1870,26 +1868,28 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                     proc.on('close', code => {
                         clearTimeout(killTimer);
                         if (pid) unregisterPid(pid);
-                        outStream.end();
-                        if (settled) return; // stream error already rejected — don't double-fire
-                        if (code === 0 && bytesOut > 10000) {
-                            try {
-                                const enhancedStats = fs.statSync(enhancedVideoPath);
-                                const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                                const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
-                                console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
-                                settle(resolve);
-                            } catch (statErr) {
-                                // File was cleaned up (e.g. by a concurrent error handler)
-                                console.warn('⚠️  Enhanced file missing after code=0:', statErr.message);
-                                settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
+                        // Wait for write stream to fully flush before stat-ing the file.
+                        // Without the callback, fs.statSync can race against buffered bytes.
+                        outStream.end(() => {
+                            if (settled) return; // stream error already rejected — don't double-fire
+                            if (code === 0 && bytesOut > 10000) {
+                                try {
+                                    const enhancedStats = fs.statSync(enhancedVideoPath);
+                                    const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                                    const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
+                                    console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
+                                    settle(resolve);
+                                } catch (statErr) {
+                                    console.warn('⚠️  Enhanced file missing after code=0:', statErr.message);
+                                    settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
+                                }
+                            } else {
+                                // Clean up partial file
+                                try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
+                                const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
+                                settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
                             }
-                        } else {
-                            // Clean up partial file
-                            try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                            const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
-                            settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
-                        }
+                        });
                     });
                     proc.on('error', err => {
                         clearTimeout(killTimer);
@@ -2164,9 +2164,10 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
                             const killT = setTimeout(() => { proc.kill(); rej(new Error('Encode timeout')); }, 8 * 60 * 1000);
                             proc.on('close', code => {
                                 clearTimeout(killT);
-                                outStream.end();
-                                if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
-                                else rej(new Error('Final encode exit ' + code));
+                                outStream.end(() => {
+                                    if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
+                                    else rej(new Error('Final encode exit ' + code));
+                                });
                             });
                             proc.on('error', rej);
                         });
@@ -2937,7 +2938,7 @@ cron.schedule('30 23 * * *', async () => {
         arrLogs.forEach(log => summaryText += `${log.timestamp}: ${log.name}\n`);
         fs.writeFileSync(ARRIVAL_LOG_FILE, '');
         if (!fs.existsSync(DAILY_LOG_FILE)) return;
-        const allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE));
+        const allLogs = JSON.parse(fs.readFileSync(DAILY_LOG_FILE, 'utf8'));
         if (allLogs.length === 0 && summaryText.length < 40) return;
         const transporter = mailTransport;
         await transporter.sendMail({
@@ -3019,9 +3020,10 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
     // ── Startup manifest scan ─────────────────────────────────────────────
     // Recover jobs that were orphaned by a Railway restart or crash mid-FFmpeg.
-    // These jobs have a manifest on disk (status:'pending') but were never added
-    // to retry_queue.json because the process died before hitting an error handler.
-    // We delay 5s to let Google Drive auth and other async init settle first.
+    // Only manifests with status 'pending' are recovered — in-flight states like
+    // 'enhancing' and 'uploading' are only held in memory (never written to disk),
+    // so any job that was mid-process will have status 'pending' on disk regardless
+    // of how far it got before the process died.
     setTimeout(() => {
         try {
             const manifestFiles = fs.readdirSync(UPLOAD_DIR)
@@ -3111,11 +3113,6 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received - shutting down gracefully');
     try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
-    // Clear any pending retry timers so they don't fire into a dying process
-    try {
-        for (const handle of pendingRetries.values()) clearTimeout(handle);
-        pendingRetries.clear();
-    } catch(e) {}
     process.exit(0);
 });
 
