@@ -285,9 +285,13 @@
             border-radius: var(--radius); 
             overflow: hidden; 
             border: 1px solid #374151; 
-            margin-bottom: var(--space-lg); 
+            margin-bottom: var(--space-lg);
+            /* Force GPU compositing — prevents border-radius+video from triggering
+               software rendering on budget Android chips (XCover 7 / Dimensity 6100+) */
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
         }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        video { width: 100%; height: 100%; object-fit: cover; transform: translateZ(0); }
         
         #loading-overlay {
             position: absolute;
@@ -385,8 +389,8 @@
         }
         
         @keyframes pulse-warning {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.5; }
         }
         
         .repair-title {
@@ -520,9 +524,9 @@
             border: none;
         }
         @keyframes pulse { 
-            0% { transform: scale(1); } 
-            50% { transform: scale(1.1); } 
-            100% { transform: scale(1); } 
+            0%   { opacity: 1; } 
+            50%  { opacity: 0.5; } 
+            100% { opacity: 1; } 
         }
         .status-msg { 
             text-align: center; 
@@ -752,7 +756,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       12000000,
+        VIDEO_BITRATE:       6000000,
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -814,6 +818,15 @@
     let currentVideoTrack = null;
     let flashEnabled = false;
     let isRecording = false;
+    // ── Brightness detection canvas (global) ─────────────────────
+    // Defined once here to avoid creating/GC-collecting a new canvas
+    // every second in detectBrightness() — which can freeze the video
+    // feed on budget phones like the XCover 7.
+    const brightnessCanvas = document.createElement('canvas');
+    brightnessCanvas.width  = 32;
+    brightnessCanvas.height = 24;
+    const brightnessCtx = brightnessCanvas.getContext('2d', { willReadFrequently: true });
+
     let isUploading = false;
 
     // ── VIN modal guard ──────────────────────────────────────────
@@ -832,6 +845,7 @@
     // ========================================
     let stabEnabled = false; // OFF by default — warehouse walkarounds work better without JS stab fighting hardware EIS
     let stabAnimFrame = null;
+    let lastStabTime  = 0;   // throttle stabFrame to ~30fps regardless of display refresh rate
     let stabCanvas = null;
     let stabCtx = null;
     let stabStream = null;
@@ -911,18 +925,16 @@
         const video = document.getElementById('preview-raw');
         if (!video.srcObject || video.readyState < 2) return;
         try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 160;
-            canvas.height = 120;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            let totalBrightness = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                totalBrightness += (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+            // Reuse global 32x24 canvas — no GC pressure, no main-thread freezes
+            brightnessCtx.drawImage(video, 0, 0, brightnessCanvas.width, brightnessCanvas.height);
+            const data = brightnessCtx.getImageData(0, 0, brightnessCanvas.width, brightnessCanvas.height).data;
+            let totalBrightness = 0, samples = 0;
+            // Sample every other pixel (stride 8 = skip 1 RGBA pixel) for speed
+            for (let i = 0; i < data.length; i += 8) {
+                totalBrightness += (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+                samples++;
             }
-            const avgBrightness = totalBrightness / (canvas.width * canvas.height);
+            const avgBrightness = totalBrightness / samples;
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
                 console.log('🔦 AUTO-FLASH ON (dark scene detected)');
@@ -937,10 +949,14 @@
 
     function startBrightnessMonitoring() {
         stopBrightnessMonitoring();
+        // Run first check at 100ms so flash engages before camera hardware
+        // drops framerate in low light — critical for warehouse/indoor recording.
         setTimeout(() => {
             detectBrightness();
-            brightnessCheckInterval = setInterval(detectBrightness, CONFIG.BRIGHTNESS_CHECK_INTERVAL);
-        }, 500);
+            // 1s interval: fast enough to catch indoor→outdoor transitions quickly.
+            // detectBrightness() already skips when isRecording to avoid CPU impact.
+            brightnessCheckInterval = setInterval(detectBrightness, 1000);
+        }, 100);
     }
 
     function stopBrightnessMonitoring() {
@@ -1055,7 +1071,14 @@
         return { dx: (sumDx / count) / DETECT_W, dy: (sumDy / count) / DETECT_H };
     }
 
-    function stabFrame() {
+    function stabFrame(timestamp) {
+        // Throttle to ~30fps — rAF fires at display refresh (60–120Hz) but video is 30fps.
+        // Running canvas pixel ops at 90Hz is pure waste on budget phones.
+        if (timestamp - lastStabTime < 33) {
+            stabAnimFrame = requestAnimationFrame(stabFrame);
+            return;
+        }
+        lastStabTime = timestamp;
         const rawVideo = document.getElementById('preview-raw');
         if (!stabCtx || !rawVideo || rawVideo.readyState < 2) {
             stabAnimFrame = requestAnimationFrame(stabFrame);
@@ -1253,12 +1276,16 @@
                     facingMode: { ideal: 'environment' },
                     width:      { min: 1080, ideal: 1920 },
                     height:     { min: 1080, ideal: 1920 },
-                    frameRate:  { ideal: 30, max: 30 },
+                    frameRate:  { min: 24, ideal: 30, max: 30 }, // min:24 tells Android not to drop fps in low light — use flash/ISO instead
                     aspectRatio: { ideal: 9 / 16 }
                 },
-                audio: true
+                audio: {
+                    echoCancellation: false, // disable Chrome DSP — saves CPU, preserves raw audio
+                    noiseSuppression: false,
+                    autoGainControl:  false
+                }
             };
-            
+
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Camera timeout after 20 seconds')), 20000)
             );
@@ -1815,11 +1842,16 @@
             requestWakeLock();
 
             const codecOptions = [
-                { mimeType: 'video/mp4; codecs="avc1.640033"', name: 'H.264 High L5.1' },
-                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 High L4.2' },
+                // Baseline H.264: hardware encoder path on Android — much lighter CPU load
+                // than High profile. Best choice for budget chips (XCover 7 / Dimensity 6100+)
+                { mimeType: 'video/mp4; codecs="avc1.42E01E"', name: 'H.264 Baseline' },
+                // Standard H.264 — broad fallback if Baseline profile string rejected
                 { mimeType: 'video/mp4; codecs="avc1"',        name: 'H.264' },
-                { mimeType: 'video/webm; codecs="vp9,opus"',   name: 'VP9' },
+                // VP8: hardware-accelerated on most Android, very efficient at 1080p
                 { mimeType: 'video/webm; codecs="vp8,opus"',   name: 'VP8' },
+                // Higher-profile H.264 fallbacks for desktop/iOS
+                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 Main L4.2' },
+                { mimeType: 'video/webm; codecs="vp9,opus"',   name: 'VP9' },
                 { mimeType: 'video/webm',                        name: 'WebM' }
             ];
 
@@ -1840,10 +1872,11 @@
                 // baked in + vidstab on top) and bakes black borders into the video stream.
                 const recordStream = currentStream;
 
-                // Brief exposure settle — gives the camera time to lock focus/exposure
-                // before the first frame is captured. Prevents the dark/blurry opening
-                // seconds common in warehouse low-light conditions.
-                await new Promise(r => setTimeout(r, 500));
+                // 800ms settle: gives flash time to illuminate the scene and camera
+                // time to lock focus/exposure before encoding starts. Prevents the
+                // dark/blurry opening frames common in warehouse low-light conditions.
+                document.getElementById('status').innerText = 'Focusing camera...';
+                await new Promise(r => setTimeout(r, 800));
 
                 mediaRecorder = new MediaRecorder(recordStream, {
                     mimeType: selectedOption.mimeType,
@@ -1905,7 +1938,7 @@
                     isRecording = false;
                 };
 
-                mediaRecorder.start(1000);
+                mediaRecorder.start(); // no timeslice — one clean blob on stop, avoids per-second main thread interruptions
                 isRecording = true;
                 startTimer();
                 document.getElementById('btn-record').classList.add('recording');
@@ -2140,6 +2173,18 @@
         stopStabilizer();
         if (currentStream) currentStream.getTracks().forEach(t => t.stop());
         if (wakeLock) wakeLock.release();
+    });
+
+    // Android 12+ cuts camera access when Chrome is backgrounded, which corrupts
+    // any mid-recording video. Stop cleanly so the blob is preserved and submittable.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && isRecording) {
+            console.warn('⚠️ App backgrounded mid-recording — stopping to prevent corruption');
+            stopRecording();
+            // Don't alert() here — it's blocked when page is hidden on most Android browsers.
+            // Status message is visible when driver returns to the tab.
+            document.getElementById('status').innerText = '⚠️ Recording stopped — app was minimized. Review video and submit.';
+        }
     });
 </script>
 
