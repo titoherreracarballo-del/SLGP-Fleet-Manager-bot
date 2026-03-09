@@ -757,8 +757,8 @@
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
         CAMERA_TIMEOUT: 15000,
-        BRIGHTNESS_THRESHOLD: 82,
-        BRIGHTNESS_CHECK_INTERVAL: 5000
+        BRIGHTNESS_THRESHOLD: 95,
+        BRIGHTNESS_CHECK_INTERVAL: 2000
     };
 
     async function checkSunsetAndEnableFlash() {
@@ -1251,9 +1251,10 @@
             const constraints = {
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30, max: 30 }
+                    width:      { min: 1080, ideal: 1920 },
+                    height:     { min: 1080, ideal: 1920 },
+                    frameRate:  { ideal: 30, max: 30 },
+                    aspectRatio: { ideal: 9 / 16 }
                 },
                 audio: true
             };
@@ -1309,6 +1310,40 @@
                 facingMode: settings.facingMode,
                 deviceId:   settings.deviceId
             });
+
+            // Post-start constraint enforcement — prevents browser from silently
+            // downscaling after stream opens. resizeMode:'none' stops soft-scaling.
+            // min:1080 blocks the 922px portrait fallback we observed in production.
+            try {
+                await currentVideoTrack.applyConstraints({
+                    width:       { min: 1080, ideal: 1920 },
+                    height:      { min: 1080, ideal: 1920 },
+                    frameRate:   { ideal: 30, min: 24 },
+                    aspectRatio: { ideal: 9 / 16 },
+                    resizeMode:  'none'
+                });
+                const s2 = currentVideoTrack.getSettings();
+                console.log('📷 After applyConstraints:', { width: s2.width, height: s2.height, frameRate: s2.frameRate });
+            } catch (e) {
+                console.warn('⚠️ Post-start constraints not fully applied:', e.message);
+            }
+
+            // Advanced camera controls — continuous focus/exposure/WB
+            // Reduces the hunting and dark-frame problem at recording start.
+            // Wrapped in try/catch — not supported on all Android/browser combos.
+            try {
+                const caps     = currentVideoTrack.getCapabilities();
+                const advanced = [];
+                if (caps.focusMode        && caps.focusMode.includes('continuous'))        advanced.push({ focusMode: 'continuous' });
+                if (caps.exposureMode     && caps.exposureMode.includes('continuous'))     advanced.push({ exposureMode: 'continuous' });
+                if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) advanced.push({ whiteBalanceMode: 'continuous' });
+                if (advanced.length) {
+                    await currentVideoTrack.applyConstraints({ advanced });
+                    console.log('📷 Advanced controls applied:', advanced.map(a => Object.keys(a)[0]).join(', '));
+                }
+            } catch (e) {
+                console.warn('⚠️ Advanced camera controls unavailable:', e.message);
+            }
 
             startBrightnessMonitoring();
             checkCameraFacing();
@@ -1420,7 +1455,7 @@
             if (rearCamera) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { deviceId: { exact: rearCamera.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
+                        video: { deviceId: { exact: rearCamera.deviceId }, width: { min: 1080, ideal: 1920 }, height: { min: 1080, ideal: 1920 }, frameRate: { ideal: 30, max: 30 }, aspectRatio: { ideal: 9 / 16 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1434,7 +1469,7 @@
             if (!repairSuccess) {
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
+                        video: { facingMode: 'environment', width: { min: 1080, ideal: 1920 }, height: { min: 1080, ideal: 1920 }, frameRate: { ideal: 30, max: 30 }, aspectRatio: { ideal: 9 / 16 } },
                         audio: true
                     });
                     currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1565,7 +1600,7 @@
         
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } },
+                video: { facingMode: 'environment', width: { min: 1080, ideal: 1920 }, height: { min: 1080, ideal: 1920 }, aspectRatio: { ideal: 9 / 16 } },
                 audio: true
             });
             currentVideoTrack = currentStream.getVideoTracks()[0];
@@ -1804,6 +1839,12 @@
                 // Recording stab+raw doubles the stabilization on the server (canvas jitter
                 // baked in + vidstab on top) and bakes black borders into the video stream.
                 const recordStream = currentStream;
+
+                // Brief exposure settle — gives the camera time to lock focus/exposure
+                // before the first frame is captured. Prevents the dark/blurry opening
+                // seconds common in warehouse low-light conditions.
+                await new Promise(r => setTimeout(r, 500));
+
                 mediaRecorder = new MediaRecorder(recordStream, {
                     mimeType: selectedOption.mimeType,
                     videoBitsPerSecond: CONFIG.VIDEO_BITRATE,
