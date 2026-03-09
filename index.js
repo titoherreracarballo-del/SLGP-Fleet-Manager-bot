@@ -27,31 +27,50 @@ function isRetriable(errMsg) {
            msg.includes('enotfound');
 }
 
+// ── Retry queue mutex ─────────────────────────────────────────────────────────
+// Prevents concurrent failure handlers from stomping each other's queue writes.
+// Pattern: each write queues behind the previous one via promise chaining.
+let _retryQueueLock = Promise.resolve();
+
+function withRetryQueueLock(fn) {
+    _retryQueueLock = _retryQueueLock.then(fn).catch(e => {
+        console.error('Retry queue lock error:', e.message);
+    });
+    return _retryQueueLock;
+}
+
 function saveToRetryQueue(entry) {
-    try {
-        let queue = [];
-        if (fs.existsSync(RETRY_QUEUE_FILE)) {
-            queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+    return withRetryQueueLock(() => {
+        try {
+            let queue = [];
+            if (fs.existsSync(RETRY_QUEUE_FILE)) {
+                queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+            }
+            queue = queue.filter(e => e.jobId !== entry.jobId);
+            queue.push(entry);
+            const tmp = RETRY_QUEUE_FILE + '.tmp';
+            fs.writeFileSync(tmp, JSON.stringify(queue, null, 2));
+            fs.renameSync(tmp, RETRY_QUEUE_FILE);
+            console.log(`📋 Job ${entry.jobId} saved to retry queue (attempt ${entry.attemptCount}/${MAX_RETRY_ATTEMPTS})`);
+        } catch (e) {
+            console.error('Failed to write retry queue:', e.message);
         }
-        // Remove any existing entry for this jobId before adding fresh
-        queue = queue.filter(e => e.jobId !== entry.jobId);
-        queue.push(entry);
-        fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(queue, null, 2));
-        console.log(`📋 Job ${entry.jobId} saved to retry queue (attempt ${entry.attemptCount}/${MAX_RETRY_ATTEMPTS})`);
-    } catch (e) {
-        console.error('Failed to write retry queue:', e.message);
-    }
+    });
 }
 
 function removeFromRetryQueue(jobId) {
-    try {
-        if (!fs.existsSync(RETRY_QUEUE_FILE)) return;
-        let queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
-        queue = queue.filter(e => e.jobId !== jobId);
-        fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(queue, null, 2));
-    } catch (e) {
-        console.error('Failed to update retry queue:', e.message);
-    }
+    return withRetryQueueLock(() => {
+        try {
+            if (!fs.existsSync(RETRY_QUEUE_FILE)) return;
+            let queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+            queue = queue.filter(e => e.jobId !== jobId);
+            const tmp = RETRY_QUEUE_FILE + '.tmp';
+            fs.writeFileSync(tmp, JSON.stringify(queue, null, 2));
+            fs.renameSync(tmp, RETRY_QUEUE_FILE);
+        } catch (e) {
+            console.error('Failed to update retry queue:', e.message);
+        }
+    });
 }
 // ============================================
 // JOB TRACKING STORE
@@ -60,6 +79,34 @@ function removeFromRetryQueue(jobId) {
 // for live status instead of waiting blindly
 // ============================================
 const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
+
+// ── Processing queue / concurrency gate ───────────────────────────────────────
+// Prevents Railway CPU saturation when multiple drivers upload simultaneously.
+// Uploads are always accepted immediately (manifest written, jobId returned).
+// Heavy work (FFmpeg + Drive upload) is serialised through this semaphore so
+// at most MAX_CONCURRENT_JOBS run at the same time.
+const MAX_CONCURRENT_JOBS = 2;
+let   activeJobs          = 0;
+const jobQueue            = []; // { fn: async function, jobId }
+
+function enqueueJob(jobId, fn) {
+    jobQueue.push({ jobId, fn });
+    console.log(`📥 Job ${jobId} queued (queue depth: ${jobQueue.length}, active: ${activeJobs})`);
+    drainQueue();
+}
+
+function drainQueue() {
+    while (activeJobs < MAX_CONCURRENT_JOBS && jobQueue.length > 0) {
+        const { jobId, fn } = jobQueue.shift();
+        activeJobs++;
+        console.log(`▶️  Job ${jobId} starting (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+        fn().finally(() => {
+            activeJobs--;
+            console.log(`✅ Job ${jobId} slot released (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+            drainQueue(); // pull next job as soon as a slot opens
+        });
+    }
+}
 const JOB_CLEANUP_MS = 35 * 60 * 1000; // remove completed jobs after 35 min (pipeline can take 21+ min)
 
 function createJob(jobId, meta) {
@@ -1694,14 +1741,40 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         console.warn('⚠️  Could not write manifest:', mErr.message);
     }
 
-    // ── All heavy processing runs in background ────────────────
+    // ── All heavy processing runs through the concurrency queue ───────────────
+    // Uploads are accepted instantly (jobId already returned above).
+    // FFmpeg + Drive work is deferred until a processing slot is free.
+    // MAX_CONCURRENT_JOBS = 2 prevents Railway CPU/disk saturation during
+    // end-of-route bursts when 8–15 drivers submit simultaneously.
+
+    // Mark manifest as 'queued' immediately — this serves two purposes:
+    // 1. Reaper sees the file is actively queued (not a stale orphan) and won't delete it
+    // 2. Startup recovery skips 'queued' jobs that are waiting — they don't need requeue
+    try {
+        const mData = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        mData.status = 'queued';
+        mData.queuedAt = new Date().toISOString();
+        fs.writeFileSync(manifestPath, JSON.stringify(mData, null, 2));
+    } catch (_) {}
+    updateJob(jobId, { status: 'queued', stage: 'Waiting for processing slot', progress: 0, message: 'Queued — waiting for server capacity...' });
+
+    enqueueJob(jobId, async () => {
     let videoPath = req.file.path;
     let enhancedVideoPath = null;
     let wasEnhanced = false;
     try {
         console.log(`📹 Background processing started for job ${jobId}`);
-
-        // ========================================
+        // Update manifest from 'queued' → 'processing' so reaper and recovery
+        // can distinguish actively-running jobs from waiting ones.
+        try {
+            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+            if (fs.existsSync(mPath)) {
+                const mData = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                mData.status = 'processing';
+                mData.processingStartedAt = new Date().toISOString();
+                fs.writeFileSync(mPath, JSON.stringify(mData, null, 2));
+            }
+        } catch (_) {}
         // FFMPEG ENHANCEMENT (server-side)
         // Records at 2.5Mbps for fast upload, enhances to 20Mbps H.264 here
         // ========================================
@@ -2513,6 +2586,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
             console.log(`❌ Job ${jobId} permanently failed: ${error.message}`);
         }
     }
+    }); // end enqueueJob
 });
 
 // ============================================
@@ -2867,11 +2941,27 @@ cron.schedule('*/5 * * * *', () => {
 
         // Load retry queue paths so we never delete a file pending retry
         const protectedPaths = (() => {
+            const paths = new Set();
+            // Protect files in the retry queue
             try {
-                if (!fs.existsSync(RETRY_QUEUE_FILE)) return new Set();
-                const queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
-                return new Set(queue.map(e => e.filePath).filter(Boolean));
-            } catch { return new Set(); }
+                if (fs.existsSync(RETRY_QUEUE_FILE)) {
+                    const queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8'));
+                    queue.forEach(e => { if (e.filePath) paths.add(e.filePath); });
+                }
+            } catch (_) {}
+            // Protect files for jobs currently queued or actively processing in memory
+            // (they have manifests with status 'queued' or 'pending')
+            try {
+                const manifests = fs.readdirSync(UPLOAD_DIR).filter(f => f.endsWith('.manifest.json'));
+                for (const mf of manifests) {
+                    const m = JSON.parse(fs.readFileSync(path.join(UPLOAD_DIR, mf), 'utf8'));
+                    if (m.status === 'queued' || m.status === 'pending') {
+                        if (m.videoFile) paths.add(path.join(UPLOAD_DIR, m.videoFile));
+                        if (m.enhancedVideoFile) paths.add(path.join(ENHANCED_DIR, m.enhancedVideoFile));
+                    }
+                }
+            } catch (_) {}
+            return paths;
         })();
 
         // Reap stale video files from UPLOAD_DIR and ENHANCED_DIR
@@ -2970,7 +3060,12 @@ app.use((err, req, res, next) => {
 // Railway uses this to confirm app is running
 // ============================================
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', uptime: Math.floor(process.uptime()), ts: Date.now() });
+    res.json({
+        status:     'ok',
+        uptime:     Math.floor(process.uptime()),
+        ts:         Date.now(),
+        queue:      { active: activeJobs, pending: jobQueue.length, maxConcurrent: MAX_CONCURRENT_JOBS }
+    });
 });
 
 const PORT = process.env.PORT || 8080;
@@ -3036,8 +3131,11 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
                     const mPath = path.join(UPLOAD_DIR, mf);
                     const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
 
-                    // Only recover pending jobs — skip complete, failed_permanent, already-queued
-                    if (m.status !== 'pending') continue;
+                    // Recover pending, queued, or processing jobs:
+                    // - 'pending'    = manifest written, not yet queued
+                    // - 'queued'     = waiting in in-memory queue when server restarted
+                    // - 'processing' = mid-FFmpeg/Drive when server died
+                    if (!['pending', 'queued', 'processing'].includes(m.status)) continue;
 
                     // Skip if already in retry_queue (agent already knows about it)
                     let inQueue = false;
