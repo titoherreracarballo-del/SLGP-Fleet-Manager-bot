@@ -1785,7 +1785,7 @@
         document.getElementById('timer-display').style.display = 'none';
     }
 
-    function toggleRecording() {
+    async function toggleRecording() {
         if (!mediaRecorder || mediaRecorder.state === 'inactive') {
             if (!currentStream) {
                 alert('Camera not ready. Please wait or reset camera.');
