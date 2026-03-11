@@ -567,7 +567,7 @@
 
         // ========================================
         // MANUAL ADDRESS UPDATE (FORWARD GEOCODING)
-        // Updates GPS coordinates when address is manually typed
+        // Uses STRUCTURED QUERIES for better street-level accuracy
         // ========================================
         let isGeocoding = false;
         
@@ -587,145 +587,129 @@
             const state = document.getElementById('addrState').value.trim();
             const zip = document.getElementById('addrZip').value.trim();
             
-            // Need at least city OR (street + zip) OR just zip
-            if (!city && !street && !zip) {
+            if (!street && !city && !zip) {
                 console.log('Not enough address info to geocode');
                 return;
             }
             
             isGeocoding = true;
+            document.getElementById('weatherBox').innerText = '🔍 Looking up address...';
             
-            // Build multiple address format variations
-            const addresses = [];
-            
-            // Normalize state to 2-letter code
-            const stateCode = state.toUpperCase().substring(0, 2);
-            
-            // Format 1: Full address with proper capitalization
-            if (street && city && stateCode) {
-                addresses.push(`${street}, ${city}, ${stateCode} ${zip}`);
-            }
-            
-            // Format 2: Street, Zip, State (good for rural addresses)
-            if (street && zip && stateCode) {
-                addresses.push(`${street}, ${stateCode} ${zip}`);
-            }
-            
-            // Format 3: City, State, Zip
-            if (city && stateCode) {
-                addresses.push(`${city}, ${stateCode} ${zip}`);
-            }
-            
-            // Format 4: Just Zip code (last resort - gives general area)
-            if (zip && zip.length === 5) {
-                addresses.push(`${zip}, USA`);
-            }
-            
-            // Format 5: City and State only
-            if (city && stateCode && !zip) {
-                addresses.push(`${city}, ${stateCode}`);
-            }
-            
-            if (addresses.length === 0) {
-                isGeocoding = false;
-                return;
-            }
-            
-            console.log('🔍 Geocoding attempts:', addresses);
-            document.getElementById('weatherBox').innerText = '🔍 Searching: ' + addresses[0];
-            
-            // Try each address format until one works
-            let attemptNum = 0;
-            for (let fullAddress of addresses) {
-                attemptNum++;
+            // METHOD 1: STRUCTURED QUERY (Best for street addresses)
+            // Sends street, city, state, zip as separate parameters
+            if (street && (zip || city)) {
                 try {
-                    console.log(`Attempt ${attemptNum}/${addresses.length}: ${fullAddress}`);
-                    document.getElementById('weatherBox').innerText = `🔍 Try ${attemptNum}/${addresses.length}: ${fullAddress}`;
+                    console.log('🔍 Structured query:', { street, city, state, zip });
+                    
+                    let structuredUrl = `https://nominatim.openstreetmap.org/search?format=json`;
+                    structuredUrl += `&street=${encodeURIComponent(street)}`;
+                    if (city) structuredUrl += `&city=${encodeURIComponent(city)}`;
+                    if (state) structuredUrl += `&state=${encodeURIComponent(state)}`;
+                    if (zip) structuredUrl += `&postalcode=${encodeURIComponent(zip)}`;
+                    structuredUrl += `&countrycodes=us&addressdetails=1&limit=1`;
+                    
+                    const response = await fetch(structuredUrl, {
+                        headers: { 'User-Agent': 'SLGP-Fleet-Manager-Accident-Report/4.6.4' }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.length > 0) {
+                            updateLocationFromResult(data[0]);
+                            isGeocoding = false;
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Structured query failed:', err.message);
+                }
+            }
+            
+            // METHOD 2: FREE-FORM QUERIES (Fallback)
+            const queries = [];
+            
+            if (street && city && state && zip) {
+                queries.push(`${street}, ${city}, ${state} ${zip}`);
+            }
+            if (street && zip) {
+                queries.push(`${street}, ${zip}, USA`);
+            }
+            if (city && state && zip) {
+                queries.push(`${city}, ${state} ${zip}`);
+            }
+            if (city && state) {
+                queries.push(`${city}, ${state}`);
+            }
+            
+            for (let query of queries) {
+                try {
+                    console.log('🔍 Trying freeform:', query);
                     
                     const response = await fetch(
-                        `https://nominatim.openstreetmap.org/search?` + 
-                        `format=json&` +
-                        `q=${encodeURIComponent(fullAddress)}&` +
-                        `countrycodes=us&` +
-                        `limit=3&` +
-                        `addressdetails=1`,
+                        `https://nominatim.openstreetmap.org/search?` +
+                        `format=json&q=${encodeURIComponent(query)}&` +
+                        `countrycodes=us&addressdetails=1&limit=1`,
                         {
-                            headers: {
-                                'User-Agent': 'SLGP-Fleet-Manager-Accident-Report/4.6.3'
-                            }
+                            headers: { 'User-Agent': 'SLGP-Fleet-Manager-Accident-Report/4.6.4' }
                         }
                     );
                     
-                    if (!response.ok) {
-                        console.warn(`API returned ${response.status}`);
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        continue;
-                    }
-                    
-                    const data = await response.json();
-                    console.log(`Got ${data.length} results:`, data);
-                    
-                    if (data && data.length > 0) {
-                        const result = data[0];
-                        const newLat = parseFloat(result.lat);
-                        const newLng = parseFloat(result.lon);
-                        
-                        console.log('✅ Geocoded to:', newLat, newLng);
-                        console.log('   Display name:', result.display_name);
-                        
-                        // Update GPS display
-                        document.getElementById('gpsLat').innerText = newLat.toFixed(5);
-                        document.getElementById('gpsLng').innerText = newLng.toFixed(5);
-                        
-                        // Update map position
-                        if (map) {
-                            map.setView([newLat, newLng], 17);
-                            
-                            if (marker) {
-                                marker.setLatLng([newLat, newLng]);
-                            } else {
-                                marker = L.marker([newLat, newLng]).addTo(map);
-                            }
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.length > 0) {
+                            updateLocationFromResult(data[0]);
+                            isGeocoding = false;
+                            return;
                         }
-                        
-                        // Fetch weather for new location
-                        try {
-                            const weatherRes = await fetch(
-                                `https://api.open-meteo.com/v1/forecast?` +
-                                `latitude=${newLat}&longitude=${newLng}&` +
-                                `current_weather=true&` +
-                                `temperature_unit=fahrenheit&` +
-                                `wind_speed_unit=mph`
-                            );
-                            const weatherData = await weatherRes.json();
-                            const w = weatherData.current_weather;
-                            document.getElementById('weatherBox').innerText = 
-                                `✅ GPS Updated | ${result.display_name.split(',')[0]} | Temp: ${w.temperature}°F`;
-                        } catch (weatherErr) {
-                            document.getElementById('weatherBox').innerText = 
-                                `✅ GPS Updated | Location: ${result.display_name.split(',').slice(0,2).join(',')}`;
-                        }
-                        
-                        isGeocoding = false;
-                        return; // Success - stop trying other formats
                     }
-                    
                 } catch (err) {
-                    console.warn(`Attempt ${attemptNum} failed:`, err.message);
+                    console.warn('Freeform query failed:', err.message);
                 }
                 
-                // Rate limit: wait 1 second between attempts
-                if (attemptNum < addresses.length) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(r => setTimeout(r, 1000)); // Rate limit
+            }
+            
+            // All failed
+            console.log('⚠️ All geocoding attempts failed');
+            document.getElementById('weatherBox').innerText = 
+                '⚠️ Address not found - using auto GPS';
+            isGeocoding = false;
+        }
+        
+        function updateLocationFromResult(result) {
+            const newLat = parseFloat(result.lat);
+            const newLng = parseFloat(result.lon);
+            
+            console.log('✅ Found:', result.display_name);
+            console.log('   GPS:', newLat, newLng);
+            
+            // Update GPS coordinates
+            document.getElementById('gpsLat').innerText = newLat.toFixed(5);
+            document.getElementById('gpsLng').innerText = newLng.toFixed(5);
+            
+            // Update map
+            if (map) {
+                map.setView([newLat, newLng], 17);
+                if (marker) {
+                    marker.setLatLng([newLat, newLng]);
+                } else {
+                    marker = L.marker([newLat, newLng]).addTo(map);
                 }
             }
             
-            // All attempts failed
-            console.log('⚠️ All geocoding attempts failed');
-            document.getElementById('weatherBox').innerText = 
-                `⚠️ Address not found in database. Using auto-detected GPS. You can still submit the form.`;
+            // Show what was found + weather
+            const foundAddress = result.display_name.split(',').slice(0, 2).join(',');
             
-            isGeocoding = false;
+            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${newLat}&longitude=${newLng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                .then(r => r.json())
+                .then(w => {
+                    document.getElementById('weatherBox').innerText = 
+                        `✅ ${foundAddress} | ${w.current_weather.temperature}°F`;
+                })
+                .catch(() => {
+                    document.getElementById('weatherBox').innerText = 
+                        `✅ Found: ${foundAddress}`;
+                });
         }
 
         document.addEventListener('DOMContentLoaded', () => {
