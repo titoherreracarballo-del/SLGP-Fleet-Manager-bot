@@ -365,7 +365,7 @@
     <div class="container" id="main-form">
         <a href="/" class="back-link">← Back to Menu</a>
         
-        <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.0</div>
+        <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.6.2</div>
         
         <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
         <div class="timestamp" id="ts">Loading Time...</div>
@@ -402,7 +402,7 @@
         </div>
 
         <div class="form-group">
-            <label>Location (Auto-Detected)</label>
+            <label>Location (GPS Auto-Detected)</label>
             <div id="map"></div>
             <div class="gps-info">
                 <span>Lat: <span id="gpsLat">...</span></span>
@@ -412,21 +412,21 @@
         </div>
 
         <div class="form-group">
-            <label>Street Address / House # (Auto-Filled)</label>
-            <input type="text" id="addrStreet" placeholder="Detecting Street...">
+            <label>Street Address / House # (Auto-Filled or Manual)</label>
+            <input type="text" id="addrStreet" placeholder="Detecting Street..." onchange="manualAddressUpdate()">
         </div>
         <div class="form-group row-split">
             <div style="flex: 2;">
                 <label>City</label>
-                <input type="text" id="addrCity" placeholder="City">
+                <input type="text" id="addrCity" placeholder="City" onchange="manualAddressUpdate()">
             </div>
             <div style="flex: 1;">
                 <label>State</label>
-                <input type="text" id="addrState" placeholder="State">
+                <input type="text" id="addrState" placeholder="State" onchange="manualAddressUpdate()">
             </div>
             <div style="flex: 1.2;">
                 <label>Zip</label>
-                <input type="text" id="addrZip" placeholder="Zip">
+                <input type="text" id="addrZip" placeholder="Zip" onchange="manualAddressUpdate()">
             </div>
         </div>
 
@@ -476,22 +476,58 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
-        // --- VIN DB ---
+        // ========================================
+        // COMPLETE VIN DATABASE (41 Vehicles)
+        // Synced from video.html - DO NOT MODIFY
+        // ========================================
         const vinDatabase = {
-            "7097": { type: "Custom Delivery Van 12ft (Gas)" }, "1288": { type: "Custom Delivery Van 12ft (Gas)" },
-            "1051": { type: "Extra Large Van (Gas)" }, "7863": { type: "Rivian MEDIUM (Electric)" },
-            "7860": { type: "Rivian MEDIUM (Electric)" }, "9412": { type: "Rivian MEDIUM (Electric)" },
-            "7859": { type: "Rivian MEDIUM (Electric)" }, "7867": { type: "Rivian MEDIUM (Electric)" },
-            "7871": { type: "Rivian MEDIUM (Electric)" }, "7857": { type: "Rivian MEDIUM (Electric)" },
-            "7865": { type: "Rivian MEDIUM (Electric)" }, "7866": { type: "Rivian MEDIUM (Electric)" },
-            "9418": { type: "Rivian MEDIUM (Electric)" }, "9488": { type: "Extra Large Van (Diesel)" },
-            "5490": { type: "Custom Delivery Van 16ft (Gas)" }, "3754": { type: "Extra Large Van (Gas)" },
-            "8125": { type: "Rivian MEDIUM (Electric)" }, "8084": { type: "Rivian MEDIUM (Electric)" },
-            "7918": { type: "Rivian MEDIUM (Electric)" }, "7898": { type: "Rivian MEDIUM (Electric)" }
+            "9488": { type: "Extra Large Van (Diesel)" },
+            "0213": { type: "Large Van (Diesel)" },
+            "8929": { type: "Extra Large Van (Diesel)" },
+            "5691": { type: "Extra Large Van (Diesel)" },
+            "7867": { type: "Rivian MEDIUM (Electric)" },
+            "7871": { type: "Rivian MEDIUM (Electric)" },
+            "9412": { type: "Rivian MEDIUM (Electric)" },
+            "7866": { type: "Rivian MEDIUM (Electric)" },
+            "7865": { type: "Rivian MEDIUM (Electric)" },
+            "7860": { type: "Rivian MEDIUM (Electric)" },
+            "9418": { type: "Rivian MEDIUM (Electric)" },
+            "7863": { type: "Rivian MEDIUM (Electric)" },
+            "7859": { type: "Rivian MEDIUM (Electric)" },
+            "7857": { type: "Rivian MEDIUM (Electric)" },
+            "8125": { type: "Rivian MEDIUM (Electric)" },
+            "8084": { type: "Rivian MEDIUM (Electric)" },
+            "7918": { type: "Rivian MEDIUM (Electric)" },
+            "7898": { type: "Rivian MEDIUM (Electric)" },
+            "1288": { type: "Custom Delivery Van 12ft (Gas)" },
+            "1295": { type: "Custom Delivery Van 12ft (Gas)" },
+            "6864": { type: "Custom Delivery Van 12ft (Gas)" },
+            "6880": { type: "Custom Delivery Van 12ft (Gas)" },
+            "6907": { type: "Custom Delivery Van 12ft (Gas)" },
+            "1051": { type: "Extra Large Van (Gas)" },
+            "7373": { type: "Extra Large Van (Gas)" },
+            "3754": { type: "Extra Large Van (Gas)" },
+            "7097": { type: "Custom Delivery Van 12ft (Gas)" },
+            "5490": { type: "Custom Delivery Van 16ft (Gas)" },
+            "5311": { type: "Custom Delivery Van 16ft (Gas)" },
+            "3010": { type: "Extra Large Van (Gas)" },
+            "1587": { type: "Custom Delivery Van 16ft (Gas)" },
+            "5344": { type: "Extra Large Van (Gas)" },
+            "3344": { type: "Extra Large Van (Gas)" },
+            "2347": { type: "Custom Delivery Van 14ft (Gas)" },
+            "0890": { type: "Extra Large Van (Gas)" },
+            "1853": { type: "Extra Large Van (Gas)" },
+            "0876": { type: "Extra Large Van (Gas)" },
+            "8786": { type: "Extra Large Van (Gas)" },
+            "9651": { type: "Extra Large Van (Gas)" },
+            "6265": { type: "Custom Delivery Van 16ft (Gas)" },
+            "6188": { type: "Custom Delivery Van 14ft (Gas)" },
+            "7403": { type: "Extra Large Van (Gas)" }
         };
 
-        let map, photos = [], isSubmitting = false;
+        let map, marker, photos = [], isSubmitting = false;
         let sigCanvas, sigCtx, drawing = false;
+        let manualAddressTimeout;
 
         // --- GATE CHECKLIST LOGIC ---
         document.querySelectorAll('.gate-check').forEach(cb => {
@@ -523,6 +559,79 @@
             document.getElementById('charCounter').innerText = `${len} / 500`;
         }
 
+        // ========================================
+        // MANUAL ADDRESS UPDATE (FORWARD GEOCODING)
+        // Updates GPS coordinates when address is manually typed
+        // ========================================
+        function manualAddressUpdate() {
+            // Clear existing timeout
+            clearTimeout(manualAddressTimeout);
+            
+            // Debounce - wait 1 second after user stops typing
+            manualAddressTimeout = setTimeout(() => {
+                const street = document.getElementById('addrStreet').value.trim();
+                const city = document.getElementById('addrCity').value.trim();
+                const state = document.getElementById('addrState').value.trim();
+                const zip = document.getElementById('addrZip').value.trim();
+                
+                // Only geocode if we have enough address info
+                if (!street && !city) return;
+                
+                // Build full address
+                const fullAddress = `${street}, ${city}, ${state} ${zip}`.trim();
+                
+                console.log('Manual address entered, geocoding:', fullAddress);
+                document.getElementById('weatherBox').innerText = '🔍 Updating GPS from address...';
+                
+                // Forward geocode (address → GPS coordinates)
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.length > 0) {
+                            const result = data[0];
+                            const newLat = parseFloat(result.lat);
+                            const newLng = parseFloat(result.lon);
+                            
+                            console.log('✅ Geocoded to:', newLat, newLng);
+                            
+                            // Update GPS display
+                            document.getElementById('gpsLat').innerText = newLat.toFixed(5);
+                            document.getElementById('gpsLng').innerText = newLng.toFixed(5);
+                            
+                            // Update map position
+                            if (map) {
+                                map.setView([newLat, newLng], 17);
+                                
+                                // Update or create marker
+                                if (marker) {
+                                    marker.setLatLng([newLat, newLng]);
+                                } else {
+                                    marker = L.marker([newLat, newLng]).addTo(map);
+                                }
+                            }
+                            
+                            // Fetch weather for new location
+                            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${newLat}&longitude=${newLng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                                .then(r => r.json())
+                                .then(weatherData => {
+                                    const w = weatherData.current_weather;
+                                    document.getElementById('weatherBox').innerText = `✅ GPS Updated | Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
+                                })
+                                .catch(() => {
+                                    document.getElementById('weatherBox').innerText = '✅ GPS Updated from manual address';
+                                });
+                        } else {
+                            console.log('⚠️ No geocoding results found');
+                            document.getElementById('weatherBox').innerText = '⚠️ Could not geocode address - check spelling';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Geocoding error:', err);
+                        document.getElementById('weatherBox').innerText = '❌ Geocoding failed - using auto-detected GPS';
+                    });
+            }, 1000); // 1 second debounce
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ts').innerText = new Date().toLocaleString();
 
@@ -531,10 +640,14 @@
                 let vin = this.value.toUpperCase();
                 let type = "Unknown";
                 if(vin.length === 4) {
-                    if(vinDatabase[vin]) type = vinDatabase[vin].type;
-                    else if(vin.startsWith("W")) type = "Mercedes (Diesel)";
+                    // Mercedes catch-all (any VIN starting with W)
+                    if(vin.startsWith("W")) {
+                        type = "Mercedes Sprinter (Diesel)";
+                    } else if(vinDatabase[vin]) {
+                        type = vinDatabase[vin].type;
+                    }
+                    document.getElementById('vehicleType').value = type;
                 }
-                if(vin.length === 4) document.getElementById('vehicleType').value = type;
             });
 
             // Incident Buttons
@@ -614,7 +727,9 @@
             }
         }
 
-        // --- MAP & ADDRESS LOGIC ---
+        // ========================================
+        // MAP & AUTO GPS DETECTION
+        // ========================================
         function initMap() {
             if(!navigator.geolocation) {
                 document.getElementById('weatherBox').innerText = "GPS Not Supported";
@@ -628,7 +743,7 @@
 
                 map = L.map('map').setView([lat, lng], 17);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                L.marker([lat, lng]).addTo(map);
+                marker = L.marker([lat, lng]).addTo(map);
 
                 // 1. Fetch Weather
                 fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
