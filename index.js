@@ -985,6 +985,9 @@ app.post('/submit-report', async (req, res) => {
             accMeta('Vehicle Type',  data.vehicleType || 'Unknown');
             accMeta('Incident Type', data.incidentType);
             accMeta('Driver Email',  data.driverEmail);
+            if (data.supervisorFiled && data.supervisorName) {
+                accMeta('Filed By (Supervisor)', data.supervisorName);
+            }
             ay -= 10;
 
             // ── SECTION 1: INCIDENT LOCATION ──────────────────────────────
@@ -1098,6 +1101,7 @@ app.post('/submit-report', async (req, res) => {
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
             const lmetText       = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
             const driverNameUC   = (data.driverName || 'UNKNOWN').toUpperCase();
+            const supervisorTag  = (data.supervisorFiled && data.supervisorName) ? ' [MGR: ' + data.supervisorName.toUpperCase() + ']' : '';
 
             // PDF always attached; photos also attached as full-res originals
             const emailAttachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
@@ -1119,7 +1123,7 @@ app.post('/submit-report', async (req, res) => {
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
-                subject: `🚨 URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
+                subject: `🚨 URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}${supervisorTag}`,
                 html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;"><div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">🚨 URGENT: ACCIDENT REPORT</h1><p style="color: #fee2e2; margin: 10px 0 0 0; font-size: 14px;">Immediate attention required</p></div><div style="background: white; padding: 30px; border-radius: 0 0 12px 12px;"><h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Incident Details</h2><table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;"><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${data.driverName}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN Last 4:</td><td style="padding: 12px; color: #1f2937;">${data.vinLast4}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Incident Type:</td><td style="padding: 12px; color: #1f2937;">${data.incidentType || 'N/A'}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Police Report #:</td><td style="padding: 12px; color: #1f2937;">${data.policeReport || 'N/A'}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">LMET Case #:</td><td style="padding: 12px; color: #1f2937;">${data.lmetCase || 'N/A'}</td></tr></table><div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 20px; margin-bottom: 25px; border-radius: 4px;"><h3 style="color: #DC2626; margin: 0 0 12px 0; font-size: 16px;">📸 PHOTO EVIDENCE</h3><p style="color: #991b1b; margin: 0; font-size: 14px;"><strong>${photoText}</strong></p></div><div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;"><strong>⚠️ ACTION REQUIRED:</strong><br>1. Review attached PDF report immediately<br>2. View all photo attachments in this email<br>3. Contact driver if additional information needed<br>4. Follow up on LMET case and police report</p></div></div></div>`,
                 attachments: emailAttachments
             });
