@@ -814,94 +814,320 @@ app.post('/submit-report', async (req, res) => {
         const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: emailUser, pass: emailPass } });
 
         if (data.reportType === 'ACCIDENT_REPORT') {
-            let page = doc.addPage([600, 800]);
-            let y = 780;
-            page.drawRectangle({ x: 0, y: 700, width: 600, height: 100, color: rgb(0.9, 0.2, 0.2) });
-            page.drawText('ACCIDENT REPORT', { x: 30, y: 760, size: 24, font: fontBold, color: rgb(1,1,1) });
-            page.drawText(`Filed: ${data.date || new Date().toLocaleDateString()} ${data.time || new Date().toLocaleTimeString()}`, { x: 30, y: 730, size: 10, font: fontReg, color: rgb(1,1,1) });
-            y = 680;
-            page.drawText('DRIVER & VEHICLE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-            page.drawText(`Driver Name: ${data.driverName || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-            page.drawText(`VIN Last 4: ${data.vinLast4 || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-            page.drawText(`Incident Type: ${data.incidentType || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 25;
-            page.drawText('LOCATION INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-            if (data.locationData) {
-                page.drawText(`Address: ${data.locationData.street || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-                page.drawText(`City: ${data.locationData.city || 'N/A'}, State: ${data.locationData.state || 'N/A'}, Zip: ${data.locationData.zip || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-                page.drawText(`GPS: ${data.locationData.gpsLat || 'N/A'}, ${data.locationData.gpsLng || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-            }
-            page.drawText(`Weather: ${data.weather || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 25;
-            page.drawText('CASE INFORMATION', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-            page.drawText(`Police Report #: ${data.policeReport || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-            page.drawText(`LMET Case #: ${data.lmetCase || 'N/A'}`, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 25;
-            page.drawText('DETAILED STATEMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-            const statement = data.statement || 'No statement provided';
-            const statementLines = wrapText(statement, fontReg, 10, 540);
-            for (let line of statementLines) {
-                if (y < 50) { page = doc.addPage([600, 800]); y = 780; }
-                page.drawText(line, { x: 30, y, size: 10, font: fontReg, color: rgb(0,0,0) }); y -= 15;
-            }
-            y -= 10;
-            if (data.photos && data.photos.length > 0) {
-                page.drawText('PHOTO EVIDENCE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-                page.drawText(`Total Photos: ${data.photos.length}`, { x: 30, y, size: 10, font: fontBold, color: rgb(0,0,0) }); y -= 15;
-                for (let i = 0; i < data.photos.length; i++) {
-                    if (y < 50) { page = doc.addPage([600, 800]); y = 780; }
-                    page.drawText(`  • Photo ${i+1}.jpg - Attached to email`, { x: 40, y, size: 9, font: fontReg, color: rgb(0,0,0) }); y -= 15;
+            // ================================================================
+            // SLGP-BRANDED ACCIDENT REPORT PDF
+            // Layout matches the SLGP Call Off Policy document style:
+            //   - Logo centered top
+            //   - Blue bold title + "Strategic Logistics Group LLC" subtitle
+            //   - Blue label boxes + light-gray value cells for metadata
+            //   - Blue section headers with underline rules
+            //   - Two-column data tables (blue header row, alternating rows)
+            //   - Photos embedded in 2-column grid (not just listed as attachments)
+            //   - Driver signature rendered inline with affidavit
+            //   - Footer: "Page X of N" + CONFIDENTIAL tag
+            // ================================================================
+
+            // ── Brand colors ──────────────────────────────────────────────
+            const BLUE       = rgb(0.118, 0.384, 0.855);  // #1E62DA
+            const BLUE_LIGHT = rgb(0.918, 0.937, 0.980);  // label value bg
+            const ROW_ALT    = rgb(0.961, 0.969, 0.988);  // alternating row tint
+            const STMT_BG    = rgb(0.972, 0.972, 0.972);  // statement box bg
+            const AFF_BG     = rgb(0.964, 0.968, 0.988);  // affidavit box bg
+            const MID_GRAY   = rgb(0.45,  0.45,  0.45);
+            const LIGHT_GRAY = rgb(0.88,  0.88,  0.88);
+            const DARK_GRAY  = rgb(0.18,  0.18,  0.18);
+            const WHITE      = rgb(1, 1, 1);
+            const BLACK      = rgb(0, 0, 0);
+            const RED_DIM    = rgb(0.55, 0.10, 0.10);
+
+            // ── Page geometry ─────────────────────────────────────────────
+            const PW = 612, PH = 792, MG = 52, CW = PW - MG * 2; // CW=508
+
+            const accDoc    = await PDFDocument.create();
+            const accBold   = await accDoc.embedFont(StandardFonts.HelveticaBold);
+            const accReg    = await accDoc.embedFont(StandardFonts.Helvetica);
+
+            let accPage = accDoc.addPage([PW, PH]);
+            let ay      = PH - MG;
+
+            // ── Helpers ───────────────────────────────────────────────────
+            function accWrap(text, font, size, maxW) {
+                const words = String(text || '').replace(/\s+/g, ' ').trim().split(' ');
+                const lines = []; let cur = '';
+                for (const w of words) {
+                    const test = cur ? `${cur} ${w}` : w;
+                    if (font.widthOfTextAtSize(test, size) > maxW) { if (cur) lines.push(cur); cur = w; }
+                    else cur = test;
                 }
-                page.drawText('All photos attached to this email', { x: 30, y, size: 9, font: fontReg, color: rgb(0.3,0.3,0.3) }); y -= 25;
+                if (cur) lines.push(cur);
+                return lines.length ? lines : [''];
             }
+
+            function accNewPage() {
+                accStampFooter(accPage);
+                accPage = accDoc.addPage([PW, PH]);
+                ay = PH - MG;
+            }
+
+            function accEnsure(need) { if (ay - need < MG + 36) accNewPage(); }
+
+            function accRect(x, y, w, h, color) {
+                accPage.drawRectangle({ x, y, width: w, height: h, color });
+            }
+
+            function accRectBorder(x, y, w, h, fill, border, bw = 0.5) {
+                accPage.drawRectangle({ x, y, width: w, height: h, color: fill, borderColor: border, borderWidth: bw });
+            }
+
+            function accTextC(text, y, size, font, color) {
+                const tw = font.widthOfTextAtSize(text, size);
+                accPage.drawText(text, { x: (PW - tw) / 2, y, size, font, color });
+            }
+
+            function accTextL(text, x, y, size, font, color) {
+                accPage.drawText(String(text || ''), { x, y, size, font, color });
+            }
+
+            function accStampFooter(p) {
+                const n = accDoc.getPageCount();
+                p.drawLine({ start: { x: MG, y: 40 }, end: { x: PW - MG, y: 40 }, thickness: 0.5, color: LIGHT_GRAY });
+                p.drawText('CONFIDENTIAL — STRATEGIC LOGISTICS GROUP LLC', { x: MG, y: 26, size: 7, font: accReg, color: LIGHT_GRAY });
+                const ft = `Page ${n}`; const fw = accReg.widthOfTextAtSize(ft, 8);
+                p.drawText(ft, { x: (PW - fw) / 2, y: 26, size: 8, font: accReg, color: MID_GRAY });
+            }
+
+            // Blue section header (matches Call Off Policy style)
+            function accSection(title) {
+                accEnsure(44);
+                ay -= 10;
+                accTextL(title.toUpperCase(), MG, ay, 10.5, accBold, BLUE);
+                ay -= 5;
+                accPage.drawLine({ start: { x: MG, y: ay }, end: { x: PW - MG, y: ay }, thickness: 1, color: BLUE });
+                ay -= 16;
+            }
+
+            // Blue label box + light value cell (matches "Effective Date | Jan 1, 2024")
+            function accMeta(label, value) {
+                accEnsure(28);
+                const RH = 22, LW = 148, VW = CW - LW, baseY = ay - RH;
+                accRect(MG, baseY, LW, RH, BLUE);
+                const lw = accBold.widthOfTextAtSize(label, 8.5);
+                accTextL(label, MG + (LW - lw) / 2, baseY + 7, 8.5, accBold, WHITE);
+                accRect(MG + LW, baseY, VW, RH, BLUE_LIGHT);
+                accTextL(String(value || 'N/A'), MG + LW + 10, baseY + 7, 9.5, accReg, DARK_GRAY);
+                ay -= RH + 3;
+            }
+
+            // Two-column table with blue header row + alternating rows
+            function accTable(rows, c1W = 170) {
+                const c2W = CW - c1W, RH = 22;
+                for (let i = 0; i < rows.length; i++) {
+                    const [c1, c2] = rows[i];
+                    const isH  = i === 0;
+                    const fill = isH ? BLUE : (i % 2 === 1 ? ROW_ALT : WHITE);
+                    const tc   = isH ? WHITE : DARK_GRAY;
+                    const fnt  = isH ? accBold : accReg;
+                    const fsz  = isH ? 8.5 : 9;
+                    accEnsure(RH + 4);
+                    const baseY = ay - RH;
+                    accRectBorder(MG,       baseY, c1W, RH, fill, LIGHT_GRAY, 0.4);
+                    accRectBorder(MG + c1W, baseY, c2W, RH, fill, LIGHT_GRAY, 0.4);
+                    let t1 = String(c1 || ''), t2 = String(c2 || 'N/A');
+                    while (t1.length > 1 && fnt.widthOfTextAtSize(t1, fsz) > c1W - 16) t1 = t1.slice(0, -1);
+                    while (t2.length > 1 && fnt.widthOfTextAtSize(t2, fsz) > c2W - 16) t2 = t2.slice(0, -1);
+                    accTextL(t1, MG + 8,        baseY + 7, fsz, fnt, tc);
+                    accTextL(t2, MG + c1W + 8,  baseY + 7, fsz, fnt, tc);
+                    ay -= RH;
+                }
+                ay -= 8;
+            }
+
+            // Light-background multi-line text block
+            function accTextBlock(text, lh = 14) {
+                const lines  = accWrap(text, accReg, 10, CW - 24);
+                const blockH = lines.length * lh + 18;
+                accEnsure(blockH + 8);
+                accRectBorder(MG, ay - blockH + 8, CW, blockH, STMT_BG, LIGHT_GRAY, 0.5);
+                let ty = ay - 8;
+                for (const line of lines) { accTextL(line, MG + 12, ty, 10, accReg, DARK_GRAY); ty -= lh; }
+                ay -= blockH + 10;
+            }
+
+            // ── PAGE 1: HEADER ────────────────────────────────────────────
+            // Logo
+            const logoPaths = [
+                path.join(__dirname, 'public', 'Final-01.jpg'),
+                path.join(__dirname, 'Final-01.jpg'),
+                path.join(__dirname, 'public', 'final-01.jpg'),
+            ];
+            for (const lp of logoPaths) {
+                if (fs.existsSync(lp)) {
+                    try {
+                        const li = await accDoc.embedJpg(fs.readFileSync(lp));
+                        const ld = li.scaleToFit(190, 64);
+                        accPage.drawImage(li, { x: (PW - ld.width) / 2, y: ay - ld.height, width: ld.width, height: ld.height });
+                        ay -= ld.height + 18;
+                    } catch (_) { ay -= 10; }
+                    break;
+                }
+            }
+
+            // Title + subtitle
+            accTextC('Official Accident Report', ay, 22, accBold, BLUE); ay -= 26;
+            accTextC('Strategic Logistics Group LLC', ay, 10.5, accReg, MID_GRAY); ay -= 20;
+            accPage.drawLine({ start: { x: MG, y: ay }, end: { x: PW - MG, y: ay }, thickness: 0.5, color: LIGHT_GRAY });
+            ay -= 22;
+
+            // Metadata block
+            accMeta('Report Date',   `${data.date || ''}  ${data.time || ''}`);
+            accMeta('Driver Name',   data.driverName);
+            accMeta('Last 4 VIN',    data.vinLast4);
+            accMeta('Vehicle Type',  data.vehicleType || 'Unknown');
+            accMeta('Incident Type', data.incidentType);
+            accMeta('Driver Email',  data.driverEmail);
+            ay -= 10;
+
+            // ── SECTION 1: INCIDENT LOCATION ──────────────────────────────
+            accSection('1. Incident Location');
+            const loc = data.locationData || {};
+            const cityLine = [loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || 'N/A';
+            accTable([
+                ['Field',              'Details'],
+                ['Street Address',     loc.street || 'N/A'],
+                ['City / State / Zip', cityLine],
+                ['GPS Coordinates',    (loc.gpsLat && loc.gpsLng) ? `${loc.gpsLat}, ${loc.gpsLng}` : 'Not captured'],
+                ['Weather Conditions', data.weather || 'N/A'],
+            ]);
+
+            // ── SECTION 2: CASE INFORMATION ───────────────────────────────
+            accSection('2. Case Information');
+            accTable([
+                ['Field',           'Details'],
+                ['Police Report #', data.policeReport || 'N/A'],
+                ['LMET Case #',     data.lmetCase     || 'N/A'],
+            ]);
+
+            // ── SECTION 3: DETAILED STATEMENT ─────────────────────────────
+            accSection('3. Detailed Statement');
+            accTextBlock(data.statement || 'No statement provided.');
+
+            // ── SECTION 4: PHOTO EVIDENCE ─────────────────────────────────
+            const photoList = data.photos || [];
+            if (photoList.length > 0) {
+                accSection(`4. Photo Evidence (${photoList.length} Photo${photoList.length !== 1 ? 's' : ''})`);
+                const GAP = 10, PW2 = (CW - GAP) / 2, PH2 = Math.round(PW2 * 0.68), LBLH = 14;
+                const colX = [MG, MG + PW2 + GAP];
+                let col = 0;
+                for (let i = 0; i < photoList.length; i++) {
+                    if (col === 0) accEnsure(PH2 + LBLH + 16);
+                    const px = colX[col], py = ay - PH2;
+                    try {
+                        const buf = Buffer.from(photoList[i].data, 'base64');
+                        let img;
+                        try { img = await accDoc.embedJpg(buf); } catch (_) { img = await accDoc.embedPng(buf); }
+                        const dims = img.scaleToFit(PW2, PH2);
+                        accRectBorder(px, py - 2, PW2, PH2 + 2, WHITE, LIGHT_GRAY, 0.5);
+                        accPage.drawImage(img, {
+                            x: px + (PW2 - dims.width) / 2, y: py + (PH2 - dims.height) / 2,
+                            width: dims.width, height: dims.height
+                        });
+                    } catch (_) {
+                        accRectBorder(px, py, PW2, PH2, STMT_BG, LIGHT_GRAY, 0.5);
+                        accTextL(`[Photo ${i + 1} — embed error]`, px + 8, py + PH2 / 2, 8, accReg, RED_DIM);
+                    }
+                    accTextL(`Photo ${i + 1}`, px + 4, py - 12, 8, accReg, MID_GRAY);
+                    if (col === 1 || i === photoList.length - 1) { ay -= PH2 + LBLH + 6; col = 0; }
+                    else col = 1;
+                }
+                ay -= 8;
+            }
+
+            // ── SECTION 5: SIGNATURE & AFFIDAVIT ─────────────────────────
+            const sigSec = photoList.length > 0 ? '5' : '4';
+            accSection(`${sigSec}. Driver Signature & Affidavit`);
+
             if (data.signature) {
-                page.drawText('DRIVER SIGNATURE', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
+                accEnsure(104);
+                const SBW = 230, SBH = 80;
                 try {
-                    // pdf-lib embedPng() needs raw bytes or base64 string WITHOUT the data: prefix
-                    const rawBase64 = data.signature.replace(/^data:image\/\w+;base64,/, '');
-                    const sigImage = await doc.embedPng(Buffer.from(rawBase64, 'base64'));
-                    page.drawImage(sigImage, { x: 30, y: y - 60, width: 200, height: 60 }); y -= 70;
-                } catch (sigErr) {
-                    page.drawText('(Signature image error)', { x: 30, y, size: 10, font: fontReg, color: rgb(0.5,0,0) }); y -= 20;
+                    const rawSig = data.signature.replace(/^data:image\/\w+;base64,/, '');
+                    const sigImg = await accDoc.embedPng(Buffer.from(rawSig, 'base64'));
+                    const sd     = sigImg.scaleToFit(SBW - 20, SBH - 14);
+                    accRectBorder(MG, ay - SBH, SBW, SBH, rgb(0.984, 0.984, 0.984), LIGHT_GRAY, 0.5);
+                    accPage.drawImage(sigImg, {
+                        x: MG + (SBW - sd.width) / 2, y: ay - SBH + (SBH - sd.height) / 2,
+                        width: sd.width, height: sd.height
+                    });
+                    ay -= SBH + 4;
+                    accTextL(`Signed by: ${data.driverName || ''}`, MG, ay, 8.5, accBold, DARK_GRAY);
+                    accTextL(`Date: ${data.date || ''} ${data.time || ''}`, MG + SBW + 12, ay, 8.5, accReg, MID_GRAY);
+                    ay -= 18;
+                } catch (_) {
+                    accTextL('(Signature could not be rendered)', MG, ay, 9, accReg, RED_DIM); ay -= 18;
                 }
             }
+
+            // Affidavit block with blue left accent bar
             if (data.affidavit) {
-                if (y < 150) { page = doc.addPage([600, 800]); y = 780; }
-                page.drawText('AFFIDAVIT ACKNOWLEDGMENT', { x: 30, y, size: 12, font: fontBold, color: rgb(0,0,0) }); y -= 20;
-                const affLines = wrapText(data.affidavit, fontReg, 8, 540);
-                for (let line of affLines.slice(0, 10)) {
-                    page.drawText(line, { x: 30, y, size: 8, font: fontReg, color: rgb(0,0,0) }); y -= 12;
-                }
+                const affText  = String(data.affidavit).replace(/\s+/g, ' ').trim();
+                const affLines = accWrap(affText, accReg, 8.5, CW - 30);
+                const blockH   = Math.min(affLines.length, 20) * 12 + 20;
+                accEnsure(blockH + 12);
+                accRectBorder(MG, ay - blockH, CW, blockH, AFF_BG, BLUE, 0.5);
+                accRect(MG, ay - blockH, 3, blockH, BLUE); // left accent bar
+                let ty = ay - 12;
+                for (const line of affLines.slice(0, 20)) { accTextL(line, MG + 14, ty, 8.5, accReg, DARK_GRAY); ty -= 12; }
+                ay -= blockH + 12;
             }
-            const pdfPath = path.join(UPLOAD_DIR, `Accident_${data.driverName}_${Date.now()}.pdf`);
-            fs.writeFileSync(pdfPath, await doc.save());
+
+            // ── Finalize: stamp footer + update page numbers ──────────────
+            accStampFooter(accPage);
+            const totalPages = accDoc.getPageCount();
+            accDoc.getPages().forEach((p, i) => {
+                const label = `Page ${i + 1} of ${totalPages}`;
+                const lw    = accReg.widthOfTextAtSize(label, 8);
+                p.drawRectangle({ x: PW / 2 - 32, y: 20, width: 64, height: 12, color: WHITE });
+                p.drawText(label, { x: (PW - lw) / 2, y: 26, size: 8, font: accReg, color: MID_GRAY });
+            });
+
+            const pdfBytes = await accDoc.save();
+            const pdfPath  = path.join(UPLOAD_DIR, `Accident_${(data.driverName || 'Unknown').replace(/\s+/g, '_')}_${Date.now()}.pdf`);
+            fs.writeFileSync(pdfPath, pdfBytes);
+
+            // ── Email ─────────────────────────────────────────────────────
             const incidentTypeUC = (data.incidentType || 'ACCIDENT').toUpperCase();
-            const lmetText = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
-            const driverNameUC = (data.driverName || 'UNKNOWN').toUpperCase();
+            const lmetText       = data.lmetCase ? `LMET# ${data.lmetCase}` : 'NO LMET';
+            const driverNameUC   = (data.driverName || 'UNKNOWN').toUpperCase();
+
+            // PDF always attached; photos also attached as full-res originals
             const emailAttachments = [{ filename: 'Official_Accident_Report.pdf', path: pdfPath }];
             if (data.photos && data.photos.length) {
                 console.log(`📧 Attaching ${data.photos.length} photos to email...`);
                 for (let i = 0; i < data.photos.length; i++) {
                     try {
                         const photoBuffer = Buffer.from(data.photos[i].data, 'base64');
-                        const photoPath = path.join(UPLOAD_DIR, `accident_photo_${Date.now()}_${i}.jpg`);
+                        const photoPath   = path.join(UPLOAD_DIR, `accident_photo_${Date.now()}_${i}.jpg`);
                         fs.writeFileSync(photoPath, photoBuffer);
-                        emailAttachments.push({ filename: `Photo_${i+1}.jpg`, path: photoPath });
+                        emailAttachments.push({ filename: `Photo_${i+1}_${driverNameUC}.jpg`, path: photoPath });
                         console.log(`✅ Photo ${i+1}/${data.photos.length} prepared for email`);
                     } catch (photoError) { console.error(`❌ Failed to prepare photo ${i+1}:`, photoError.message); }
                 }
             }
             const photoCount = data.photos ? data.photos.length : 0;
-            const photoText = photoCount > 0 ? `${photoCount} photos attached` : 'No photos';
+            const photoText  = photoCount > 0 ? `${photoCount} photo(s) embedded in PDF + attached as originals` : 'No photos submitted';
+
             await transporter.sendMail({
                 from: emailUser,
                 to: ['slgpincidentreporting@gmail.com', 'strategiclogisticsgroupllc@gmail.com', 'slgpfleetmanager@gmail.com'],
                 subject: `🚨 URGENT: ${incidentTypeUC} - ${lmetText} - DA ${driverNameUC}`,
-                html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;"><div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">🚨 URGENT: ACCIDENT REPORT</h1><p style="color: #fee2e2; margin: 10px 0 0 0; font-size: 14px;">Immediate attention required</p></div><div style="background: white; padding: 30px; border-radius: 0 0 12px 12px;"><h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Incident Details</h2><table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;"><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${data.driverName}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN Last 4:</td><td style="padding: 12px; color: #1f2937;">${data.vinLast4}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Incident Type:</td><td style="padding: 12px; color: #1f2937;">${data.incidentType || 'N/A'}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Police Report #:</td><td style="padding: 12px; color: #1f2937;">${data.policeReport || 'N/A'}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">LMET Case #:</td><td style="padding: 12px; color: #1f2937;">${data.lmetCase || 'N/A'}</td></tr></table><div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 20px; margin-bottom: 25px; border-radius: 4px;"><h3 style="color: #DC2626; margin: 0 0 12px 0; font-size: 16px;">📸 PHOTO EVIDENCE</h3><p style="color: #991b1b; margin: 0; font-size: 14px;"><strong>${photoText}</strong> to this email</p></div><div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;"><strong>⚠️ ACTION REQUIRED:</strong><br>1. Review attached PDF report immediately<br>2. View all photo attachments in this email<br>3. Contact driver if additional information needed<br>4. Follow up on LMET case and police report</p></div></div></div>`,
+                html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;"><div style="background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">🚨 URGENT: ACCIDENT REPORT</h1><p style="color: #fee2e2; margin: 10px 0 0 0; font-size: 14px;">Immediate attention required</p></div><div style="background: white; padding: 30px; border-radius: 0 0 12px 12px;"><h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Incident Details</h2><table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;"><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${data.driverName}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN Last 4:</td><td style="padding: 12px; color: #1f2937;">${data.vinLast4}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Incident Type:</td><td style="padding: 12px; color: #1f2937;">${data.incidentType || 'N/A'}</td></tr><tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Police Report #:</td><td style="padding: 12px; color: #1f2937;">${data.policeReport || 'N/A'}</td></tr><tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">LMET Case #:</td><td style="padding: 12px; color: #1f2937;">${data.lmetCase || 'N/A'}</td></tr></table><div style="background: #fef2f2; border-left: 4px solid #EF4444; padding: 20px; margin-bottom: 25px; border-radius: 4px;"><h3 style="color: #DC2626; margin: 0 0 12px 0; font-size: 16px;">📸 PHOTO EVIDENCE</h3><p style="color: #991b1b; margin: 0; font-size: 14px;"><strong>${photoText}</strong></p></div><div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;"><p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;"><strong>⚠️ ACTION REQUIRED:</strong><br>1. Review attached PDF report immediately<br>2. View all photo attachments in this email<br>3. Contact driver if additional information needed<br>4. Follow up on LMET case and police report</p></div></div></div>`,
                 attachments: emailAttachments
             });
-            if (data.photos && data.photos.length) {
-                for (let i = 0; i < emailAttachments.length; i++) {
-                    if (emailAttachments[i].filename.startsWith('Photo_')) {
-                        try { fs.unlinkSync(emailAttachments[i].path); } catch (e) {}
-                    }
+
+            // Clean up temp files
+            for (const att of emailAttachments) {
+                if (att.filename !== 'Official_Accident_Report.pdf') {
+                    try { fs.unlinkSync(att.path); } catch (_) {}
                 }
             }
             fs.unlinkSync(pdfPath);
