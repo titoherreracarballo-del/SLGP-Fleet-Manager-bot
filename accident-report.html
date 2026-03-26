@@ -4,51 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Accident Report</title>
-    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    
     <style>
-        /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
             --bg-body: #0A6CF1;
             --bg-card: #1C1C1E;
             --bg-input: #2C2C2E;
             --bg-btn: #2C2C2E;
-            --primary-red: #EF4444; 
+            --primary-red: #EF4444;
             --primary-blue: #1976D2;
             --primary-gradient: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%);
             --text-label: #1976D2;
             --text-white: #ffffff;
-            --text-primary: #FFFFFF;
             --text-gray: #8E8E93;
             --text-green: #4CAF50;
-            --text-on-blue: #FFFFFF;
             --radius: clamp(12px, 3vw, 16px);
             --border-color: rgba(255, 255, 255, 0.1);
-            
-            /* FLUID SPACING - Auto-scales with screen size */
             --space-xs: clamp(4px, 1vw, 6px);
             --space-sm: clamp(6px, 1.5vw, 10px);
             --space-md: clamp(10px, 2.5vw, 15px);
             --space-lg: clamp(15px, 3.5vw, 20px);
             --space-xl: clamp(20px, 4.5vw, 30px);
-            
-            /* FLUID FONTS - SF Pro Display Style */
             --font-xs: clamp(10px, 2.2vw, 12px);
             --font-sm: clamp(12px, 2.8vw, 14px);
             --font-base: clamp(14px, 3.2vw, 16px);
             --font-md: clamp(16px, 3.6vw, 18px);
             --font-lg: clamp(18px, 4.2vw, 20px);
             --font-xl: clamp(22px, 5vw, 26px);
-            
-            /* MIN TOUCH TARGET */
             --min-touch: 44px;
         }
-
-        * {
-            -webkit-tap-highlight-color: transparent;
-        }
-
+        * { -webkit-tap-highlight-color: transparent; }
         body {
             background-color: var(--bg-body);
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -60,10 +45,9 @@
             min-height: 100vh;
             font-size: var(--font-base);
             -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         }
 
-        /* --- SECURITY GATE OVERLAY --- */
+        /* GATE */
         #accident-gate {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.98); z-index: 9999;
@@ -73,1037 +57,783 @@
         .gate-content {
             background: #161B28; border: 2px solid var(--primary-red);
             padding: var(--space-xl) var(--space-lg);
-            border-radius: clamp(16px, 4vw, 20px); 
+            border-radius: clamp(16px, 4vw, 20px);
             max-width: 420px; width: 100%;
             box-shadow: 0 0 50px rgba(239, 68, 68, 0.3);
             display: flex; flex-direction: column; gap: var(--space-md);
         }
-        .gate-icon { 
-            font-size: clamp(36px, 10vw, 44px); 
-            display: block; text-align: center; margin-bottom: var(--space-xs); 
-        }
-        .gate-title { 
-            color: var(--primary-red); 
-            font-size: var(--font-lg); 
-            font-weight: 900; 
-            text-transform: uppercase; text-align: center; margin-bottom: var(--space-sm); 
-        }
-
-        /* CHECKLIST - AUTO-SCALING */
-        .checklist-container { 
-            display: flex; flex-direction: column; gap: var(--space-sm); margin-bottom: var(--space-xs); 
-        }
-        .check-item { 
+        .gate-icon { font-size: clamp(36px, 10vw, 44px); display: block; text-align: center; margin-bottom: var(--space-xs); }
+        .gate-title { color: var(--primary-red); font-size: var(--font-lg); font-weight: 900; text-transform: uppercase; text-align: center; margin-bottom: var(--space-sm); }
+        .checklist-container { display: flex; flex-direction: column; gap: var(--space-sm); margin-bottom: var(--space-xs); }
+        .check-item {
             display: flex; align-items: flex-start; gap: var(--space-sm);
             font-size: var(--font-sm); color: #cbd5e1; cursor: pointer; line-height: 1.4;
-            background: rgba(255, 255, 255, 0.03); 
-            padding: var(--space-sm); 
-            border-radius: var(--radius);
-            min-height: var(--min-touch);
+            background: rgba(255,255,255,0.03); padding: var(--space-sm);
+            border-radius: var(--radius); min-height: var(--min-touch);
         }
-        .gate-check { 
-            width: clamp(20px, 5vw, 24px); 
-            height: clamp(20px, 5vw, 24px);
-            accent-color: var(--primary-red); 
-            flex-shrink: 0; margin-top: 2px; cursor: pointer;
-        }
-
-        .gate-text { 
+        .gate-check { width: clamp(20px, 5vw, 24px); height: clamp(20px, 5vw, 24px); accent-color: var(--primary-red); flex-shrink: 0; margin-top: 2px; cursor: pointer; }
+        .gate-text {
             font-size: var(--font-xs); line-height: 1.6; color: #94a3b8;
-            background: rgba(0,0,0,0.3); padding: var(--space-md); 
-            border-radius: var(--radius);
-            border-left: 3px solid var(--primary-red); margin-bottom: var(--space-xs);
+            background: rgba(0,0,0,0.3); padding: var(--space-md);
+            border-radius: var(--radius); border-left: 3px solid var(--primary-red); margin-bottom: var(--space-xs);
         }
-        
         .gate-btn {
             background: var(--primary-red); color: white; border: none;
-            padding: var(--space-md);
-            width: 100%; font-weight: 900; border-radius: var(--radius);
-            font-size: var(--font-base);
-            text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
+            padding: var(--space-md); width: 100%; font-weight: 900; border-radius: var(--radius);
+            font-size: var(--font-base); text-transform: uppercase; cursor: not-allowed; opacity: 0.4; transition: 0.3s;
             min-height: var(--min-touch);
         }
         .gate-btn.active { cursor: pointer; opacity: 1; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
 
-        /* --- MAIN CONTAINER --- */
+        /* MAIN */
         .container {
             width: 100%; max-width: 450px; background-color: var(--bg-card);
-            border-radius: clamp(18px, 5vw, 24px); 
-            padding: clamp(18px, 5vw, 24px); 
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3); display: none;
+            border-radius: clamp(18px, 5vw, 24px); padding: clamp(18px, 5vw, 24px);
+            border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 24px rgba(0,0,0,0.3); display: none;
         }
-
-        .logo-header { 
-            display: block; margin: 0 auto var(--space-md) auto; 
-            max-width: 100%; width: clamp(220px, 60vw, 280px); height: auto; border-radius: 4px; 
+        .logo-header { display: block; margin: 0 auto var(--space-md) auto; max-width: 100%; width: clamp(220px, 60vw, 280px); height: auto; border-radius: 4px; }
+        .back-link {
+            display: inline-flex; align-items: center; gap: var(--space-sm);
+            color: #ffffff; background: var(--primary-gradient); text-decoration: none;
+            font-size: var(--font-md); font-weight: 700; padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius); border: none; box-shadow: 0 4px 12px rgba(30,136,229,0.35);
+            transition: all 0.2s ease; margin-bottom: var(--space-lg);
         }
-        .back-link { 
-            display: inline-flex;
-            align-items: center;
-            gap: var(--space-sm);
-            color: #ffffff; 
-            background: var(--primary-gradient);
-            text-decoration: none; 
-            font-size: var(--font-md);
-            font-weight: 700;
-            padding: var(--space-md) var(--space-lg);
-            border-radius: var(--radius);
-            border: none;
-            box-shadow: 0 4px 12px rgba(30, 136, 229, 0.35);
-            transition: all 0.2s ease;
-            margin-bottom: var(--space-lg);
-        }
-        .back-link:hover {
-            background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%);
-            box-shadow: 0 6px 16px rgba(30, 136, 229, 0.45);
-            transform: translateY(-2px);
-        }
-        .back-link:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 8px rgba(30, 136, 229, 0.35);
-        }
-        .timestamp { 
-            color: var(--text-green); text-align: center; 
-            font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); 
-        }
-        h1 { 
-            color: var(--primary-red); text-align: center; 
-            font-size: var(--font-xl); font-weight: 900;
-            text-transform: uppercase; margin: 0 0 var(--space-xl) 0; letter-spacing: 1px; 
-        }
-        h2 { 
-            font-size: var(--font-md); color: var(--text-label);
-            text-transform: uppercase; border-bottom: 2px solid #333;
-            padding-bottom: var(--space-xs); 
-            margin-top: var(--space-xl); 
-            margin-bottom: var(--space-md); 
-        }
-
-        /* --- FORMS - FLUID SIZING --- */
+        .back-link:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(30,136,229,0.35); }
+        .timestamp { color: var(--text-green); text-align: center; font-size: var(--font-sm); font-weight: 700; margin-bottom: var(--space-xs); }
+        h1 { color: var(--primary-red); text-align: center; font-size: var(--font-xl); font-weight: 900; text-transform: uppercase; margin: 0 0 var(--space-xl) 0; letter-spacing: 1px; }
+        h2 { font-size: var(--font-md); color: var(--text-label); text-transform: uppercase; border-bottom: 2px solid #333; padding-bottom: var(--space-xs); margin-top: var(--space-xl); margin-bottom: var(--space-md); }
         .form-group { margin-bottom: var(--space-lg); }
         .row-split { display: flex; gap: var(--space-sm); }
-        .vin-col { flex: 0.3; min-width: 70px; } 
+        .vin-col { flex: 0.3; min-width: 70px; }
         .type-col { flex: 0.7; }
-
-        label { 
-            color: var(--text-label); display: block; 
-            font-size: var(--font-xs); font-weight: 800;
-            text-transform: uppercase; letter-spacing: 0.5px; 
-            margin-bottom: var(--space-xs); 
-        }
+        label { color: var(--text-label); display: block; font-size: var(--font-xs); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-xs); }
         input, textarea {
-            width: 100%; background-color: var(--bg-input); 
-            border: 1px solid var(--border-color);
-            color: white;
-            padding: var(--space-md);
-            border-radius: var(--radius); 
-            font-size: 16px; /* Fixed 16px prevents iOS zoom */
-            box-sizing: border-box; outline: none;
-            min-height: var(--min-touch);
+            width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color);
+            color: white; padding: var(--space-md); border-radius: var(--radius);
+            font-size: 16px; box-sizing: border-box; outline: none; min-height: var(--min-touch);
         }
         input:focus, textarea:focus { border-color: var(--primary-red); }
-        input[readonly] { 
-            background-color: #1a202c; color: #6b7280; 
-            font-weight: bold; cursor: not-allowed; 
-        }
-
-        .char-count { 
-            font-size: var(--font-xs); color: #6b7280;
-            text-align: right; margin-top: var(--space-xs); 
-        }
-
-        /* --- INCIDENT BUTTONS --- */
+        input[readonly] { background-color: #1a202c; color: #6b7280; font-weight: bold; cursor: not-allowed; }
+        input.field-error { border-color: #ef4444 !important; box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+        .char-count { font-size: var(--font-xs); color: #6b7280; text-align: right; margin-top: var(--space-xs); }
         .btn-option {
-            width: 100%; background-color: var(--bg-btn); 
-            border: 1px solid #2d3748; color: #cbd5e1;
-            padding: var(--space-md);
-            border-radius: var(--radius); font-weight: 700; 
-            font-size: var(--font-sm);
-            text-transform: uppercase; cursor: pointer; 
-            margin-bottom: var(--space-sm);
-            transition: all 0.2s;
-            min-height: var(--min-touch);
+            width: 100%; background-color: var(--bg-btn); border: 1px solid #2d3748; color: #cbd5e1;
+            padding: var(--space-md); border-radius: var(--radius); font-weight: 700;
+            font-size: var(--font-sm); text-transform: uppercase; cursor: pointer;
+            margin-bottom: var(--space-sm); transition: all 0.2s; min-height: var(--min-touch);
         }
-        .btn-option.selected { 
-            background-color: #1e293b; border-color: var(--primary-red); 
-            color: white; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); 
-        }
+        .btn-option.selected { background-color: #1e293b; border-color: var(--primary-red); color: white; box-shadow: 0 0 10px rgba(239,68,68,0.2); }
+        #map { height: clamp(160px, 40vw, 200px); width: 100%; border-radius: var(--radius); border: 1px solid #333; margin-top: var(--space-xs); }
+        .gps-info { font-size: var(--font-xs); color: var(--text-gray); margin-top: var(--space-xs); display: flex; justify-content: space-between; }
+        .weather-box { background: rgba(255,255,255,0.05); padding: var(--space-sm); border-radius: var(--radius); font-size: var(--font-xs); color: #fff; margin-top: var(--space-sm); border: 1px solid #333; }
 
-        /* --- MAP & ADDRESS --- */
-        #map { 
-            height: clamp(160px, 40vw, 200px);
-            width: 100%; border-radius: var(--radius); 
-            border: 1px solid #333; margin-top: var(--space-xs); 
-        }
-        .gps-info { 
-            font-size: var(--font-xs); color: var(--text-gray);
-            margin-top: var(--space-xs); 
-            display: flex; justify-content: space-between; 
-        }
-        .weather-box { 
-            background: rgba(255,255,255,0.05); 
-            padding: var(--space-sm);
-            border-radius: var(--radius);
-            font-size: var(--font-xs);
-            color: #fff; margin-top: var(--space-sm); 
-            border: 1px solid #333;
-        }
-
-        /* --- SIGNATURE PAD --- */
-        canvas { 
-            background: #1a1a1a; border: 1px solid var(--text-label);
-            border-radius: var(--radius); cursor: crosshair; 
-            touch-action: none; width: 100%; 
-            height: clamp(140px, 35vw, 160px);
-        }
-        .clear-sig { 
-            background: transparent; color: var(--primary-red); 
-            border: 1px solid var(--primary-red);
-            font-size: var(--font-xs);
-            padding: var(--space-xs) var(--space-sm);
-            border-radius: var(--radius); float: right; 
-            margin-top: var(--space-xs); cursor: pointer; 
-            min-height: var(--min-touch);
-        }
-
-        /* --- CAMERA --- */
+        /* PHOTOS */
         .camera-box {
-            border: 2px dashed #4b5563;
-            border-radius: var(--radius); 
-            height: clamp(120px, 30vw, 140px);
-            display: flex; flex-direction: column; 
-            align-items: center; justify-content: center;
-            cursor: pointer; background-color: rgba(255,255,255,0.02);
-            position: relative; overflow: hidden; margin-bottom: var(--space-lg);
+            border: 2px dashed #4b5563; border-radius: var(--radius);
+            height: clamp(120px, 30vw, 140px); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; cursor: pointer;
+            background-color: rgba(255,255,255,0.02); position: relative; overflow: hidden; margin-bottom: var(--space-sm);
         }
-        #photoInput { 
-            position: absolute; width: 100%; height: 100%; 
-            opacity: 0; z-index: 10; cursor: pointer;
+        #photoInput { position: absolute; width: 100%; height: 100%; opacity: 0; z-index: 10; cursor: pointer; }
+        .camera-icon { width: clamp(28px, 8vw, 35px); height: clamp(28px, 8vw, 35px); fill: #cbd5e1; margin-bottom: var(--space-xs); }
+        .camera-title { font-size: var(--font-sm); font-weight: 800; margin-bottom: var(--space-xs); }
+        .camera-sub { font-size: var(--font-xs); }
+        
+        /* Photo preview grid */
+        #photo-preview-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-xs);
+            margin-bottom: var(--space-sm);
         }
-        .camera-icon { 
-            width: clamp(28px, 8vw, 35px); 
-            height: clamp(28px, 8vw, 35px);
-            fill: #cbd5e1; margin-bottom: var(--space-xs); 
+        .photo-thumb {
+            position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden;
+            border: 1px solid #374151;
         }
-        .camera-title { 
-            font-size: var(--font-sm); font-weight: 800;
-            margin-bottom: var(--space-xs);
+        .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .photo-thumb .remove-photo {
+            position: absolute; top: 4px; right: 4px; background: rgba(239,68,68,0.9);
+            border: none; color: white; border-radius: 50%; width: 22px; height: 22px;
+            font-size: 14px; line-height: 22px; text-align: center; cursor: pointer; z-index: 5;
+            display: flex; align-items: center; justify-content: center;
         }
-        .camera-sub {
-            font-size: var(--font-xs);
+        .photo-status-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: var(--font-xs); margin-bottom: var(--space-md);
+        }
+        .clear-photos-btn {
+            background: transparent; color: #ef4444; border: 1px solid #ef4444;
+            font-size: var(--font-xs); padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius); cursor: pointer; min-height: 32px;
         }
 
-        /* --- SUBMIT BUTTON --- */
+        /* SIGNATURE */
+        canvas { background: #1a1a1a; border: 1px solid var(--text-label); border-radius: var(--radius); cursor: crosshair; touch-action: none; width: 100%; height: clamp(140px, 35vw, 160px); }
+        canvas.sig-error { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+        .clear-sig { background: transparent; color: var(--primary-red); border: 1px solid var(--primary-red); font-size: var(--font-xs); padding: var(--space-xs) var(--space-sm); border-radius: var(--radius); float: right; margin-top: var(--space-xs); cursor: pointer; min-height: var(--min-touch); }
+
+        /* SUBMIT */
         .btn-submit {
             width: 100%; background-color: var(--primary-red); color: white; border: none;
-            padding: var(--space-lg);
-            border-radius: var(--radius); font-weight: 900; 
-            font-size: var(--font-md);
-            text-transform: uppercase; margin-top: var(--space-xl); cursor: pointer;
-            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+            padding: var(--space-lg); border-radius: var(--radius); font-weight: 900;
+            font-size: var(--font-md); text-transform: uppercase; margin-top: var(--space-xl);
+            cursor: pointer; box-shadow: 0 4px 20px rgba(239,68,68,0.4);
             min-height: clamp(50px, 12vw, 56px);
         }
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* --- RESPONSIVE BREAKPOINTS --- */
-        @media (max-width: 340px) {
-            body { padding: 8px; }
-            .container { padding: 12px; }
+        /* STATUS MESSAGE */
+        #submit-status {
+            text-align: center; font-size: var(--font-sm); font-weight: 700;
+            padding: var(--space-sm); border-radius: var(--radius); margin-top: var(--space-sm);
+            display: none;
         }
+        #submit-status.error { background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #ef4444; display: block; }
+        #submit-status.success { background: rgba(74,222,128,0.15); border: 1px solid #4ade80; color: #4ade80; display: block; }
 
-        @media (min-width: 768px) {
-            :root {
-                --font-xs: 13px;
-                --font-sm: 14px;
-                --font-base: 16px;
-                --font-md: 18px;
-                --font-lg: 22px;
-                --font-xl: 26px;
-            }
-        }
-
-        @media (max-height: 600px) and (orientation: landscape) {
-            #accident-gate { align-items: flex-start; padding-top: 10px; }
-            .gate-content { margin: 10px auto; }
-        }
-
-        @supports (-webkit-touch-callout: none) {
-            input, textarea, select {
-                font-size: 16px !important;
-            }
-        }
+        @media (max-width: 340px) { body { padding: 8px; } .container { padding: 12px; } }
+        @media (min-width: 768px) { :root { --font-xs: 13px; --font-sm: 14px; --font-base: 16px; --font-md: 18px; --font-lg: 22px; --font-xl: 26px; } }
+        @media (max-height: 600px) and (orientation: landscape) { #accident-gate { align-items: flex-start; padding-top: 10px; } .gate-content { margin: 10px auto; } }
+        @supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }
     </style>
 </head>
 <body>
 
-    <div id="accident-gate">
-        <div class="gate-content">
-            <span class="gate-icon">⚠️</span>
-            <div class="gate-title">Accident Protocol</div>
-            
-            <div class="checklist-container">
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-713-0953)</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
-                <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
-            </div>
+<div id="accident-gate">
+    <div class="gate-content">
+        <span class="gate-icon">⚠️</span>
+        <div class="gate-title">Accident Protocol</div>
+        <div class="checklist-container">
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>Notify Dispatch immediately (470-713-0953)</span></label>
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>Collect Photo & Video documentation</span></label>
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>Complete detailed written statement</span></label>
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>File LMET Report (1-800-942-3300)</span></label>
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>If medical attention is needed, contact Dispatch FIRST for guidance.</span></label>
+            <label class="check-item"><input type="checkbox" class="gate-check"><span>I have read and agree to the Affidavit below.</span></label>
+        </div>
+        <div class="gate-text" id="affidavitText">
+            <strong>AFFIDAVIT:</strong><br><br>
+            I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
+            All accident and/or workplace incidents are required to be completed and submitted within 24 hours of the event.<br><br>
+            DAs are permitted to be seen by an authorized panel of physicians only. Note that DAs will also be required to take a drug test upon arrival.
+        </div>
+        <button id="gateBtn" class="gate-btn" disabled onclick="enterReport()">I Acknowledge & Understand</button>
+    </div>
+</div>
 
-            <div class="gate-text" id="affidavitText">
-                <strong>AFFIDAVIT:</strong><br><br>
-                I hereby declare that the information I am about to provide regarding this incident is true, accurate, and complete to the best of my knowledge.<br><br>
-                All accident and/or workplace incidents are required to be completed and submitted within 24 hours of the event.<br><br>
-                DAs are permitted to be seen by an authorized panel of physicians only. Note that DAs will also be required to take a drug test upon arrival.
-            </div>
+<div class="container" id="main-form">
+    <a href="/" class="back-link">← Back to Menu</a>
+    <div style="text-align:center;color:#8E8E93;font-size:var(--font-xs);font-weight:600;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:var(--space-sm);">v4.6.1</div>
+    <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
+    <div class="timestamp" id="ts">Loading Time...</div>
+    <h1>Accident Report</h1>
 
-            <button id="gateBtn" class="gate-btn" onclick="enterReport()">I Acknowledge & Understand</button>
+    <h2>1. Driver & Vehicle</h2>
+    <div class="form-group">
+        <label>Driver Full Name</label>
+        <input type="text" id="driverName" placeholder="Enter Full Name" autocomplete="name">
+    </div>
+    <div class="form-group row-split">
+        <div class="vin-col">
+            <label>Last 4 VIN</label>
+            <input type="text" id="vinInput" placeholder="VIN" maxlength="4" style="text-transform:uppercase;" onkeyup="checkVin()">
+        </div>
+        <div class="type-col">
+            <label>Vehicle Type</label>
+            <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
         </div>
     </div>
 
-    <div class="container" id="main-form">
-        <a href="/" class="back-link">← Back to Menu</a>
-        
-        <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm);">v4.7.0</div>
-        
-        <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
-        <div class="timestamp" id="ts">Loading Time...</div>
-        <h1>Accident Report</h1>
-
-        <h2>1. Driver & Vehicle</h2>
-        <div class="form-group">
-            <label>Driver Full Name</label>
-            <input type="text" id="driverName" placeholder="Enter Full Name">
+    <h2>2. Incident Details</h2>
+    <div class="form-group">
+        <label>Incident Type</label>
+        <div id="incidentTypes">
+            <button class="btn-option" onclick="selectIncident(this)">Slip / Trip / Fall</button>
+            <button class="btn-option" onclick="selectIncident(this)">Dog Bite</button>
+            <button class="btn-option" onclick="selectIncident(this)">Customer Altercation</button>
+            <button class="btn-option selected" onclick="selectIncident(this)">Vehicle Accident</button>
+            <button class="btn-option" onclick="selectIncident(this)">Property Damage</button>
+            <button class="btn-option" onclick="selectIncident(this)">Other</button>
         </div>
-
-        <div class="form-group row-split">
-            <div class="vin-col">
-                <label>Last 4 VIN</label>
-                <input type="text" id="vinInput" placeholder="VIN" maxlength="4" style="text-transform:uppercase;">
-            </div>
-            <div class="type-col">
-                <label>Vehicle Type</label>
-                <input type="text" id="vehicleType" placeholder="Auto-Detect..." readonly>
-            </div>
-        </div>
-
-        <h2>2. Incident Details</h2>
-        <div class="form-group">
-            <label>Incident Type</label>
-            <div id="incidentTypes">
-                <button class="btn-option">Slip / Trip / Fall</button>
-                <button class="btn-option">Dog Bite</button>
-                <button class="btn-option">Customer Altercation</button>
-                <button class="btn-option selected">Vehicle Accident</button>
-                <button class="btn-option">Property Damage</button>
-                <button class="btn-option">Other</button>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Location (GPS Auto-Detected)</label>
-            <div id="map"></div>
-            <div class="gps-info">
-                <span>Lat: <span id="gpsLat">...</span></span>
-                <span>Lng: <span id="gpsLng">...</span></span>
-            </div>
-            <div class="weather-box" id="weatherBox">Fetching Weather...</div>
-        </div>
-
-        <div class="form-group">
-            <label>Street Address / House # (Auto-Filled, Edit to Update GPS)</label>
-            <input type="text" id="addrStreet" placeholder="Detecting Street..." onchange="manualAddressUpdate()">
-        </div>
-        <div class="form-group row-split">
-            <div style="flex: 2;">
-                <label>City</label>
-                <input type="text" id="addrCity" placeholder="City" onchange="manualAddressUpdate()">
-            </div>
-            <div style="flex: 1;">
-                <label>State</label>
-                <input type="text" id="addrState" placeholder="State" onchange="manualAddressUpdate()">
-            </div>
-            <div style="flex: 1.2;">
-                <label>Zip</label>
-                <input type="text" id="addrZip" placeholder="Zip" onchange="manualAddressUpdate()">
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <button type="button" onclick="forceGeocode()" style="width: 100%; background: linear-gradient(135deg, #1E88E5 0%, #42A5F5 100%); color: white; border: none; padding: var(--space-md); border-radius: var(--radius); font-weight: 700; font-size: var(--font-sm); text-transform: uppercase; cursor: pointer; min-height: var(--min-touch);">
-                🔄 Update GPS from Address
-            </button>
-        </div>
-
-        <div class="form-group">
-            <label>Detailed Statement (Max 500)</label>
-            <textarea id="statement" maxlength="500" style="min-height: 100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
-            <div class="char-count" id="charCounter">0 / 500</div>
-            
-            <button type="button" id="polishBtn" style="
-                margin-top: var(--space-md);
-                width: 100%;
-                padding: var(--space-md);
-                background: linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%);
-                color: white;
-                border: none;
-                border-radius: var(--radius);
-                font-size: var(--font-base);
-                font-weight: 600;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: var(--space-sm);
-                min-height: var(--min-touch);
-            ">
-                <span>✨</span>
-                <span>Polish Statement with AI</span>
-            </button>
-            
-            <div id="polishResult" style="display:none; margin-top: var(--space-md);">
-                <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: var(--radius); padding: var(--space-md);">
-                    <div style="font-weight: 600; color: #8B5CF6; margin-bottom: var(--space-sm); display: flex; align-items: center; gap: var(--space-sm);">
-                        <span>✨</span>
-                        <span>AI Polished Version</span>
-                    </div>
-                    <div id="polishedText" style="color: var(--text-primary); line-height: 1.6; white-space: pre-wrap;"></div>
-                    <div style="display: flex; gap: var(--space-sm); margin-top: var(--space-md);">
-                        <button type="button" id="acceptPolish" style="
-                            flex: 1;
-                            padding: var(--space-sm);
-                            background: #10B981;
-                            color: white;
-                            border: none;
-                            border-radius: var(--radius);
-                            font-weight: 600;
-                            cursor: pointer;
-                            min-height: var(--min-touch);
-                        ">✓ Use This</button>
-                        <button type="button" id="rejectPolish" style="
-                            flex: 1;
-                            padding: var(--space-sm);
-                            background: var(--bg-btn);
-                            color: var(--text-primary);
-                            border: 1px solid var(--border-color);
-                            border-radius: var(--radius);
-                            font-weight: 600;
-                            cursor: pointer;
-                            min-height: var(--min-touch);
-                        ">✕ Keep Original</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group row-split">
-            <div style="flex:1;">
-                <label>Police Report # (Required)</label>
-                <input type="text" id="policeReport" placeholder="Required">
-            </div>
-            <div style="flex:1;">
-                <label>LMET Case # (Required)</label>
-                <input type="text" id="lmetCase" placeholder="Required">
-            </div>
-        </div>
-
-        <h2>3. Evidence (Min 3 Photos)</h2>
-        <div class="form-group">
-            <label>Photos (Scene & Damage)</label>
-            <div class="camera-box">
-                <input type="file" id="photoInput" multiple accept="image/*">
-                <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
-                <div class="camera-title">TAP TO ADD PHOTOS</div>
-                <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Attached (3 Required)</div>
-                <div style="font-size: var(--font-xs); color: #6b7280; margin-top: var(--space-xs);">📸 Camera or 📁 Gallery</div>
-            </div>
-        </div>
-
-        <h2>4. Driver Signature</h2>
-        <div class="form-group">
-            <label>Sign Below</label>
-            <canvas id="sigCanvas"></canvas>
-            <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
-        </div>
-
-        <div class="form-group" style="margin-top:20px;">
-            <label>Email for Copy of Panel of Physicians</label>
-            <input type="email" id="driverEmail" placeholder="Enter your email address">
-        </div>
-
-        <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <script>
-        // ========================================
-        // COMPLETE VIN DATABASE (41 Vehicles)
-        // Synced from video.html - DO NOT MODIFY
-        // ========================================
-        const vinDatabase = {
-            "9488": { type: "Extra Large Van (Diesel)" },
-            "0213": { type: "Large Van (Diesel)" },
-            "8929": { type: "Extra Large Van (Diesel)" },
-            "5691": { type: "Extra Large Van (Diesel)" },
-            "7867": { type: "Rivian MEDIUM (Electric)" },
-            "7871": { type: "Rivian MEDIUM (Electric)" },
-            "9412": { type: "Rivian MEDIUM (Electric)" },
-            "7866": { type: "Rivian MEDIUM (Electric)" },
-            "7865": { type: "Rivian MEDIUM (Electric)" },
-            "7860": { type: "Rivian MEDIUM (Electric)" },
-            "9418": { type: "Rivian MEDIUM (Electric)" },
-            "7863": { type: "Rivian MEDIUM (Electric)" },
-            "7859": { type: "Rivian MEDIUM (Electric)" },
-            "7857": { type: "Rivian MEDIUM (Electric)" },
-            "8125": { type: "Rivian MEDIUM (Electric)" },
-            "8084": { type: "Rivian MEDIUM (Electric)" },
-            "7918": { type: "Rivian MEDIUM (Electric)" },
-            "7898": { type: "Rivian MEDIUM (Electric)" },
-            "1288": { type: "Custom Delivery Van 12ft (Gas)" },
-            "1295": { type: "Custom Delivery Van 12ft (Gas)" },
-            "6864": { type: "Custom Delivery Van 12ft (Gas)" },
-            "6880": { type: "Custom Delivery Van 12ft (Gas)" },
-            "6907": { type: "Custom Delivery Van 12ft (Gas)" },
-            "1051": { type: "Extra Large Van (Gas)" },
-            "7373": { type: "Extra Large Van (Gas)" },
-            "3754": { type: "Extra Large Van (Gas)" },
-            "7097": { type: "Custom Delivery Van 12ft (Gas)" },
-            "5490": { type: "Custom Delivery Van 16ft (Gas)" },
-            "5311": { type: "Custom Delivery Van 16ft (Gas)" },
-            "3010": { type: "Extra Large Van (Gas)" },
-            "1587": { type: "Custom Delivery Van 16ft (Gas)" },
-            "5344": { type: "Extra Large Van (Gas)" },
-            "3344": { type: "Extra Large Van (Gas)" },
-            "2347": { type: "Custom Delivery Van 14ft (Gas)" },
-            "0890": { type: "Extra Large Van (Gas)" },
-            "1853": { type: "Extra Large Van (Gas)" },
-            "0876": { type: "Extra Large Van (Gas)" },
-            "8786": { type: "Extra Large Van (Gas)" },
-            "9651": { type: "Extra Large Van (Gas)" },
-            "6265": { type: "Custom Delivery Van 16ft (Gas)" },
-            "6188": { type: "Custom Delivery Van 14ft (Gas)" },
-            "7403": { type: "Extra Large Van (Gas)" }
+    <div class="form-group">
+        <label>Location (Auto-Detected)</label>
+        <div id="map"></div>
+        <div class="gps-info">
+            <span>Lat: <span id="gpsLat">...</span></span>
+            <span>Lng: <span id="gpsLng">...</span></span>
+        </div>
+        <div class="weather-box" id="weatherBox">Fetching Weather...</div>
+    </div>
+
+    <div class="form-group">
+        <label>Street Address / House # (Auto-Filled)</label>
+        <input type="text" id="addrStreet" placeholder="Detecting Street...">
+    </div>
+    <div class="form-group row-split">
+        <div style="flex:2;"><label>City</label><input type="text" id="addrCity" placeholder="City"></div>
+        <div style="flex:1;"><label>State</label><input type="text" id="addrState" placeholder="State"></div>
+        <div style="flex:1.2;"><label>Zip</label><input type="text" id="addrZip" placeholder="Zip"></div>
+    </div>
+
+    <div class="form-group">
+        <label>Detailed Statement (Max 500)</label>
+        <textarea id="statement" maxlength="500" style="min-height:100px;" placeholder="Describe exactly what happened..." oninput="updateCount()"></textarea>
+        <div class="char-count" id="charCounter">0 / 500</div>
+    </div>
+
+    <div class="form-group row-split">
+        <div style="flex:1;"><label>Police Report # (Required)</label><input type="text" id="policeReport" placeholder="Required"></div>
+        <div style="flex:1;"><label>LMET Case # (Required)</label><div style="font-size:var(--font-xs);font-weight:900;color:#ef4444;margin-bottom:6px;letter-spacing:0.3px;">📞 Call 1-800-942-3300 to file</div><input type="text" id="lmetCase" placeholder="Required" oninput="updateLmetDisplay()"><div id="lmetDisplay" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(239,68,68,0.08);border-left:3px solid var(--primary-red);border-radius:4px;font-size:var(--font-sm);font-weight:900;color:#fff;letter-spacing:0.5px;text-transform:uppercase;"></div></div>
+    </div>
+
+    <h2>3. Evidence (Min 3 Photos)</h2>
+    <div class="form-group">
+        <label>Photos (Scene & Damage)</label>
+        <!-- Photo preview grid — populated dynamically -->
+        <div id="photo-preview-grid"></div>
+        <div class="camera-box">
+            <input type="file" id="photoInput" multiple accept="image/*" capture="environment">
+            <svg class="camera-icon" viewBox="0 0 24 24"><path d="M4 4h3l2-2h6l2 2h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6h-2.5L15.5 4h-7L6.5 6H4zm8 11a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+            <div class="camera-title">TAP TO ADD PHOTOS</div>
+            <div class="camera-sub" id="photoCount" style="color:#6b7280;">0 Attached (3 Required)</div>
+        </div>
+        <div class="photo-status-bar">
+            <span id="photoStatusText" style="font-size:var(--font-xs);color:#6b7280;"></span>
+            <button class="clear-photos-btn" id="clearPhotosBtn" onclick="clearAllPhotos()" style="display:none;">Clear All Photos</button>
+        </div>
+    </div>
+
+    <h2>4. Driver Signature</h2>
+    <div class="form-group">
+        <label>Sign Below</label>
+        <canvas id="sigCanvas"></canvas>
+        <button class="clear-sig" onclick="clearSignature()">Clear Signature</button>
+    </div>
+
+    <div class="form-group" style="margin-top:20px;clear:both;">
+        <label>Email for Copy of Panel of Physicians <span style="color:#ef4444;">*Required</span></label>
+        <input type="email" id="driverEmail" placeholder="Enter your email address" inputmode="email">
+    </div>
+
+    <div class="form-group" style="margin-top:var(--space-lg);">
+        <label class="check-item" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius);padding:var(--space-md);cursor:pointer;">
+            <input type="checkbox" id="supervisorFiled" class="gate-check" style="accent-color:var(--primary-red);width:20px;height:20px;flex-shrink:0;">
+            <span style="font-size:var(--font-sm);color:#cbd5e1;line-height:1.5;">This report was completed by a <strong style="color:#fff;">Supervisor / Manager</strong> on behalf of the driver.</span>
+        </label>
+        <div id="supervisorNameWrap" style="display:none;margin-top:var(--space-sm);">
+            <label>Supervisor / Manager Name</label>
+            <input type="text" id="supervisorName" placeholder="Enter your full name">
+        </div>
+    </div>
+
+    <button class="btn-submit" onclick="submitReport()">Submit Accident Report</button>
+    <div id="submit-status"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // ============================================
+    // VIN DATABASE — Full fleet (synced with video.html)
+    // ============================================
+    const vinDatabase = {
+        "9488": { type: "Extra Large Van (Diesel)" },
+        "0213": { type: "Large Van (Diesel)" },
+        "8929": { type: "Extra Large Van (Diesel)" },
+        "5691": { type: "Extra Large Van (Diesel)" },
+        "7867": { type: "Rivian MEDIUM (Electric)" },
+        "7871": { type: "Rivian MEDIUM (Electric)" },
+        "9412": { type: "Rivian MEDIUM (Electric)" },
+        "7866": { type: "Rivian MEDIUM (Electric)" },
+        "7865": { type: "Rivian MEDIUM (Electric)" },
+        "7860": { type: "Rivian MEDIUM (Electric)" },
+        "9418": { type: "Rivian MEDIUM (Electric)" },
+        "7863": { type: "Rivian MEDIUM (Electric)" },
+        "7859": { type: "Rivian MEDIUM (Electric)" },
+        "7857": { type: "Rivian MEDIUM (Electric)" },
+        "8125": { type: "Rivian MEDIUM (Electric)" },
+        "8084": { type: "Rivian MEDIUM (Electric)" },
+        "7918": { type: "Rivian MEDIUM (Electric)" },
+        "7898": { type: "Rivian MEDIUM (Electric)" },
+        "1288": { type: "Custom Delivery Van 12ft (Gas)" },
+        "1295": { type: "Custom Delivery Van 12ft (Gas)" },
+        "6864": { type: "Custom Delivery Van 12ft (Gas)" },
+        "6880": { type: "Custom Delivery Van 12ft (Gas)" },
+        "6907": { type: "Custom Delivery Van 12ft (Gas)" },
+        "1051": { type: "Extra Large Van (Gas)" },
+        "7373": { type: "Extra Large Van (Gas)" },
+        "3754": { type: "Extra Large Van (Gas)" },
+        "7097": { type: "Custom Delivery Van 12ft (Gas)" },
+        "5490": { type: "Custom Delivery Van 16ft (Gas)" },
+        "5311": { type: "Custom Delivery Van 16ft (Gas)" },
+        "3010": { type: "Extra Large Van (Gas)" },
+        "1587": { type: "Custom Delivery Van 16ft (Gas)" },
+        "5344": { type: "Extra Large Van (Gas)" },
+        "3344": { type: "Extra Large Van (Gas)" },
+        "2347": { type: "Custom Delivery Van 14ft (Gas)" },
+        "0890": { type: "Extra Large Van (Gas)" },
+        "1853": { type: "Extra Large Van (Gas)" },
+        "0876": { type: "Extra Large Van (Gas)" },
+        "8786": { type: "Extra Large Van (Gas)" },
+        "9651": { type: "Extra Large Van (Gas)" },
+        "6265": { type: "Custom Delivery Van 16ft (Gas)" },
+        "6188": { type: "Custom Delivery Van 14ft (Gas)" },
+        "7403": { type: "Extra Large Van (Gas)" },
+        // --- Added from updated fleet roster ---
+        "9575": { type: "Rivian EDV 700 (Electric)" },
+        "4905": { type: "Custom Delivery Van 14ft (Gas)" },
+        "0994": { type: "Rivian EDV 700 (Electric)" },
+        "9411": { type: "Rivian EDV 700 (Electric)" },
+        "0945": { type: "Extra Large Van (Gas)" },
+        "9408": { type: "Rivian EDV 700 (Electric)" },
+        "0243": { type: "Extra Large Van (Gas)" },
+        "5434": { type: "Custom Delivery Van 14ft (Gas)" },
+        "9406": { type: "Rivian EDV 700 (Electric)" }
+    };
+
+    let map, photos = [], isSubmitting = false;
+    let sigCanvas, sigCtx, drawing = false, hasSigned = false;
+
+    // ============================================
+    // GATE LOGIC
+    // ============================================
+    document.querySelectorAll('.gate-check').forEach(cb => {
+        cb.addEventListener('change', validateAccidentGate);
+    });
+
+    function validateAccidentGate() {
+        const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
+        const btn = document.getElementById('gateBtn');
+        btn.classList.toggle('active', allChecked);
+        btn.disabled = !allChecked;
+    }
+
+    function enterReport() {
+        if (document.getElementById('gateBtn').disabled) return;
+        document.getElementById('accident-gate').style.display = 'none';
+        document.getElementById('main-form').style.display = 'block';
+        initMap();
+        initSignaturePad();
+    }
+
+    // ============================================
+    // VIN LOOKUP
+    // ============================================
+    function checkVin() {
+        const vin = document.getElementById('vinInput').value.toUpperCase();
+        const typeBox = document.getElementById('vehicleType');
+        typeBox.value = '';
+        if (vin.length < 4) return;
+
+        if (vin.startsWith('W')) {
+            typeBox.value = 'Mercedes (Diesel)';
+            return;
+        }
+        const found = vinDatabase[vin] || vinDatabase[vin.slice(-4)];
+        typeBox.value = found ? found.type : 'Unknown Vehicle';
+    }
+
+    // ============================================
+    // INCIDENT TYPE SELECTION
+    // ============================================
+    function selectIncident(btn) {
+        document.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+    }
+
+    // ============================================
+    // CHAR COUNT
+    // ============================================
+    document.getElementById("supervisorFiled").addEventListener("change", function() {
+        document.getElementById("supervisorNameWrap").style.display = this.checked ? "block" : "none";
+    });
+
+    function updateLmetDisplay() {
+        const val = document.getElementById("lmetCase").value.trim();
+        const display = document.getElementById("lmetDisplay");
+        if (val) {
+            display.style.display = "block";
+            display.innerText = "LMET# " + val;
+        } else {
+            display.style.display = "none";
+        }
+    }
+
+    function updateCount() {
+        const len = document.getElementById('statement').value.length;
+        document.getElementById('charCounter').innerText = `${len} / 500`;
+    }
+
+    // ============================================
+    // PHOTO HANDLING — FIX: no accumulation, previews, removable
+    // ============================================
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('ts').innerText = new Date().toLocaleString();
+
+        document.getElementById('photoInput').addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+
+            const statusLabel = document.getElementById('photoCount');
+            statusLabel.innerText = 'Compressing photos...';
+            statusLabel.style.color = '#FF9900';
+
+            for (const file of files) {
+                const compressed = await compressImage(file);
+                photos.push(compressed);
+            }
+
+            // Reset input so same files can be re-selected if needed
+            this.value = '';
+            renderPhotoGrid();
+            updatePhotoUI();
+        });
+    });
+
+    function compressImage(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 1024;
+                    let { width, height } = img;
+                    if (width > height) {
+                        if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
+                    } else {
+                        if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
+                    }
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    resolve({
+                        name: file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+                        data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1],
+                        preview: canvas.toDataURL('image/jpeg', 0.5)
+                    });
+                };
+            };
+        });
+    }
+
+    function renderPhotoGrid() {
+        const grid = document.getElementById('photo-preview-grid');
+        grid.innerHTML = '';
+        photos.forEach((photo, index) => {
+            const thumb = document.createElement('div');
+            thumb.className = 'photo-thumb';
+            thumb.innerHTML = `
+                <img src="data:image/jpeg;base64,${photo.data}" alt="Photo ${index + 1}">
+                <button class="remove-photo" onclick="removePhoto(${index})" title="Remove">✕</button>
+            `;
+            grid.appendChild(thumb);
+        });
+    }
+
+    function removePhoto(index) {
+        photos.splice(index, 1);
+        renderPhotoGrid();
+        updatePhotoUI();
+    }
+
+    function clearAllPhotos() {
+        photos = [];
+        renderPhotoGrid();
+        updatePhotoUI();
+    }
+
+    function updatePhotoUI() {
+        const count = photos.length;
+        const label = document.getElementById('photoCount');
+        const clearBtn = document.getElementById('clearPhotosBtn');
+        const statusText = document.getElementById('photoStatusText');
+        clearBtn.style.display = count > 0 ? 'block' : 'none';
+        if (count === 0) {
+            label.innerText = '0 Attached (3 Required)';
+            label.style.color = '#6b7280';
+            statusText.innerText = '';
+        } else if (count < 3) {
+            label.innerText = `${count} Attached (${3 - count} more needed)`;
+            label.style.color = '#ef4444';
+            statusText.innerText = `Need ${3 - count} more photo${3 - count !== 1 ? 's' : ''}`;
+        } else {
+            label.innerText = `${count} Photos Ready ✓`;
+            label.style.color = '#4ade80';
+            statusText.innerText = `${count} photos attached`;
+        }
+    }
+
+    // ============================================
+    // MAP & GEOLOCATION
+    // ============================================
+    function initMap() {
+        if (!navigator.geolocation) {
+            document.getElementById('weatherBox').innerText = 'GPS Not Supported';
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            document.getElementById('gpsLat').innerText = lat.toFixed(5);
+            document.getElementById('gpsLng').innerText = lng.toFixed(5);
+
+            map = L.map('map').setView([lat, lng], 17);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            L.marker([lat, lng]).addTo(map);
+
+            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
+                .then(r => r.json())
+                .then(data => {
+                    const w = data.current_weather;
+                    document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
+                })
+                .catch(() => { document.getElementById('weatherBox').innerText = 'Weather unavailable'; });
+
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.address) {
+                        const a = data.address;
+                        document.getElementById('addrStreet').value = (a.house_number ? a.house_number + ' ' : '') + (a.road || '');
+                        document.getElementById('addrCity').value = a.city || a.town || a.village || '';
+                        document.getElementById('addrState').value = a.state || '';
+                        document.getElementById('addrZip').value = a.postcode || '';
+                    }
+                })
+                .catch(() => {});
+        }, err => {
+            document.getElementById('weatherBox').innerText = 'GPS Error: ' + err.message;
+        }, { enableHighAccuracy: true });
+    }
+
+    // ============================================
+    // SIGNATURE PAD — FIX: proper touch coordinates, hasSigned tracking
+    // ============================================
+    function initSignaturePad() {
+        sigCanvas = document.getElementById('sigCanvas');
+        sigCanvas.width = sigCanvas.offsetWidth;
+        sigCanvas.height = parseInt(window.getComputedStyle(sigCanvas).height);
+        sigCtx = sigCanvas.getContext('2d');
+        sigCtx.strokeStyle = '#3B82F6';
+        sigCtx.lineWidth = 2;
+        sigCtx.lineCap = 'round';
+        sigCtx.lineJoin = 'round';
+
+        // Mouse events
+        sigCanvas.addEventListener('mousedown', e => { drawing = true; const r = sigCanvas.getBoundingClientRect(); sigCtx.beginPath(); sigCtx.moveTo(e.clientX - r.left, e.clientY - r.top); });
+        sigCanvas.addEventListener('mousemove', e => { if (!drawing) return; const r = sigCanvas.getBoundingClientRect(); sigCtx.lineTo(e.clientX - r.left, e.clientY - r.top); sigCtx.stroke(); hasSigned = true; sigCanvas.classList.remove('sig-error'); });
+        sigCanvas.addEventListener('mouseup', () => { drawing = false; });
+        sigCanvas.addEventListener('mouseleave', () => { drawing = false; });
+
+        // FIX: Touch events use e.touches[0] coordinates directly
+        sigCanvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            drawing = true;
+            const r = sigCanvas.getBoundingClientRect();
+            const t = e.touches[0];
+            sigCtx.beginPath();
+            sigCtx.moveTo(t.clientX - r.left, t.clientY - r.top);
+        }, { passive: false });
+
+        sigCanvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (!drawing) return;
+            const r = sigCanvas.getBoundingClientRect();
+            const t = e.touches[0];
+            sigCtx.lineTo(t.clientX - r.left, t.clientY - r.top);
+            sigCtx.stroke();
+            hasSigned = true;
+            sigCanvas.classList.remove('sig-error');
+        }, { passive: false });
+
+        sigCanvas.addEventListener('touchend', () => { drawing = false; });
+    }
+
+    function clearSignature() {
+        sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        hasSigned = false;
+    }
+
+    // ============================================
+    // VALIDATION HELPER
+    // ============================================
+    function showStatus(msg, type) {
+        const el = document.getElementById('submit-status');
+        el.innerText = msg;
+        el.className = type;
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearFieldErrors() {
+        document.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+        document.getElementById('sigCanvas').classList.remove('sig-error');
+        document.getElementById('submit-status').className = '';
+        document.getElementById('submit-status').innerText = '';
+    }
+
+    // ============================================
+    // SUBMIT — FIX: validation, connection check, better errors
+    // ============================================
+    async function submitReport() {
+        if (isSubmitting) return;
+        clearFieldErrors();
+
+        const name       = document.getElementById('driverName').value.trim();
+        const vin        = document.getElementById('vinInput').value.trim();
+        const statement  = document.getElementById('statement').value.trim();
+        const police     = document.getElementById('policeReport').value.trim();
+        const lmet       = document.getElementById('lmetCase').value.trim();
+        const email      = document.getElementById('driverEmail').value.trim();
+
+        // Validate all fields
+        let hasErrors = false;
+
+        if (name.length < 2) {
+            document.getElementById('driverName').classList.add('field-error');
+            hasErrors = true;
+        }
+        if (vin.length < 4) {
+            document.getElementById('vinInput').classList.add('field-error');
+            hasErrors = true;
+        }
+        if (!statement) {
+            document.getElementById('statement').classList.add('field-error');
+            hasErrors = true;
+        }
+        if (!police) {
+            document.getElementById('policeReport').classList.add('field-error');
+            hasErrors = true;
+        }
+        if (!lmet) {
+            document.getElementById('lmetCase').classList.add('field-error');
+            hasErrors = true;
+        }
+
+        // FIX: Validate incident type selected
+        const incidentBtn = document.querySelector('.btn-option.selected');
+        if (!incidentBtn) {
+            showStatus('⚠️ Please select an Incident Type.', 'error');
+            return;
+        }
+
+        // FIX: Validate signature not empty
+        if (!hasSigned) {
+            sigCanvas.classList.add('sig-error');
+            showStatus('⚠️ Please sign the form before submitting.', 'error');
+            sigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        // FIX: Validate email required and format
+        if (!email) {
+            document.getElementById('driverEmail').classList.add('field-error');
+            hasErrors = true;
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            document.getElementById('driverEmail').classList.add('field-error');
+            showStatus('⚠️ Please enter a valid email address.', 'error');
+            return;
+        }
+
+        if (hasErrors) {
+            showStatus('⚠️ Please fill in all required fields highlighted in red.', 'error');
+            document.querySelector('.field-error').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        if (photos.length < 3) {
+            showStatus(`⚠️ You need at least 3 photos. You have ${photos.length}. Tap the photo area to add more.`, 'error');
+            document.getElementById('photoInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        // FIX: Check connection before attempting upload
+        if (!navigator.onLine) {
+            showStatus('⚠️ No internet connection. Please connect to WiFi and try again.', 'error');
+            return;
+        }
+
+        const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
+        const affidavitText = document.getElementById('affidavitText').innerText;
+
+        isSubmitting = true;
+        const sBtn = document.querySelector('.btn-submit');
+        sBtn.innerText = 'SUBMITTING...';
+        sBtn.disabled = true;
+        showStatus('📤 Uploading report and photos...', 'success');
+
+        // FIX: Strip preview data from photos before sending (saves bandwidth)
+        const photosToSend = photos.map(p => ({ name: p.name, data: p.data }));
+
+        const payload = {
+            reportType: 'ACCIDENT_REPORT',
+            driverName: name,
+            driverEmail: email,
+            vinLast4: vin,
+            vehicleType: document.getElementById('vehicleType').value || 'Unknown',
+            incidentType: incidentBtn.innerText,
+            locationData: {
+                street: document.getElementById('addrStreet').value,
+                city:   document.getElementById('addrCity').value,
+                state:  document.getElementById('addrState').value,
+                zip:    document.getElementById('addrZip').value,
+                gpsLat: document.getElementById('gpsLat').innerText,
+                gpsLng: document.getElementById('gpsLng').innerText
+            },
+            statement: statement,
+            policeReport: police,
+            lmetCase: lmet,
+            weather: document.getElementById('weatherBox').innerText,
+            // FIX: Send signature as raw base64 only (server reconstructs data URL)
+            signature: sigCanvas.toDataURL('image/png').split(',')[1],
+            photos: photosToSend,
+            checklist: checklistItems,
+            affidavit: affidavitText,
+            supervisorFiled: document.getElementById("supervisorFiled").checked,
+            supervisorName: document.getElementById("supervisorFiled").checked ? document.getElementById("supervisorName").value.trim() : null,
+            date: new Date().toLocaleDateString(),
+            time: new Date().toLocaleTimeString()
         };
 
-        let map, marker, photos = [], isSubmitting = false;
-        let sigCanvas, sigCtx, drawing = false;
-        let manualAddressTimeout;
+        // FIX: Use current host — no hardcoded Railway URL
+        const apiBase = '';
 
-        // --- GATE CHECKLIST LOGIC ---
-        document.querySelectorAll('.gate-check').forEach(cb => {
-            cb.addEventListener('change', validateAccidentGate);
-        });
+        try {
+            const res = await fetch(`${apiBase}/submit-report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-        function validateAccidentGate() {
-            const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
-            const btn = document.getElementById('gateBtn');
-            if (allChecked) {
-                btn.classList.add('active');
-                btn.disabled = false;
-            } else {
-                btn.classList.remove('active');
-                btn.disabled = true;
-            }
-        }
-
-        function enterReport() {
-            if (document.getElementById('gateBtn').disabled) return;
-            document.getElementById('accident-gate').style.display = 'none';
-            document.getElementById('main-form').style.display = 'block';
-            initMap();
-            initSignaturePad();
-        }
-
-        function updateCount() {
-            const len = document.getElementById('statement').value.length;
-            document.getElementById('charCounter').innerText = `${len} / 500`;
-        }
-
-        // ========================================
-        // MANUAL ADDRESS UPDATE (FORWARD GEOCODING)
-        // Uses STRUCTURED QUERIES for better street-level accuracy
-        // ========================================
-        let isGeocoding = false;
-        
-        function manualAddressUpdate() {
-            clearTimeout(manualAddressTimeout);
-            manualAddressTimeout = setTimeout(() => forceGeocode(), 1500);
-        }
-        
-        async function forceGeocode() {
-            if (isGeocoding) {
-                console.log('Already geocoding, skipping...');
-                return;
-            }
-            
-            const street = document.getElementById('addrStreet').value.trim();
-            const city = document.getElementById('addrCity').value.trim();
-            const state = document.getElementById('addrState').value.trim();
-            const zip = document.getElementById('addrZip').value.trim();
-            
-            if (!street && !city && !zip) {
-                console.log('Not enough address info to geocode');
-                return;
-            }
-            
-            isGeocoding = true;
-            document.getElementById('weatherBox').innerText = '🔍 Looking up address...';
-            
-            // METHOD 1: STRUCTURED QUERY (Best for street addresses)
-            // Sends street, city, state, zip as separate parameters
-            if (street && (zip || city)) {
-                try {
-                    console.log('🔍 Structured query:', { street, city, state, zip });
-                    
-                    let structuredUrl = `https://nominatim.openstreetmap.org/search?format=json`;
-                    structuredUrl += `&street=${encodeURIComponent(street)}`;
-                    if (city) structuredUrl += `&city=${encodeURIComponent(city)}`;
-                    if (state) structuredUrl += `&state=${encodeURIComponent(state)}`;
-                    if (zip) structuredUrl += `&postalcode=${encodeURIComponent(zip)}`;
-                    structuredUrl += `&countrycodes=us&addressdetails=1&limit=1`;
-                    
-                    const response = await fetch(structuredUrl, {
-                        headers: { 'User-Agent': 'SLGP-Fleet-Manager-Accident-Report/4.6.4' }
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.length > 0) {
-                            updateLocationFromResult(data[0]);
-                            isGeocoding = false;
-                            return;
-                        }
-                    }
-                } catch (err) {
-                    console.warn('Structured query failed:', err.message);
-                }
-            }
-            
-            // METHOD 2: FREE-FORM QUERIES (Fallback)
-            const queries = [];
-            
-            if (street && city && state && zip) {
-                queries.push(`${street}, ${city}, ${state} ${zip}`);
-            }
-            if (street && zip) {
-                queries.push(`${street}, ${zip}, USA`);
-            }
-            if (city && state && zip) {
-                queries.push(`${city}, ${state} ${zip}`);
-            }
-            if (city && state) {
-                queries.push(`${city}, ${state}`);
-            }
-            
-            for (let query of queries) {
-                try {
-                    console.log('🔍 Trying freeform:', query);
-                    
-                    const response = await fetch(
-                        `https://nominatim.openstreetmap.org/search?` +
-                        `format=json&q=${encodeURIComponent(query)}&` +
-                        `countrycodes=us&addressdetails=1&limit=1`,
-                        {
-                            headers: { 'User-Agent': 'SLGP-Fleet-Manager-Accident-Report/4.6.4' }
-                        }
-                    );
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.length > 0) {
-                            updateLocationFromResult(data[0]);
-                            isGeocoding = false;
-                            return;
-                        }
-                    }
-                } catch (err) {
-                    console.warn('Freeform query failed:', err.message);
-                }
-                
-                await new Promise(r => setTimeout(r, 1000)); // Rate limit
-            }
-            
-            // All failed
-            console.log('⚠️ All geocoding attempts failed');
-            document.getElementById('weatherBox').innerText = 
-                '⚠️ Address not found - using auto GPS';
-            isGeocoding = false;
-        }
-        
-        function updateLocationFromResult(result) {
-            const newLat = parseFloat(result.lat);
-            const newLng = parseFloat(result.lon);
-            
-            console.log('✅ Found:', result.display_name);
-            console.log('   GPS:', newLat, newLng);
-            
-            // Update GPS coordinates
-            document.getElementById('gpsLat').innerText = newLat.toFixed(5);
-            document.getElementById('gpsLng').innerText = newLng.toFixed(5);
-            
-            // Update map
-            if (map) {
-                map.setView([newLat, newLng], 17);
-                if (marker) {
-                    marker.setLatLng([newLat, newLng]);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    showStatus('✅ Report submitted successfully!', 'success');
+                    setTimeout(() => { window.location.href = '/'; }, 2000);
                 } else {
-                    marker = L.marker([newLat, newLng]).addTo(map);
+                    throw new Error(data.error || 'Server returned error');
                 }
-            }
-            
-            // Show what was found + weather
-            const foundAddress = result.display_name.split(',').slice(0, 2).join(',');
-            
-            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${newLat}&longitude=${newLng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
-                .then(r => r.json())
-                .then(w => {
-                    document.getElementById('weatherBox').innerText = 
-                        `✅ ${foundAddress} | ${w.current_weather.temperature}°F`;
-                })
-                .catch(() => {
-                    document.getElementById('weatherBox').innerText = 
-                        `✅ Found: ${foundAddress}`;
-                });
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('ts').innerText = new Date().toLocaleString();
-
-            // VIN Logic
-            document.getElementById('vinInput').addEventListener('keyup', function() {
-                let vin = this.value.toUpperCase();
-                let type = "Unknown";
-                if(vin.length === 4) {
-                    // Mercedes catch-all (any VIN starting with W)
-                    if(vin.startsWith("W")) {
-                        type = "Mercedes Sprinter (Diesel)";
-                    } else if(vinDatabase[vin]) {
-                        type = vinDatabase[vin].type;
-                    }
-                    document.getElementById('vehicleType').value = type;
-                }
-            });
-
-            // Incident Buttons
-            document.querySelectorAll('.btn-option').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    this.parentElement.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
-                    this.classList.add('selected');
-                });
-            });
-
-            // Camera Logic WITH COMPRESSION
-            document.getElementById('photoInput').addEventListener('change', async function(e) {
-                const files = Array.from(e.target.files);
-                if(files.length > 0) {
-                    const statusLabel = document.getElementById('photoCount');
-                    statusLabel.innerText = "Compressing photos...";
-                    statusLabel.style.color = "#FF9900";
-
-                    for (let file of files) {
-                        const compressedData = await compressImage(file);
-                        photos.push(compressedData);
-                    }
-                    updatePhotoUI();
-                }
-            });
-
-            // AI POLISH STATEMENT
-            document.getElementById('polishBtn').addEventListener('click', async function() {
-                const statement = document.getElementById('statement').value.trim();
-                
-                if (!statement) {
-                    alert('Please write a statement first');
-                    return;
-                }
-                
-                if (statement.length < 20) {
-                    alert('Please write at least 20 characters');
-                    return;
-                }
-                
-                const btn = this;
-                btn.disabled = true;
-                btn.innerHTML = '<span>⏳</span><span>Polishing...</span>';
-                btn.style.opacity = '0.7';
-                
-                try {
-                    const response = await fetch('https://api.anthropic.com/v1/messages', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            model: 'claude-sonnet-4-20250514',
-                            max_tokens: 1000,
-                            messages: [{
-                                role: 'user',
-                                content: `You are helping a delivery driver write a professional accident report statement. Rewrite the following statement to be grammatically correct, professional, and clear while keeping ALL the facts exactly the same. Do not add any information that wasn't in the original. Keep it under 500 characters if possible.
-
-Original statement:
-"${statement}"
-
-Rewrite this in a professional tone suitable for an official accident report. Output ONLY the rewritten statement with no preamble or explanation.`
-                            }]
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    const polished = data.content.find(c => c.type === 'text')?.text || statement;
-                    
-                    // Show polished version
-                    document.getElementById('polishedText').innerText = polished;
-                    document.getElementById('polishResult').style.display = 'block';
-                    
-                } catch (error) {
-                    console.error('AI Polish Error:', error);
-                    alert('Could not polish statement. Please check your internet connection.');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = '<span>✨</span><span>Polish Statement with AI</span>';
-                    btn.style.opacity = '1';
-                }
-            });
-            
-            // Accept polished version
-            document.getElementById('acceptPolish').addEventListener('click', function() {
-                const polished = document.getElementById('polishedText').innerText;
-                document.getElementById('statement').value = polished;
-                document.getElementById('polishResult').style.display = 'none';
-                updateCount();
-            });
-            
-            // Reject polished version
-            document.getElementById('rejectPolish').addEventListener('click', function() {
-                document.getElementById('polishResult').style.display = 'none';
-            });
-        });
-
-        // --- IMAGE COMPRESSION ---
-        function compressImage(file) {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 1024;
-                        const MAX_HEIGHT = 1024;
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > height) {
-                            if (width > MAX_WIDTH) {
-                                height *= MAX_WIDTH / width;
-                                width = MAX_WIDTH;
-                            }
-                        } else {
-                            if (height > MAX_HEIGHT) {
-                                width *= MAX_HEIGHT / height;
-                                height = MAX_HEIGHT;
-                            }
-                        }
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        resolve({ 
-                            name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", 
-                            data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] 
-                        });
-                    };
-                };
-            });
-        }
-
-        function updatePhotoUI() {
-            const count = photos.length;
-            const label = document.getElementById('photoCount');
-            label.innerText = `${count} Attached (${Math.max(0, 3 - count)} more needed)`;
-            
-            if (count >= 3) {
-                label.style.color = "#4ade80";
-                label.innerText = `${count} Photos Attached (Ready)`;
             } else {
-                label.style.color = "#EF4444";
+                // FIX: Show actual server error message to help diagnose
+                let errMsg = `Server error (${res.status})`;
+                try {
+                    const errData = await res.json();
+                    errMsg = errData.error || errMsg;
+                } catch (_) {}
+                throw new Error(errMsg);
             }
+        } catch (e) {
+            console.error('Submit error:', e);
+            // FIX: Show the actual error so we can diagnose (not just "check connection")
+            showStatus(`❌ Submission failed: ${e.message}. Please screenshot this and contact fleet management.`, 'error');
+            isSubmitting = false;
+            sBtn.innerText = 'SUBMIT ACCIDENT REPORT';
+            sBtn.disabled = false;
         }
+    }
+</script>
 
-        // ========================================
-        // MAP & AUTO GPS DETECTION
-        // ========================================
-        function initMap() {
-            if(!navigator.geolocation) {
-                document.getElementById('weatherBox').innerText = "GPS Not Supported";
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(pos => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                document.getElementById('gpsLat').innerText = lat.toFixed(5);
-                document.getElementById('gpsLng').innerText = lng.toFixed(5);
-
-                map = L.map('map').setView([lat, lng], 17);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                marker = L.marker([lat, lng]).addTo(map);
-
-                // 1. Fetch Weather
-                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph`)
-                    .then(r => r.json())
-                    .then(data => {
-                        const w = data.current_weather;
-                        document.getElementById('weatherBox').innerText = `Temp: ${w.temperature}°F | Wind: ${w.windspeed} mph`;
-                    });
-
-                // 2. Fetch Address (Reverse Geocoding)
-                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if(data.address) {
-                            const addr = data.address;
-                            document.getElementById('addrStreet').value = (addr.house_number ? addr.house_number + " " : "") + (addr.road || "");
-                            document.getElementById('addrCity').value = addr.city || addr.town || addr.village || "";
-                            document.getElementById('addrState').value = addr.state || "";
-                            document.getElementById('addrZip').value = addr.postcode || "";
-                        }
-                    })
-                    .catch(err => console.log("Address lookup failed", err));
-
-            }, err => {
-                document.getElementById('weatherBox').innerText = "GPS Error: " + err.message;
-            }, { enableHighAccuracy: true });
-        }
-
-        // --- SIGNATURE FUNCTIONS ---
-        function initSignaturePad() {
-            sigCanvas = document.getElementById('sigCanvas');
-            sigCanvas.width = sigCanvas.offsetWidth;
-            const computedHeight = window.getComputedStyle(sigCanvas).height;
-            sigCanvas.height = parseInt(computedHeight);
-            
-            sigCtx = sigCanvas.getContext('2d');
-            sigCtx.strokeStyle = "#3B82F6"; 
-            sigCtx.lineWidth = 2;
-
-            sigCanvas.addEventListener('mousedown', startDraw);
-            sigCanvas.addEventListener('mousemove', draw);
-            sigCanvas.addEventListener('mouseup', stopDraw);
-            sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, {passive: false});
-            sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, {passive: false});
-            sigCanvas.addEventListener('touchend', stopDraw);
-        }
-
-        function startDraw(e) {
-            drawing = true;
-            const rect = sigCanvas.getBoundingClientRect();
-            sigCtx.beginPath();
-            sigCtx.moveTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
-        }
-        function draw(e) {
-            if(!drawing) return;
-            const rect = sigCanvas.getBoundingClientRect();
-            sigCtx.lineTo((e.clientX || e.clientX) - rect.left, (e.clientY || e.clientY) - rect.top);
-            sigCtx.stroke();
-        }
-        function stopDraw() { drawing = false; }
-        function clearSignature() { sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height); }
-
-        // --- SUBMIT ---
-        async function submitReport() {
-            if(isSubmitting) return;
-
-            const name = document.getElementById('driverName').value;
-            const vin = document.getElementById('vinInput').value;
-            const statement = document.getElementById('statement').value;
-            const police = document.getElementById('policeReport').value;
-            const lmet = document.getElementById('lmetCase').value;
-            const driverEmail = document.getElementById('driverEmail').value;
-
-            // --- VALIDATION RULES ---
-            if(name.trim().length < 2) { alert("Please enter Driver Name"); return; }
-            if(vin.length < 4) { alert("Please enter VIN"); return; }
-            if(!statement) { alert("Statement is required"); return; }
-            if(!police) { alert("Police Report # is required"); return; }
-            if(!lmet) { alert("LMET Case # is required"); return; }
-            
-            // Photo Mandate
-            if(photos.length < 3) { 
-                alert(`You must upload at least 3 photos. You currently have ${photos.length}.`); 
-                return; 
-            }
-
-            let incidentType = "Unknown";
-            const btn = document.querySelector('.btn-option.selected');
-            if(btn) incidentType = btn.innerText;
-
-            // SCRAPE CHECKLIST & AFFIDAVIT
-            const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
-            const affidavitText = document.getElementById('affidavitText').innerText;
-
-            isSubmitting = true;
-            const sBtn = document.querySelector('.btn-submit');
-            sBtn.innerText = "UPLOADING...";
-            sBtn.disabled = true;
-
-            const payload = {
-                reportType: "ACCIDENT_REPORT",
-                driverName: name,
-                driverEmail: driverEmail,
-                vinLast4: vin,
-                incidentType: incidentType,
-                locationData: {
-                    street: document.getElementById('addrStreet').value,
-                    city: document.getElementById('addrCity').value,
-                    state: document.getElementById('addrState').value,
-                    zip: document.getElementById('addrZip').value,
-                    gpsLat: document.getElementById('gpsLat').innerText,
-                    gpsLng: document.getElementById('gpsLng').innerText
-                },
-                statement: statement,
-                policeReport: police,
-                lmetCase: lmet,
-                weather: document.getElementById('weatherBox').innerText,
-                signature: sigCanvas.toDataURL().split(',')[1],
-                photos: photos,
-                checklist: checklistItems,
-                affidavit: affidavitText,
-                date: new Date().toLocaleDateString(),
-                time: new Date().toLocaleTimeString()
-            };
-
-            // AUTO-DETECT URL (Fixes "Localhost" testing issues)
-            const apiBase = (window.location.hostname === 'localhost' || window.location.protocol === 'file:') 
-                ? 'https://slgp-fleet-manager-bot.up.railway.app' 
-                : '';
-
-            try {
-                const res = await fetch(`${apiBase}/submit-report`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                
-                if(res.ok) {
-                    alert("Accident Report Filed Successfully.");
-                    window.location.href = "/";
-                } else {
-                    throw new Error("Server rejected report");
-                }
-            } catch(e) {
-                console.error(e);
-                alert("Upload Failed. Check connection.");
-                isSubmitting = false;
-                sBtn.innerText = "SUBMIT ACCIDENT REPORT";
-                sBtn.disabled = false;
-            }
-        }
-    </script>
-    
-    <script src="/auto-refresh.js"></script>
-
+<script src="/auto-refresh.js"></script>
 </body>
 </html>
