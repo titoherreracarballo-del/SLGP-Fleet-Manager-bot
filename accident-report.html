@@ -395,18 +395,22 @@
     let sigCanvas, sigCtx, drawing = false, hasSigned = false;
 
     // ============================================
-    // GATE LOGIC
+    // GATE LOGIC — scoped strictly to #accident-gate
     // ============================================
-    document.querySelectorAll('.gate-check').forEach(cb => {
-        cb.addEventListener('change', validateAccidentGate);
-    });
-
     function validateAccidentGate() {
-        const allChecked = Array.from(document.querySelectorAll('.gate-check')).every(cb => cb.checked);
+        const gateBoxes = Array.from(document.querySelectorAll('#accident-gate .gate-check'));
+        const allChecked = gateBoxes.length > 0 && gateBoxes.every(cb => cb.checked);
         const btn = document.getElementById('gateBtn');
         btn.classList.toggle('active', allChecked);
         btn.disabled = !allChecked;
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('#accident-gate .gate-check').forEach(function(cb) {
+            cb.addEventListener('change', validateAccidentGate);
+        });
+        validateAccidentGate(); // run once on load to set initial state
+    });
 
     function enterReport() {
         if (document.getElementById('gateBtn').disabled) return;
@@ -754,7 +758,7 @@
             return;
         }
 
-        const checklistItems = Array.from(document.querySelectorAll('.gate-check')).map(cb => cb.nextElementSibling.innerText);
+        const checklistItems = Array.from(document.querySelectorAll('#accident-gate .gate-check')).map(cb => cb.nextElementSibling ? cb.nextElementSibling.innerText : '');
         const affidavitText = document.getElementById('affidavitText').innerText;
 
         isSubmitting = true;
