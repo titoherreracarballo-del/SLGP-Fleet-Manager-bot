@@ -600,10 +600,15 @@
                 .then(data => {
                     if (data.address) {
                         const a = data.address;
-                        document.getElementById('addrStreet').value = (a.house_number ? a.house_number + ' ' : '') + (a.road || '');
-                        document.getElementById('addrCity').value = a.city || a.town || a.village || '';
-                        document.getElementById('addrState').value = a.state || '';
-                        document.getElementById('addrZip').value = a.postcode || '';
+                        // Only auto-fill if the driver hasn't already typed something manually
+                        const street = document.getElementById('addrStreet');
+                        const city   = document.getElementById('addrCity');
+                        const state  = document.getElementById('addrState');
+                        const zip    = document.getElementById('addrZip');
+                        if (!street.value.trim()) street.value = (a.house_number ? a.house_number + ' ' : '') + (a.road || '');
+                        if (!city.value.trim())   city.value   = a.city || a.town || a.village || '';
+                        if (!state.value.trim())  state.value  = a.state || '';
+                        if (!zip.value.trim())    zip.value    = a.postcode || '';
                     }
                 })
                 .catch(() => {});
