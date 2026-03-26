@@ -267,8 +267,8 @@
     </div>
 
     <div class="form-group">
-        <label>Street Address / House # (Auto-Filled)</label>
-        <input type="text" id="addrStreet" placeholder="Detecting Street...">
+        <label>Street Address / House # <span style="color:#6b7280;font-weight:500;text-transform:none;font-size:var(--font-xs);">(Auto-detected or enter manually)</span></label>
+        <input type="text" id="addrStreet" placeholder="Tap to enter street address">
     </div>
     <div class="form-group row-split">
         <div style="flex:2;"><label>City</label><input type="text" id="addrCity" placeholder="City"></div>
@@ -574,7 +574,11 @@
     // ============================================
     function initMap() {
         if (!navigator.geolocation) {
-            document.getElementById('weatherBox').innerText = 'GPS Not Supported';
+            document.getElementById('weatherBox').innerText = 'GPS not supported — enter address manually';
+            document.getElementById('addrStreet').placeholder = 'Enter street address';
+            document.getElementById('addrCity').placeholder   = 'Enter city';
+            document.getElementById('addrState').placeholder  = 'State';
+            document.getElementById('addrZip').placeholder    = 'Zip code';
             return;
         }
         navigator.geolocation.getCurrentPosition(pos => {
@@ -613,7 +617,11 @@
                 })
                 .catch(() => {});
         }, err => {
-            document.getElementById('weatherBox').innerText = 'GPS Error: ' + err.message;
+            document.getElementById('weatherBox').innerText = 'GPS unavailable — enter address manually';
+            document.getElementById('addrStreet').placeholder = 'Enter street address';
+            document.getElementById('addrCity').placeholder   = 'Enter city';
+            document.getElementById('addrState').placeholder  = 'State';
+            document.getElementById('addrZip').placeholder    = 'Zip code';
         }, { enableHighAccuracy: true });
     }
 
