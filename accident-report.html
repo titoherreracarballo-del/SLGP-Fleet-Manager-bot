@@ -323,7 +323,10 @@
         </label>
         <div id="supervisorNameWrap" style="display:none;margin-top:var(--space-sm);">
             <label>Supervisor / Manager Name</label>
-            <input type="text" id="supervisorName" placeholder="Enter your full name">
+            <input type="text" id="supervisorName" placeholder="Enter your full name" style="margin-bottom:var(--space-md);">
+            <label>Supervisor Notes <span style="color:#6b7280;font-weight:500;text-transform:none;font-size:var(--font-xs);">(Optional — additional context, observations, or corrections)</span></label>
+            <textarea id="supervisorNotes" maxlength="500" style="min-height:100px;" placeholder="Enter any additional notes, corrections, or observations about this incident..." oninput="updateSupervisorCount()"></textarea>
+            <div class="char-count" id="supervisorCharCounter">0 / 500</div>
         </div>
     </div>
 
@@ -451,6 +454,11 @@
     document.getElementById("supervisorFiled").addEventListener("change", function() {
         document.getElementById("supervisorNameWrap").style.display = this.checked ? "block" : "none";
     });
+
+    function updateSupervisorCount() {
+        const len = document.getElementById('supervisorNotes').value.length;
+        document.getElementById('supervisorCharCounter').innerText = len + ' / 500';
+    }
 
     function updateLmetDisplay() {
         const val = document.getElementById("lmetCase").value.trim();
@@ -809,6 +817,7 @@
             affidavit: affidavitText,
             supervisorFiled: document.getElementById("supervisorFiled").checked,
             supervisorName: document.getElementById("supervisorFiled").checked ? document.getElementById("supervisorName").value.trim() : null,
+            supervisorNotes: document.getElementById("supervisorFiled").checked ? document.getElementById("supervisorNotes").value.trim() : null,
             date: new Date().toLocaleDateString(),
             time: new Date().toLocaleTimeString()
         };
