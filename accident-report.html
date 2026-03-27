@@ -222,7 +222,7 @@
 
 <div class="container" id="main-form">
     <a href="/" class="back-link">← Back to Menu</a>
-    <div style="text-align:center;color:#8E8E93;font-size:var(--font-xs);font-weight:600;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:var(--space-sm);">v4.6.1</div>
+    <div style="text-align:center;color:#8E8E93;font-size:var(--font-xs);font-weight:600;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:var(--space-sm);">v4.6.7</div>
     <img src="./Final-01.jpg" alt="SLGP Logo" class="logo-header">
     <div class="timestamp" id="ts">Loading Time...</div>
     <h1>Accident Report</h1>
@@ -408,12 +408,7 @@
         btn.disabled = !allChecked;
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('#accident-gate .gate-check').forEach(function(cb) {
-            cb.addEventListener('change', validateAccidentGate);
-        });
-        validateAccidentGate(); // run once on load to set initial state
-    });
+
 
     function enterReport() {
         if (document.getElementById('gateBtn').disabled) return;
@@ -481,6 +476,11 @@
     // ============================================
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('ts').innerText = new Date().toLocaleString();
+        // Gate checkboxes — scoped strictly to #accident-gate
+        document.querySelectorAll('#accident-gate .gate-check').forEach(function(cb) {
+            cb.addEventListener('change', validateAccidentGate);
+        });
+        validateAccidentGate();
 
         document.getElementById('photoInput').addEventListener('change', async function(e) {
             const files = Array.from(e.target.files);
