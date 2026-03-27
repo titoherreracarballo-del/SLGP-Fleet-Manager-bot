@@ -258,12 +258,12 @@
 
     <div class="form-group">
         <label>Street Address / House # <span style="color:#6b7280;font-weight:500;text-transform:none;font-size:var(--font-xs);">(Auto-detected or enter manually)</span></label>
-        <input type="text" id="addrStreet" placeholder="Tap to enter street address">
+        <input type="text" id="addrStreet" placeholder="Tap to enter street address" onblur="scheduleGeocode()">
     </div>
     <div class="form-group row-split">
         <div style="flex:2;"><label>City</label><input type="text" id="addrCity" placeholder="City"></div>
         <div style="flex:1;"><label>State</label><input type="text" id="addrState" placeholder="State"></div>
-        <div style="flex:1.2;"><label>Zip</label><input type="text" id="addrZip" placeholder="Zip"></div>
+        <div style="flex:1.2;"><label>Zip</label><input type="text" id="addrZip" placeholder="Zip" oninput="scheduleGeocode()"></div>
     </div>
 
     <div class="form-group">
@@ -453,6 +453,64 @@
     function updateSupervisorCount() {
         const len = document.getElementById('supervisorNotes').value.length;
         document.getElementById('supervisorCharCounter').innerText = len + ' / 500';
+    }
+
+    // ── Manual address geocoding ──────────────────────────────
+    // Fires 1.5s after driver stops typing — converts manual address
+    // to GPS coords and updates the map marker
+    let _geocodeTimer = null;
+    function scheduleGeocode() {
+        clearTimeout(_geocodeTimer);
+        _geocodeTimer = setTimeout(geocodeManualAddress, 1500);
+    }
+
+    function geocodeManualAddress() {
+        const street = document.getElementById('addrStreet').value.trim();
+        const city   = document.getElementById('addrCity').value.trim();
+        const state  = document.getElementById('addrState').value.trim();
+        const zip    = document.getElementById('addrZip').value.trim();
+
+        // Need at least city or zip to geocode
+        if (!city && !zip) return;
+
+        const query = [street, city, state, zip].filter(Boolean).join(', ');
+        document.getElementById('gpsLat').innerText = 'Searching...';
+        document.getElementById('gpsLng').innerText = '';
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+            .then(r => r.json())
+            .then(results => {
+                if (!results || results.length === 0) {
+                    document.getElementById('gpsLat').innerText = 'Not found';
+                    document.getElementById('gpsLng').innerText = '';
+                    return;
+                }
+                const lat = parseFloat(results[0].lat);
+                const lng = parseFloat(results[0].lon);
+                document.getElementById('gpsLat').innerText = lat.toFixed(5);
+                document.getElementById('gpsLng').innerText = lng.toFixed(5);
+
+                // Update map if it exists
+                if (map) {
+                    map.setView([lat, lng], 17);
+                    // Remove existing markers and add new one
+                    map.eachLayer(layer => {
+                        if (layer instanceof L.Marker) map.removeLayer(layer);
+                    });
+                    L.marker([lat, lng]).addTo(map);
+                } else {
+                    // Map not initialized yet (GPS was denied) — init it now
+                    try {
+                        map = L.map('map').setView([lat, lng], 17);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                        L.marker([lat, lng]).addTo(map);
+                    } catch(_) {}
+                }
+            })
+            .catch(() => {
+                document.getElementById('gpsLat').innerText = 'Geocode failed';
+                document.getElementById('gpsLng').innerText = '';
+            });
     }
 
     function updateLmetDisplay() {
@@ -803,8 +861,8 @@
                 city:   document.getElementById('addrCity').value,
                 state:  document.getElementById('addrState').value,
                 zip:    document.getElementById('addrZip').value,
-                gpsLat: document.getElementById('gpsLat').innerText,
-                gpsLng: document.getElementById('gpsLng').innerText
+                gpsLat: document.getElementById('gpsLat').innerText.replace('...', 'Not captured'),
+                gpsLng: document.getElementById('gpsLng').innerText.replace('...', 'Not captured')
             },
             statement: statement,
             policeReport: police,
