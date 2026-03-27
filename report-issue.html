@@ -283,23 +283,47 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.camera-icon').style.fill = '#f59e0b';
 
         let loaded = 0;
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                photos.push({ name: file.name, data: evt.target.result.split(',')[1] });
-                loaded++;
-                if (loaded === files.length) {
-                    photosReady = true;
-                    document.querySelector('.camera-sub').innerText = "READY TO SUBMIT";
-                    document.querySelector('.camera-sub').style.color = "#4ade80";
-                    document.querySelector('.camera-icon').style.fill = '#4ade80';
+
+        function compressPhoto(file) {
+            return new Promise((resolve) => {
+                // Videos — send as-is, no canvas trick
+                if (file.type.startsWith('video/')) {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve({ name: file.name, data: e.target.result.split(',')[1] });
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(file);
+                    return;
                 }
-            };
-            reader.onerror = function() {
-                loaded++;
-                if (loaded === files.length) { photosReady = photos.length > 0; }
-            };
-            reader.readAsDataURL(file);
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const MAX = 1024;
+                        let { width, height } = img;
+                        if (width > height) {
+                            if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
+                        } else {
+                            if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width; canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                        resolve({ name: file.name.replace(/\.[^/.]+$/, '') + '.jpg', data: canvas.toDataURL('image/jpeg', 0.7).split(',')[1] });
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        Promise.all(files.map(compressPhoto)).then(results => {
+            photos = results.filter(Boolean);
+            photosReady = photos.length > 0;
+            document.querySelector('.camera-sub').innerText = photosReady ? "READY TO SUBMIT" : "ERROR — TRY AGAIN";
+            document.querySelector('.camera-sub').style.color = photosReady ? "#4ade80" : "#ef4444";
+            document.querySelector('.camera-icon').style.fill = photosReady ? '#4ade80' : '#ef4444';
         });
     });
 });
@@ -337,12 +361,12 @@ async function submitForm() {
     if(!driverName) { alert("Please enter Driver Name"); return; }
     if(!vin || vin.length < 4) { alert("Please enter VIN"); return; }
     if(!issueDescription || issueDescription.trim().length === 0) { alert("Please describe the issue in 1-2 sentences."); return; }
-    if (photos.length === 0 && !photosReady) {
+    if (photos.length === 0) {
         alert("Photo or video documentation is required.");
         return;
     }
-    if (photos.length > 0 && !photosReady) {
-        alert("Files are still loading — please wait a moment and try again.");
+    if (!photosReady) {
+        alert("Photos are still compressing — please wait a moment and try again.");
         return;
     }
     isSubmitting = true;
