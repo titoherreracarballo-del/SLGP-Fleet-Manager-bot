@@ -1014,6 +1014,12 @@ app.post('/submit-report', async (req, res) => {
             accSection('3. Detailed Statement');
             accTextBlock(data.statement || 'No statement provided.');
 
+            // ── SUPERVISOR NOTES (conditional) ────────────────────────────
+            if (data.supervisorFiled && data.supervisorNotes) {
+                accSection('Supervisor Notes');
+                accTextBlock(data.supervisorNotes);
+            }
+
             // ── SECTION 4: PHOTO EVIDENCE ─────────────────────────────────
             const photoList = data.photos || [];
             if (photoList.length > 0) {
