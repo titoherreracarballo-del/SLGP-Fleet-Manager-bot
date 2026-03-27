@@ -89,21 +89,109 @@ const MAX_CONCURRENT_JOBS = 2;
 let   activeJobs          = 0;
 const jobQueue            = []; // { fn: async function, jobId }
 
-function enqueueJob(jobId, fn) {
-    jobQueue.push({ jobId, fn });
-    console.log(`📥 Job ${jobId} queued (queue depth: ${jobQueue.length}, active: ${activeJobs})`);
-    drainQueue();
+// Max pending jobs in queue — beyond this Railway disk/CPU saturates
+const MAX_QUEUE_DEPTH = 8;
+
+function checkDiskSpace() {
+    try {
+        // Use df — compatible with all Node versions (no statfsSync needed)
+        const { execSync: _exec } = require('child_process');
+        const dfOut = _exec(`df -m ${VOLUME_PATH} | tail -1`, { encoding: 'utf8', stdio: 'pipe' });
+        const cols = dfOut.trim().split(/\s+/);
+        const freeMB = parseInt(cols[3]); // column 4 = Available MB
+        return isNaN(freeMB) ? Infinity : freeMB;
+    } catch (_) {
+        return Infinity; // can't check — allow anyway
+    }
 }
+
+function enqueueJob(jobId, fn) {
+    // Backpressure: reject if queue is too deep to avoid disk saturation
+    if (jobQueue.length >= MAX_QUEUE_DEPTH) {
+        const waitMin = Math.round((jobQueue.length / MAX_CONCURRENT_JOBS) * 3); // ~3min per job
+        console.warn(`⚠️  Queue full (${jobQueue.length} pending) — job ${jobId} rejected`);
+        updateJob(jobId, {
+            status:  'failed',
+            stage:   'Server busy',
+            progress: 0,
+            message: `Server is processing ${jobQueue.length} videos. Please try again in ~${waitMin} minutes.`,
+            error:   'Queue full'
+        });
+        return false;
+    }
+    jobQueue.push({ jobId, fn, queuedAt: Date.now() });
+    const pos = jobQueue.length;
+    console.log(`📥 Job ${jobId} queued — position ${pos} (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+    updateJob(jobId, {
+        status:  'queued',
+        stage:   `Queue position ${pos}`,
+        progress: 0,
+        message: pos === 1
+            ? 'Next up — starting soon...'
+            : `Position ${pos} in queue — ~${Math.round(pos * 3)} min wait`
+    });
+    drainQueue();
+    return true;
+}
+
+// Per-job hard timeout — kills stuck FFmpeg and frees the slot
+const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
 
 function drainQueue() {
     while (activeJobs < MAX_CONCURRENT_JOBS && jobQueue.length > 0) {
-        const { jobId, fn } = jobQueue.shift();
+        const { jobId, fn, queuedAt } = jobQueue.shift();
         activeJobs++;
-        console.log(`▶️  Job ${jobId} starting (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
-        fn().finally(() => {
+
+        // Warn if job sat in queue too long
+        const waitSec = queuedAt ? Math.round((Date.now() - queuedAt) / 1000) : 0;
+        console.log(`▶️  Job ${jobId} starting — waited ${waitSec}s (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+
+        // Watchdog: if job exceeds JOB_TIMEOUT_MS, mark it failed and free the slot
+        let watchdogFired = false;
+        const watchdog = setTimeout(() => {
+            watchdogFired = true;
+            console.error(`⏰ Job ${jobId} timed out after ${JOB_TIMEOUT_MS/60000}min — freeing slot`);
+            updateJob(jobId, {
+                status:   'failed',
+                stage:    'Timeout',
+                progress: 0,
+                message:  'Processing timed out — video saved for manual retry',
+                error:    'Job timeout'
+            });
+            // Save to retry queue so agent can attempt Drive upload of raw file
+            try {
+                const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+                if (fs.existsSync(mPath)) {
+                    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                    if (m.videoFile) {
+                        const rawPath = path.join(UPLOAD_DIR, m.videoFile);
+                        if (fs.existsSync(rawPath)) {
+                            saveToRetryQueue({
+                                jobId, filePath: rawPath,
+                                driverName: m.driverName, vin: m.vin,
+                                inspectionType: m.inspectionType,
+                                fileSizeMB: m.fileSizeMB || '?',
+                                wasEnhanced: false,
+                                failedAt: Date.now(), attemptCount: 1,
+                                lastError: 'Job timeout'
+                            });
+                        }
+                    }
+                }
+            } catch (_) {}
             activeJobs--;
-            console.log(`✅ Job ${jobId} slot released (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
-            drainQueue(); // pull next job as soon as a slot opens
+            console.log(`🔓 Watchdog freed slot (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+            drainQueue();
+        }, JOB_TIMEOUT_MS);
+
+        fn().finally(() => {
+            if (!watchdogFired) {
+                clearTimeout(watchdog);
+                activeJobs--;
+                console.log(`✅ Job ${jobId} slot released (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+                drainQueue();
+            }
+            // If watchdog fired, it already decremented activeJobs and drained
         });
     }
 }
@@ -1964,13 +2052,38 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         });
     }
 
+    // Disk space guard — need at least 3× file size free for FFmpeg output + Drive staging
+    const freeMB = checkDiskSpace();
+    const neededMB = parseFloat(fileSizeMB) * 3;
+    if (freeMB < neededMB) {
+        try { fs.unlinkSync(req.file.path); } catch(e) {}
+        console.error(`❌ Disk space too low: ${freeMB.toFixed(0)}MB free, need ${neededMB.toFixed(0)}MB`);
+        return res.status(503).json({
+            success: false,
+            error: `Server storage full. Please notify fleet management and try again in a few minutes.`
+        });
+    }
+    if (freeMB < 500) {
+        console.warn(`⚠️  Low disk space: ${freeMB.toFixed(0)}MB free`);
+    }
+
     console.log(`📹 Upload received - Driver: ${driverName}, VIN: ${vin}, Size: ${fileSizeMB}MB`);
 
     // ── Generate jobId and respond IMMEDIATELY ─────────────────
     // Phone gets a response right away — no waiting for FFmpeg or Drive
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
     createJob(jobId, { driverName, vin, inspectionType, fileSizeMB });
-    res.json({ success: true, jobId, message: 'Upload received — processing started' });
+    const queuePos = jobQueue.length + 1; // position before enqueue
+    const estimatedMinutes = Math.max(1, Math.round(queuePos * 3));
+    res.json({
+        success: true,
+        jobId,
+        message: activeJobs < MAX_CONCURRENT_JOBS
+            ? 'Upload received — processing started immediately'
+            : `Upload received — position ${queuePos} in queue (~${estimatedMinutes} min)`,
+        queuePosition: queuePos,
+        estimatedMinutes
+    });
 
     // ── Write manifest to volume BEFORE processing starts ─────────────────────
     // This survives a Railway deploy/restart. agent.js scans for manifests
@@ -2006,11 +2119,12 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         const mData = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
         mData.status = 'queued';
         mData.queuedAt = new Date().toISOString();
+        mData.fileSizeMB = fileSizeMB; // persist so startup recovery can estimate disk need
         fs.writeFileSync(manifestPath, JSON.stringify(mData, null, 2));
     } catch (_) {}
-    updateJob(jobId, { status: 'queued', stage: 'Waiting for processing slot', progress: 0, message: 'Queued — waiting for server capacity...' });
 
-    enqueueJob(jobId, async () => {
+    // Enqueue — if queue is full, enqueueJob() will mark the job failed and return false
+    const queued = enqueueJob(jobId, async () => {
     let videoPath = req.file.path;
     let enhancedVideoPath = null;
     let wasEnhanced = false;
@@ -2839,6 +2953,11 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         }
     }
     }); // end enqueueJob
+    if (!queued) {
+        // Queue was full — clean up the uploaded file immediately
+        try { fs.unlinkSync(req.file.path); } catch(_) {}
+        console.warn(`⚠️  Job ${jobId} dropped — queue full, file cleaned up`);
+    }
 });
 
 // ============================================
@@ -2858,6 +2977,7 @@ app.get('/api/job-status/:jobId', (req, res) => {
         progress: job.progress,
         message: job.message,
         result: job.result || null,
+        queueStats: { active: activeJobs, pending: jobQueue.length, max: MAX_CONCURRENT_JOBS },
         error: job.error || null,
         elapsed: Math.round((Date.now() - job.createdAt) / 1000)
     });
