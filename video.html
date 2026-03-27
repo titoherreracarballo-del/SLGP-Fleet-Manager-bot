@@ -672,7 +672,7 @@
         <button class="reset-btn" onclick="resetCamera()">↻ Reset Camera</button>
     </div>
     
-    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.6.5</div>
+    <div style="text-align: center; color: #8E8E93; font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: var(--space-sm); margin-top: var(--space-sm);">v4.6.7</div>
     
     <div class="timestamp" id="ts">Loading...</div>
     <h1>Video Inspection</h1>
@@ -907,7 +907,17 @@
         "9651": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
         "6265": { type: "Custom Delivery Van 16ft (Gas)", fuel: "gas", tow: true },
         "6188": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: true },
-        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true }
+        "7403": { type: "Extra Large Van (Gas)", fuel: "gas", tow: true },
+        // --- Added from updated fleet roster ---
+        "9575": { type: "Rivian EDV 700 (Electric)", fuel: "electric", tow: false },
+        "4905": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: false },
+        "0994": { type: "Rivian EDV 700 (Electric)", fuel: "electric", tow: false },
+        "9411": { type: "Rivian EDV 700 (Electric)", fuel: "electric", tow: false },
+        "0945": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
+        "9408": { type: "Rivian EDV 700 (Electric)", fuel: "electric", tow: false },
+        "0243": { type: "Extra Large Van (Gas)", fuel: "gas", tow: false },
+        "5434": { type: "Custom Delivery Van 14ft (Gas)", fuel: "gas", tow: false },
+        "9406": { type: "Rivian EDV 700 (Electric)", fuel: "electric", tow: false }
     };
 
     async function requestWakeLock() {
@@ -1287,7 +1297,7 @@
             };
 
             const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Camera timeout after 20 seconds')), 20000)
+                setTimeout(() => reject(new Error('Camera timeout after 15 seconds')), CONFIG.CAMERA_TIMEOUT)
             );
             
             currentStream = await Promise.race([navigator.mediaDevices.getUserMedia(constraints), timeoutPromise]);
@@ -1690,6 +1700,16 @@
         document.getElementById("status").innerText = "Restarting camera...";
         flashEnabled = false;
         updateFlashUI(false);
+        // Clear recording/upload state so driver gets a clean slate
+        isRecording  = false;
+        isUploading  = false;
+        videoBlob    = null;
+        chunks       = [];
+        seconds      = 0;
+        if (wakeLock) { try { wakeLock.release(); } catch(_) {} wakeLock = null; }
+        if (window._activeXhr) { try { window._activeXhr.abort(); } catch(_) {} window._activeXhr = null; }
+        document.getElementById('progress-container').style.display = 'none';
+        document.getElementById('progress-fill').style.width = '0%';
         setTimeout(() => startCamera(), 2000);
     }
 
@@ -1784,10 +1804,22 @@
     function autoSelectInspection() {
         // Skip if driver has already manually chosen an inspection type
         if (_userChoseType) return;
-        const hour = new Date().getHours();
+        // Read URL param first (?type=pre or ?type=post)
+        const params    = new URLSearchParams(window.location.search);
+        const typeParam = (params.get('type') || '').toLowerCase();
+        let autoType = null;
+        if (typeParam === 'pre' || typeParam === 'pre-trip') {
+            autoType = 'Pre-Trip';
+        } else if (typeParam === 'post' || typeParam === 'post-trip') {
+            autoType = 'Post-Trip';
+        } else {
+            // Fall back to time-based detection
+            const hour = new Date().getHours();
+            autoType = hour < 13 ? 'Pre-Trip' : 'Post-Trip';
+        }
         // Don't call selectType() here — that would set _userChoseType = true.
         // Set inspectionType and UI directly so auto-select stays overridable.
-        inspectionType = hour < 13 ? 'Pre-Trip' : 'Post-Trip';
+        inspectionType = autoType;
         document.getElementById('btn-pre').classList.remove('selected');
         document.getElementById('btn-post').classList.remove('selected');
         document.getElementById(inspectionType === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
@@ -1928,7 +1960,14 @@
                     if (timerEl2) timerEl2.style.color = '#ffffff';
 
                     document.getElementById('status').innerText = 'Video Ready - Auto-uploading...';
-                    setTimeout(() => uploadVideo(), 1000);
+                    // FIX: only auto-upload if online — if offline, show btn so driver can retry when connected
+                    if (navigator.onLine) {
+                        setTimeout(() => uploadVideo(), 1000);
+                    } else {
+                        document.getElementById('status').innerText = '⚠️ No WiFi — tap Submit when connected.';
+                        document.getElementById('btn-upload').style.display = 'block';
+                        document.getElementById('btn-upload').disabled = false;
+                    }
                 };
 
                 mediaRecorder.onerror = (event) => {
@@ -2042,21 +2081,29 @@
         isUploading = true;
         setProgress(0, 'Preparing upload...');
 
-        const formData = new FormData();
-        const ext = selectedMimeType.startsWith('video/webm') ? 'webm' : 'mp4';
-        formData.append('video', videoBlob, `inspection.${ext}`);
-        formData.append('driverName', driver);
-        formData.append('vin', vin);
-        formData.append('inspectionType', inspectionType);
-
         let jobId = null;
         const MAX_UPLOAD_ATTEMPTS = CONFIG.MAX_RETRY_ATTEMPTS || 3;
+        const ext = selectedMimeType.startsWith('video/webm') ? 'webm' : 'mp4';
+
+        try { // outer try/finally so isUploading always resets
 
         for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
             if (!navigator.onLine) {
                 setProgress(0, '⚠️ No connection — waiting for WiFi...');
-                await new Promise(resolve => {
-                    const onOnline = () => { window.removeEventListener('online', onOnline); resolve(); };
+                // FIX: double-check onLine inside promise to avoid race condition
+                // where connection restores between the check above and addEventListener
+                await new Promise((resolve, reject) => {
+                    if (navigator.onLine) { resolve(); return; } // already back
+                    const onOnline = () => {
+                        window.removeEventListener('online', onOnline);
+                        clearTimeout(waitTimer);
+                        resolve();
+                    };
+                    // FIX: 90s max wait — don't hang forever if WiFi never comes back
+                    const waitTimer = setTimeout(() => {
+                        window.removeEventListener('online', onOnline);
+                        reject(new Error('No connection after 90s — please check WiFi and tap Submit again.'));
+                    }, 90000);
                     window.addEventListener('online', onOnline);
                 });
                 setProgress(0, 'Connection restored — retrying...');
@@ -2067,10 +2114,21 @@
                 console.log(`📤 Upload attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS}`);
                 if (attempt > 1) setProgress(0, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`);
 
+                // FIX: rebuild FormData on every attempt — reusing the same FormData
+                // after a failed XHR produces an empty body on Samsung/Android devices
+                const formData = new FormData();
+                formData.append('video', videoBlob, `inspection.${ext}`);
+                formData.append('driverName', driver);
+                formData.append('vin', vin);
+                formData.append('inspectionType', inspectionType);
+
                 jobId = await new Promise((resolve, reject) => {
                     const xhr = new XMLHttpRequest();
+                    window._activeXhr = xhr; // allow beforeunload to abort
                     xhr.open('POST', '/upload-to-google-drive', true);
-                    xhr.timeout = 120000;
+                    // FIX: 65s timeout — just over Railway's 60s gateway limit so we
+                    // get the server error rather than hanging an extra 60s
+                    xhr.timeout = 65000;
 
                     const fileMB   = (videoBlob.size / 1024 / 1024).toFixed(1);
                     let  simPct    = 0;
@@ -2101,6 +2159,7 @@
 
                     xhr.addEventListener('load', () => {
                         clearTimeout(simTimer);
+                        window._activeXhr = null;
                         if (xhr.status === 200) {
                             try {
                                 const resp = JSON.parse(xhr.responseText);
@@ -2133,18 +2192,27 @@
                 setProgress(100, '✅ Submitted! You\'re done.');
                 progressFill.style.backgroundColor = '#4ade80';
                 isUploading = false;
+                videoBlob = null; // prevent accidental re-submission if driver navigates back
+                chunks = [];
                 setTimeout(() => window.location.href = '/success', 1800);
                 return;
 
             } catch (uploadErr) {
                 console.error(`Upload attempt failed:`, uploadErr.message);
-                if (uploadErr.message.includes('too large') || uploadErr.message.includes('Missing')) {
+                // Fatal errors that should stop retrying immediately
+                const isFatal = uploadErr.message.includes('too large') ||
+                                uploadErr.message.includes('Missing') ||
+                                uploadErr.message.includes('No connection after');
+                if (isFatal) {
                     if (wakeLock) { wakeLock.release(); wakeLock = null; }
                     isUploading = false;
-                    alert(uploadErr.message);
+                    if (!uploadErr.message.includes('No connection after')) alert(uploadErr.message);
                     btn.style.display = 'block';
+                    btn.disabled = false;
                     progressBar.style.display = 'none';
-                    status.innerText = 'Upload failed.';
+                    status.innerText = uploadErr.message.includes('No connection after')
+                        ? '⚠️ No WiFi — connect and tap Submit to retry.'
+                        : 'Upload failed.';
                     return;
                 }
                 if (attempt === MAX_UPLOAD_ATTEMPTS) {
@@ -2152,16 +2220,30 @@
                     isUploading = false;
                     alert(`Upload failed after ${MAX_UPLOAD_ATTEMPTS} attempts:\n${uploadErr.message}\n\nCheck your WiFi and tap Submit again.`);
                     btn.style.display = 'block';
+                    btn.disabled = false;
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
                     if (percentOverlay) percentOverlay.innerText = '0%';
                     status.innerText = 'Upload failed — tap Submit to retry.';
+                    btn.disabled = false; // FIX: re-enable button
                     return;
                 }
                 const delay = backoffDelay(attempt);
                 setProgress(0, `Upload failed — retrying in ${Math.round(delay/1000)}s... (${attempt}/${MAX_UPLOAD_ATTEMPTS})`);
                 await new Promise(r => setTimeout(r, delay));
             }
+        }
+
+        } catch (outerErr) {
+            // Catches any unhandled exception — ensures isUploading always resets
+            console.error('❌ Upload outer error:', outerErr.message);
+            if (wakeLock) { wakeLock.release(); wakeLock = null; }
+            isUploading = false;
+            btn.style.display = 'block';
+            btn.disabled = false;
+            progressBar.style.display = 'none';
+            status.innerText = 'Upload error — tap Submit to retry.';
+            alert('Upload error: ' + outerErr.message + '\n\nCheck WiFi and tap Submit again.');
         }
     }
 
@@ -2173,17 +2255,29 @@
         stopStabilizer();
         if (currentStream) currentStream.getTracks().forEach(t => t.stop());
         if (wakeLock) wakeLock.release();
+        if (window._activeXhr) { try { window._activeXhr.abort(); } catch(_) {} }
     });
 
     // Android 12+ cuts camera access when Chrome is backgrounded, which corrupts
     // any mid-recording video. Stop cleanly so the blob is preserved and submittable.
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && isRecording) {
-            console.warn('⚠️ App backgrounded mid-recording — stopping to prevent corruption');
-            stopRecording();
-            // Don't alert() here — it's blocked when page is hidden on most Android browsers.
-            // Status message is visible when driver returns to the tab.
-            document.getElementById('status').innerText = '⚠️ Recording stopped — app was minimized. Review video and submit.';
+        if (document.visibilityState === 'hidden') {
+            if (isRecording) {
+                console.warn('⚠️ App backgrounded mid-recording — stopping to prevent corruption');
+                stopRecording();
+                document.getElementById('status').innerText = '⚠️ Recording stopped — app was minimized. Review video and submit.';
+            }
+            if (isUploading) {
+                // Upload may be silently killed on some Android versions when backgrounded.
+                // Log a warning — XHR will fire error/timeout if killed, triggering retry.
+                console.warn('⚠️ App backgrounded during upload — XHR may be suspended by OS');
+                document.getElementById('status').innerText = '⚠️ Keep app open during upload!';
+            }
+        }
+        if (document.visibilityState === 'visible' && isUploading) {
+            // Driver returned to tab — reassure them upload is still running
+            console.log('📱 Driver returned to tab during upload');
+            document.getElementById('status').innerText = 'Resuming upload...';
         }
     });
 </script>
