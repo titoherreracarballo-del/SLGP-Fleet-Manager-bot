@@ -29,7 +29,8 @@ const PERFORMANCE_LOG   = path.join(LOGS_DIR, 'performance.json');
 
 // ── Thresholds ───────────────────────────────────────────────
 const FFMPEG_ORPHAN_AGE_MS   = 5  * 60 * 1000;  // kill ffmpeg if stuck > 5 min
-const UPLOAD_STALE_AGE_MS    = 10 * 60 * 1000;  // delete upload temp > 10 min
+const UPLOAD_STALE_AGE_MS    = 60 * 60 * 1000;  // delete upload temp > 60 min (covers max queue wait)
+const MANIFEST_SAFE_STATUSES = new Set(['pending', 'queued', 'queued_for_recovery', 'processing']); // never reap files with these statuses
 const LOG_MAX_BYTES          = 500 * 1024;       // rotate logs > 500KB
 const LOG_KEEP_ENTRIES       = 200;              // keep last 200 entries per log
 const MEMORY_WARN_MB         = 400;             // warn if heap > 400MB
@@ -132,14 +133,45 @@ function killOrphanFFmpeg() {
 }
 
 // ── TASK 2: Upload Dir Reaper ────────────────────────────────
+// Build a set of video filenames that have active manifests — never delete these
+function getProtectedVideoFiles() {
+    const protected_ = new Set();
+    try {
+        if (!fs.existsSync(UPLOAD_DIR)) return protected_;
+        for (const f of fs.readdirSync(UPLOAD_DIR)) {
+            if (!f.endsWith('.manifest.json')) continue;
+            try {
+                const m = JSON.parse(fs.readFileSync(path.join(UPLOAD_DIR, f), 'utf8'));
+                if (m.videoFile && MANIFEST_SAFE_STATUSES.has(m.status)) {
+                    protected_.add(m.videoFile); // relative filename
+                    // Also protect by absolute path in case it was renamed (.mp4 suffix added)
+                    protected_.add(m.videoFile + '.mp4');
+                }
+                // Protect the manifest itself regardless of status — only delete after 24h
+                protected_.add(f);
+            } catch(_) {}
+        }
+    } catch(_) {}
+    return protected_;
+}
+
 function reapDir(dirPath, label, staleMs) {
     if (!fs.existsSync(dirPath)) return { reaped: 0, totalMB: 0 };
-    const now = Date.now();
+    const now              = Date.now();
+    const protectedFiles   = getProtectedVideoFiles(); // manifest-aware guard
     let reaped = 0, totalMB = 0;
     try {
         for (const file of fs.readdirSync(dirPath)) {
             const ext = path.extname(file).toLowerCase();
-            if (!['.mp4', '.webm', '.mov', ''].includes(ext)) continue;
+            // Only reap video files and multer temp files (no extension)
+            if (!['.mp4', '.webm', '.mov', '.mkv', ''].includes(ext)) continue;
+            // Never reap manifest files
+            if (file.endsWith('.manifest.json')) continue;
+            // Never reap files with an active manifest
+            if (protectedFiles.has(file)) {
+                agentLog('REAPER', `Skipping protected file: ${file} (active manifest)`, { file });
+                continue;
+            }
             const filePath = path.join(dirPath, file);
             try {
                 const stat = fs.statSync(filePath);
@@ -190,6 +222,47 @@ function rotateLogs() {
         } catch(e) {
             agentLog('ROTATE', `Rotation error for ${path.basename(logFile)}: ${e.message}`);
         }
+    }
+}
+
+// ── TASK 3b: Disk Space Monitor ─────────────────────────────
+const DISK_WARN_MB  = 500;   // warn at 500MB free
+const DISK_CRIT_MB  = 200;   // critical at 200MB free
+const DISK_CHECK_INTERVAL = 10 * 60 * 1000; // every 10 min
+
+function checkDiskSpace() {
+    try {
+        let freeMB = Infinity;
+        try {
+            // Use df for a reliable reading on Railway volumes
+            const dfOut = execSync(`df -m ${VOLUME_PATH} | tail -1`, { encoding: 'utf8', stdio: 'pipe' });
+            const cols = dfOut.trim().split(/\s+/);
+            freeMB = parseInt(cols[3]); // column 4 = Available MB
+        } catch(_) {
+            // df failed — try statfs via node
+            try {
+                const stat = fs.statfsSync(VOLUME_PATH);
+                freeMB = Math.round((stat.bfree * stat.bsize) / (1024 * 1024));
+            } catch(_) { return; }
+        }
+
+        if (freeMB < DISK_CRIT_MB) {
+            agentLog('DISK', `🚨 CRITICAL disk space: ${freeMB}MB free — video uploads will fail!`, { freeMB });
+            // Write to error log so dashboard shows it
+            try {
+                let errors = [];
+                try { errors = JSON.parse(fs.readFileSync(ERROR_LOG, 'utf8')); } catch(e) {}
+                errors.push({ type: 'agent_warning', severity: 'critical', message: `CRITICAL disk: ${freeMB}MB free`, source: 'agent-disk', timestamp: new Date().toISOString(), serverTime: Date.now() });
+                if (errors.length > 1000) errors = errors.slice(-1000);
+                fs.writeFileSync(ERROR_LOG, JSON.stringify(errors, null, 2));
+            } catch(e) {}
+        } else if (freeMB < DISK_WARN_MB) {
+            agentLog('DISK', `⚠️  Low disk space: ${freeMB}MB free`, { freeMB });
+        } else {
+            agentLog('DISK', `Disk OK: ${freeMB}MB free`, { freeMB });
+        }
+    } catch(e) {
+        agentLog('DISK', `Disk check error: ${e.message}`);
     }
 }
 
@@ -443,7 +516,7 @@ async function recoverInterruptedJobs() {
 
     agentLog('RECOVERY', `Found ${manifestFiles.length} manifest file(s)`);
 
-    const RECOVERABLE_STATUSES = ['pending', 'enhancing', 'uploading'];
+    const RECOVERABLE_STATUSES = ['pending', 'queued', 'queued_for_recovery', 'enhancing', 'uploading'];
     let recovered = 0;
 
     for (const mFile of manifestFiles) {
@@ -503,13 +576,19 @@ async function recoverInterruptedJobs() {
                 continue;
             }
 
+            // Build absolute filePath — retry endpoint requires this (not relative videoFile)
+            const absoluteFilePath = path.join(UPLOAD_DIR, videoFile);
             queue.push({
                 jobId,
                 driverName,
                 vin,
                 inspectionType,
-                videoFile,       // agent passes this so index.js knows the file
+                filePath:     absoluteFilePath,  // absolute path — matches what retry endpoint reads
+                videoFile,                        // keep for reference
+                fileSizeMB:   manifest.fileSizeMB || '?',
+                wasEnhanced:  false,              // re-upload raw — enhancement already lost
                 attemptCount: 1,
+                failedAt:     Date.now(),
                 queuedAt:     Date.now(),
                 reason:       'interrupted_by_deploy',
                 lastError:    `Job was ${status} when server restarted`,
@@ -544,6 +623,7 @@ setTimeout(() => killOrphanFFmpeg(),   5000);
 setTimeout(() => reapStaleUploads(),  10000);
 setTimeout(() => rotateLogs(),        15000);
 setTimeout(() => checkMemory(),       20000);
+setTimeout(() => checkDiskSpace(),    25000); // check disk early — before first upload could fail
 setTimeout(() => healthPing(),        30000);
 setTimeout(() => processRetryQueue(),      45000); // check retry queue after server fully warms up
 setTimeout(() => recoverInterruptedJobs(), 60000); // scan for jobs interrupted by deploy/restart
@@ -553,6 +633,7 @@ setInterval(killOrphanFFmpeg,    ORPHAN_CHECK_INTERVAL);
 setInterval(reapStaleUploads,    UPLOAD_REAP_INTERVAL);
 setInterval(rotateLogs,          LOG_ROTATE_INTERVAL);
 setInterval(checkMemory,         MEMORY_CHECK_INTERVAL);
+setInterval(checkDiskSpace,      DISK_CHECK_INTERVAL);
 setInterval(healthPing,          HEALTH_PING_INTERVAL);
 setInterval(checkMidnight,       60 * 1000);   // check every minute for midnight
 setInterval(processRetryQueue,   RETRY_CHECK_INTERVAL); // watch for failed jobs to retry
