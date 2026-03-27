@@ -282,9 +282,9 @@
         <div class="char-count" id="charCounter">0 / 500</div>
     </div>
 
-    <div class="form-group row-split">
+    <div class="form-group row-split" style="align-items:flex-end;">
         <div style="flex:1;"><label>Police Report # (Required)</label><input type="text" id="policeReport" placeholder="Required"></div>
-        <div style="flex:1;"><label>LMET Case # (Required)</label><div style="font-size:var(--font-xs);font-weight:900;color:#ef4444;margin-bottom:6px;letter-spacing:0.3px;">📞 Call 1-800-942-3300 to file</div><input type="text" id="lmetCase" placeholder="Required" oninput="updateLmetDisplay()"><div id="lmetDisplay" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(239,68,68,0.08);border-left:3px solid var(--primary-red);border-radius:4px;font-size:var(--font-sm);font-weight:900;color:#fff;letter-spacing:0.5px;text-transform:uppercase;"></div></div>
+        <div style="flex:1;"><label>LMET Case # (Required)<br><span style="font-size:var(--font-xs);font-weight:900;color:#ef4444;letter-spacing:0.3px;text-transform:none;">📞 Call 1-800-942-3300 to file</span></label><input type="text" id="lmetCase" placeholder="Required" oninput="updateLmetDisplay()"><div id="lmetDisplay" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(239,68,68,0.08);border-left:3px solid var(--primary-red);border-radius:4px;font-size:var(--font-sm);font-weight:900;color:#fff;letter-spacing:0.5px;text-transform:uppercase;"></div></div>
     </div>
 
     <h2>3. Evidence (Min 3 Photos)</h2>
