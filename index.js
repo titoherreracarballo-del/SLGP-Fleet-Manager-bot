@@ -1354,6 +1354,14 @@ app.post('/submit-issue-ai', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Missing required fields' });
         }
         console.log(`\n🔍 Issue Report - Driver: ${driverName}, VIN: ${vinLast4}`);
+
+        // ── Respond immediately so the driver's phone isn't waiting ──────
+        // All heavy work (AI, PDF, email) runs in the background via setImmediate.
+        // This prevents Gemini latency + email send time from timing out the client.
+        res.json({ success: true });
+
+        setImmediate(async () => {
+        try {
         console.log(`📝 Description: "${issueDescription}"`);
         const learningData = loadLearningData();
         console.log(`🧠 Loaded ${learningData.history.total_issues} historical classifications`);
@@ -1373,14 +1381,18 @@ app.post('/submit-issue-ai', async (req, res) => {
             }
             // Gemini Pro — same prompt, different endpoint + response shape
             const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`;
+            const geminiController = new AbortController();
+            const geminiTimeout = setTimeout(() => geminiController.abort(), 8000); // 8s hard timeout
             const apiResponse = await fetch(geminiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: geminiController.signal,
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: classificationPrompt }] }],
                     generationConfig: { maxOutputTokens: 500, temperature: 0.2, responseMimeType: 'application/json' }
                 })
             });
+            clearTimeout(geminiTimeout);
             if (!apiResponse.ok) { throw new Error(`Gemini API error: ${apiResponse.status}`); }
             const apiData = await apiResponse.json();
             // Gemini response: candidates[0].content.parts[0].text
@@ -1460,7 +1472,11 @@ app.post('/submit-issue-ai', async (req, res) => {
         for (let i = 1; i < emailAttachments.length; i++) {
             try { fs.unlinkSync(emailAttachments[i].path); } catch (e) {}
         }
-        res.json({ success: true });
+        } catch (bgError) {
+            console.error('❌ Issue background processing error:', bgError.message);
+            await appendLog(ERROR_LOG, { type: 'server_error', severity: 'error', message: 'Issue background processing failed', stack: bgError.stack, source: 'submit-issue-ai-background' });
+        }
+        }); // end setImmediate
     } catch (error) {
         console.error('❌ Issue submission error:', error);
         await appendLog(ERROR_LOG, { type: 'server_error', severity: 'error', message: 'Issue submission failed', stack: error.stack, source: 'submit-issue-ai' });
