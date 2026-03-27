@@ -3194,6 +3194,46 @@ app.get('/version', (req, res) => {
 });
 
 // ============================================
+// NODE / ENVIRONMENT INFO ENDPOINT
+// Visit /api/node-version to see all runtime info
+// ============================================
+app.get('/api/node-version', (req, res) => {
+    try {
+        const { execSync } = require('child_process');
+        const safeExec = (cmd) => {
+            try { return execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim(); }
+            catch(e) { return `(error: ${e.message.split('\n')[0]})`; }
+        };
+
+        res.json({
+            node:        process.version,
+            npm:         safeExec('npm --version'),
+            platform:    process.platform,
+            arch:        process.arch,
+            uptime_min:  Math.round(process.uptime() / 60),
+            memory: {
+                heap_used_mb:  Math.round(process.memoryUsage().heapUsed  / 1024 / 1024),
+                heap_total_mb: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+                rss_mb:        Math.round(process.memoryUsage().rss       / 1024 / 1024),
+            },
+            disk:        safeExec('df -h /app/meshcentral-data | tail -1'),
+            disk_mb_free: (() => { const d = safeExec('df -m /app/meshcentral-data | tail -1'); return d.split(' ').filter(Boolean)[3] || '?'; })(),
+            queue: {
+                active:  activeJobs,
+                pending: jobQueue.length,
+                max:     MAX_CONCURRENT_JOBS,
+            },
+            packages:    safeExec('cd /app && npm list --depth=0 2>/dev/null'),
+            outdated:    safeExec('cd /app && npm outdated 2>/dev/null || true'),
+            version:     VERSION_STRING,
+            environment: process.env.NODE_ENV || 'production',
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ============================================
 // DEBUG DASHBOARD
 // ============================================
 app.get('/debug-dashboard', async (req, res) => {
