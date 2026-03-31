@@ -2269,9 +2269,21 @@ app.post('/upload-to-google-drive', (req, res, next) => {
         let finalVideoPath = videoPath;
         wasEnhanced = false;
 
-        updateJob(jobId, { status: 'enhancing', stage: 'Starting enhancement', progress: 5, message: 'Enhancing video quality...' });
+        // Skip enhancement if raw file is too large — FFmpeg inflates 3×, making Drive
+        // uploads of 50-60MB files impossible within Railway's bandwidth limits.
+        // Files over 20MB upload faster as raw video than as a bloated enhanced file.
+        const ENHANCE_MAX_MB = 20;
+        const rawFileMB      = parseFloat(fileSizeMB);
+        const shouldEnhance  = ffmpegPath && rawFileMB <= ENHANCE_MAX_MB;
 
-        if (ffmpegPath) {
+        if (shouldEnhance) {
+            updateJob(jobId, { status: 'enhancing', stage: 'Starting enhancement', progress: 5, message: 'Enhancing video quality...' });
+        } else if (rawFileMB > ENHANCE_MAX_MB) {
+            console.log(`⏭️  Skipping enhancement — file ${rawFileMB}MB > ${ENHANCE_MAX_MB}MB threshold (uploading raw)`);
+            updateJob(jobId, { status: 'enhancing', stage: 'Uploading raw', progress: 5, message: `File ${rawFileMB}MB — uploading original (faster)` });
+        }
+
+        if (shouldEnhance) {
             try {
                 console.log('🎨 Starting video enhancement...');
                 const enhanceStart = Date.now();
@@ -2841,7 +2853,7 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                 fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
                 supportsAllDrives: true
             }),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('Google Drive upload timeout after 3 minutes')),3*60*1000))
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('Google Drive upload timeout after 8 minutes')),8*60*1000))
         ]);
 
         updateJob(jobId, { status: 'uploading', stage: 'Finalizing', progress: 90, message: 'Drive upload complete — sending notifications...' });
@@ -2889,7 +2901,10 @@ app.post('/upload-to-google-drive', (req, res, next) => {
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
-                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+                connectionTimeout: 10000,  // 10s to connect
+                greetingTimeout:   10000,  // 10s for SMTP greeting
+                socketTimeout:     30000,  // 30s per socket operation
             });
 
             await transporter.sendMail({
@@ -3162,7 +3177,11 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
     // Respond immediately — retry runs async
     res.json({ success: true, message: `Retry ${entry.attemptCount} started`, jobId });
 
-    // ── Re-attempt Drive upload ──────────────────────────────────
+    // ── Re-attempt Drive upload via job queue (max 2 concurrent) ────────────
+    // Route through enqueueJob so retries respect the same concurrency limit
+    // as fresh uploads. Without this, 8+ retries fire simultaneously and
+    // all saturate Drive bandwidth → all timeout.
+    enqueueJob(jobId + '_retry', async () => {
     try {
         const { driverName, vin, inspectionType, fileSizeMB, wasEnhanced, filePath, supervisorFiled, supervisorName } = entry;
         const fileStats   = fs.statSync(filePath);
@@ -3207,7 +3226,10 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         try {
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
-                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+                connectionTimeout: 10000,  // 10s to connect
+                greetingTimeout:   10000,  // 10s for SMTP greeting
+                socketTimeout:     30000,  // 30s per socket operation
             });
             await transporter.sendMail({
                 from:    process.env.EMAIL_USER,
@@ -3291,6 +3313,7 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
             saveToRetryQueue({ ...entry, attemptCount: entry.attemptCount + 1, lastError: retryErr.message });
         }
     }
+    }); // end enqueueJob for retry
 });
 
 // ============================================
