@@ -80,6 +80,40 @@ function removeFromRetryQueue(jobId) {
 // ============================================
 const jobStore = new Map(); // jobId -> { status, stage, progress, message, result, error, createdAt }
 
+// ── Upload deduplication store ────────────────────────────────────────────────
+// Prevents duplicate video processing when XHR times out client-side but
+// the server already received and queued the upload successfully.
+// Key: normalized "driverName|vin|inspectionType"
+// Value: { jobId, receivedAt } — TTL 5 minutes
+const uploadDedup = new Map();
+const UPLOAD_DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getDedupKey(driverName, vin, inspectionType) {
+    return `${(driverName||'').toLowerCase().trim()}|${(vin||'').toUpperCase().trim()}|${(inspectionType||'').toLowerCase().trim()}`;
+}
+
+function checkUploadDuplicate(driverName, vin, inspectionType) {
+    const key   = getDedupKey(driverName, vin, inspectionType);
+    const entry = uploadDedup.get(key);
+    if (!entry) return null;
+    // Expired?
+    if (Date.now() - entry.receivedAt > UPLOAD_DEDUP_TTL_MS) {
+        uploadDedup.delete(key);
+        return null;
+    }
+    return entry.jobId; // duplicate — return existing jobId
+}
+
+function registerUpload(driverName, vin, inspectionType, jobId) {
+    const key = getDedupKey(driverName, vin, inspectionType);
+    uploadDedup.set(key, { jobId, receivedAt: Date.now() });
+    // Auto-expire after TTL
+    setTimeout(() => {
+        const e = uploadDedup.get(key);
+        if (e && e.jobId === jobId) uploadDedup.delete(key);
+    }, UPLOAD_DEDUP_TTL_MS);
+}
+
 // ── Processing queue / concurrency gate ───────────────────────────────────────
 // Prevents Railway CPU saturation when multiple drivers upload simultaneously.
 // Uploads are always accepted immediately (manifest written, jobId returned).
@@ -2077,9 +2111,25 @@ app.get('/api/speed-limit', async (req, res) => {
 // ============================================
 // VIDEO UPLOAD WITH FFMPEG AUTO-DETECTION
 // ============================================
-app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => {
+app.post('/upload-to-google-drive', (req, res, next) => {
+    // Wrap multer to catch MulterError (file too large, wrong field, etc)
+    // and return proper JSON instead of crashing the route
+    upload.single('video')(req, res, (err) => {
+        if (err) {
+            console.error('❌ Multer error:', err.message);
+            if (req.file) { try { require('fs').unlinkSync(req.file.path); } catch(_) {} }
+            return res.status(400).json({
+                success: false,
+                error: err.code === 'LIMIT_FILE_SIZE'
+                    ? 'Video too large. Please keep walk-around under 30 seconds.'
+                    : `Upload error: ${err.message}`
+            });
+        }
+        next();
+    });
+}, async (req, res) => {
     const startTime = Date.now();
-
+    try {
     // ── Validate synchronously before doing anything ──────────
     if (!driveClient) return res.status(503).json({ success: false, error: 'Google Drive not available' });
     if (!req.file)    return res.status(400).json({ success: false, error: 'No video file received' });
@@ -2089,6 +2139,25 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     const supervisorName  = req.body.supervisorName  || null;
     if (!driverName || !vin || !inspectionType)
         return res.status(400).json({ success: false, error: 'Missing required fields' });
+
+    // ── Duplicate detection ───────────────────────────────────────────────────
+    // If this driver already submitted the same inspection within 5 minutes,
+    // return the existing jobId so the client can poll it instead of reprocessing.
+    const existingJobId = checkUploadDuplicate(driverName, vin, inspectionType);
+    if (existingJobId) {
+        console.log(`🔁 Duplicate upload detected for ${driverName}/${vin}/${inspectionType} — returning existing job ${existingJobId}`);
+        // Delete the newly uploaded duplicate file — we don't need it
+        try { fs.unlinkSync(req.file.path); } catch(_) {}
+        // Return the existing jobId so the client polls the right job
+        return res.json({
+            success:         true,
+            jobId:           existingJobId,
+            duplicate:       true,
+            message:         'Duplicate submission detected — tracking existing upload',
+            queuePosition:   0,
+            estimatedMinutes: 0
+        });
+    }
 
     const fileStats  = fs.statSync(req.file.path);
     const fileSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
@@ -2123,6 +2192,7 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     // Phone gets a response right away — no waiting for FFmpeg or Drive
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
     createJob(jobId, { driverName, vin, inspectionType, fileSizeMB });
+    registerUpload(driverName, vin, inspectionType, jobId); // register for dedup
     const queuePos = jobQueue.length + 1; // position before enqueue
     const estimatedMinutes = Math.max(1, Math.round(queuePos * 3));
     res.json({
@@ -3010,6 +3080,14 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         try { fs.unlinkSync(req.file.path); } catch(_) {}
         console.warn(`⚠️  Job ${jobId} dropped — queue full, file cleaned up`);
     }
+    } catch (routeErr) {
+        // Catch any synchronous throw before res was sent
+        console.error('❌ Upload route error:', routeErr.message, routeErr.stack);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: 'Upload processing error: ' + routeErr.message });
+        }
+        if (req.file) { try { fs.unlinkSync(req.file.path); } catch(_) {} }
+    }
 });
 
 // ============================================
@@ -3086,7 +3164,7 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
 
     // ── Re-attempt Drive upload ──────────────────────────────────
     try {
-        const { driverName, vin, inspectionType, fileSizeMB, wasEnhanced, filePath } = entry;
+        const { driverName, vin, inspectionType, fileSizeMB, wasEnhanced, filePath, supervisorFiled, supervisorName } = entry;
         const fileStats   = fs.statSync(filePath);
         const finalSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
         const retryStart  = Date.now();
@@ -3107,7 +3185,7 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
                 fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
                 supportsAllDrives: true
             }),
-            new Promise((_,reject) => setTimeout(() => reject(new Error('Google Drive upload timeout after 3 minutes')), 3*60*1000))
+            new Promise((_,reject) => setTimeout(() => reject(new Error('Google Drive upload timeout after 5 minutes')), 5*60*1000))
         ]);
 
         const fileId   = driveResponse.data.id;
