@@ -869,7 +869,8 @@ app.post('/submit-report', async (req, res) => {
                 const channel = await client.channels.fetch(DISCORD_CHANNEL_ID);
                 const title = data.reportType === 'ACCIDENT_REPORT' ? "🚨 **ACCIDENT REPORT FILED**" : "⚠️ **ISSUE REPORT**";
                 if (channel) {
-                    channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}`);
+                    const supervisorTag = data.supervisorFiled ? `\n👔 **Filed by Supervisor:** ${data.supervisorName || 'Unknown'}` : '';
+                    channel.send(`${title}\n**Driver:** ${data.driverName}\n**VIN:** ${data.vinLast4}\n**Desc:** ${data.statement || data.otherDescription || 'None'}${supervisorTag}`);
                 }
             } catch(e) { console.error('Discord notification failed:', e.message); }
         }
@@ -1481,7 +1482,12 @@ app.post('/submit-issue-ai', async (req, res) => {
                 })
             });
             clearTimeout(geminiTimeout);
-            if (!apiResponse.ok) { throw new Error(`Gemini API error: ${apiResponse.status}`); }
+            if (!apiResponse.ok) {
+                if (apiResponse.status === 429) {
+                    throw new Error('GEMINI_QUOTA_EXCEEDED');
+                }
+                throw new Error(`Gemini API error: ${apiResponse.status}`);
+            }
             const apiData = await apiResponse.json();
             // Gemini response: candidates[0].content.parts[0].text
             const responseText = apiData.candidates[0].content.parts[0].text;
@@ -1493,8 +1499,50 @@ app.post('/submit-issue-ai', async (req, res) => {
             saveClassification(issueDescription, aiResponse, vehicleType, vinLast4);
             updateKnowledgeBase(issueDescription, aiResponse);
         } catch (aiError) {
-            console.error('❌ AI Classification failed:', aiError.message);
-            aiResponse = { priority: 'HIGH_PRIORITY', category: 'Other (See Notes)', confidence: 0.5, reasoning: 'AI unavailable - defaulting to high priority for safety' };
+            const isQuotaError = aiError.message.includes('GEMINI_QUOTA_EXCEEDED') ||
+                                 aiError.message.includes('429') ||
+                                 aiError.message.includes('RESOURCE_EXHAUSTED') ||
+                                 aiError.message.includes('spending cap');
+            if (isQuotaError) {
+                console.warn('⚠️  Gemini quota exceeded — using rule-based fallback');
+            } else {
+                console.error('❌ AI Classification failed:', aiError.message);
+            }
+            // Rule-based fallback: scan description for keywords to avoid everything
+            // landing as HIGH_PRIORITY when AI is down
+            const desc = (issueDescription || '').toLowerCase();
+            const isElectric = (vehicleType || '').toLowerCase().includes('rivian') ||
+                               (vehicleType || '').toLowerCase().includes('electric') ||
+                               (vehicleType || '').toLowerCase().includes('edv');
+            let fallbackPriority = 'HIGH_PRIORITY';
+            let fallbackCategory = 'Vehicle Issue (See Notes)';
+            // Electric-specific keywords
+            if (isElectric && (desc.includes('charg') || desc.includes('plug') || desc.includes('key fob') || desc.includes('bulkhead'))) {
+                fallbackPriority = 'EDV_ELECTRIC';
+                fallbackCategory = 'Electric Vehicle Issue';
+            // Low priority cosmetic keywords
+            } else if (desc.includes('scratch') || desc.includes('dent') || desc.includes('scuff') ||
+                       desc.includes('dirt') || desc.includes('smell') || desc.includes('sticker') ||
+                       desc.includes('mirror') || desc.includes('seat') || desc.includes('radio') ||
+                       desc.includes('ac ') || desc.includes('a/c') || desc.includes('light inside') ||
+                       desc.includes('qr')) {
+                fallbackPriority = 'LOW_PRIORITY';
+                fallbackCategory = 'Cosmetic / Minor Issue';
+            // High priority safety keywords (keep as HIGH)
+            } else if (desc.includes('brake') || desc.includes('tire') || desc.includes('flat') ||
+                       desc.includes('steer') || desc.includes('smoke') || desc.includes('fire') ||
+                       desc.includes('leak') || desc.includes("won't start") || desc.includes('overh')) {
+                fallbackPriority = 'HIGH_PRIORITY';
+                fallbackCategory = 'Safety Issue (AI Unavailable — Review Manually)';
+            }
+            aiResponse = {
+                priority:   fallbackPriority,
+                category:   fallbackCategory,
+                confidence: 0.4,
+                reasoning:  isQuotaError
+                    ? 'Gemini API quota exceeded — classified by keyword rules. Please review manually.'
+                    : 'AI classification unavailable — classified by keyword rules. Please review manually.'
+            };
         }
         let reportType = 'General Issue';
         if (aiResponse.priority === 'HIGH_PRIORITY') reportType = 'High Priority Issue';
@@ -2037,6 +2085,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
     if (!req.file)    return res.status(400).json({ success: false, error: 'No video file received' });
 
     const { driverName, vin, inspectionType } = req.body;
+    const supervisorFiled = req.body.supervisorFiled === 'true' || req.body.supervisorFiled === true;
+    const supervisorName  = req.body.supervisorName  || null;
     if (!driverName || !vin || !inspectionType)
         return res.status(400).json({ success: false, error: 'Missing required fields' });
 
@@ -2094,6 +2144,8 @@ app.post('/upload-to-google-drive', upload.single('video'), async (req, res) => 
         driverName,
         vin,
         inspectionType,
+        supervisorFiled: supervisorFiled || false,
+        supervisorName:  supervisorName  || null,
         videoFile:   req.file.filename,  // relative filename in UPLOAD_DIR
         submittedAt: new Date().toISOString(),
         status:      'pending',
@@ -3039,7 +3091,8 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         const finalSizeMB = (fileStats.size / 1024 / 1024).toFixed(2);
         const retryStart  = Date.now();
 
-        const fileName     = `${driverName.replace(/\s+/g,'-')}_${vin}_${inspectionType}_${new Date().toISOString().split('T')[0]}.mp4`;
+        const opsTag      = supervisorFiled && supervisorName ? '_OPS-' + supervisorName.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase() : '';
+        const fileName     = `${driverName.replace(/\s+/g,'-')}_${vin}_${inspectionType}_${new Date().toISOString().split('T')[0]}${opsTag}.mp4`;
         const fileMetadata = {
             name:        fileName,
             parents:     [VIDEO_DRIVE_ID], // uses same folder as main upload
