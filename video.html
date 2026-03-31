@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Inspection v4.6.5</title>
+    <title>Video Inspection v4.6.7</title>
     <style>
         /* --- FLUID RESPONSIVE DESIGN --- */
         :root {
@@ -2208,6 +2208,10 @@
                             try {
                                 const resp = JSON.parse(xhr.responseText);
                                 if (resp.success && resp.jobId) {
+                                    if (resp.duplicate) {
+                                        console.log('🔁 Server detected duplicate — polling existing job:', resp.jobId);
+                                        setProgress(100, '🔁 Already submitted — tracking existing upload...');
+                                    }
                                     resolve(resp.jobId);
                                 } else {
                                     reject(new Error(resp.error || 'Server rejected upload'));
@@ -2219,13 +2223,16 @@
                                 reject(new Error(err.error || `Error ${xhr.status}`));
                             } catch(e) { reject(new Error(`Server error: ${xhr.status}`)); }
                         } else {
-                            reject(new Error(`Server error: ${xhr.status}`));
+                            let errBody = '';
+                            try { errBody = JSON.parse(xhr.responseText).error || ''; } catch(_) { errBody = xhr.responseText.slice(0, 100); }
+                            reject(new Error(`Server error ${xhr.status}: ${errBody || 'No details'}`));
                         }
                     });
 
                     xhr.addEventListener('error',   () => { clearTimeout(simTimer); reject(new Error('Network error during upload')); });
                     xhr.addEventListener('timeout',  () => { clearTimeout(simTimer); reject(new Error('Upload timed out — check WiFi signal')); });
                     xhr.addEventListener('abort',    () => { clearTimeout(simTimer); reject(new Error('Upload cancelled')); });
+                    console.log('📤 Sending upload:', { driver, vin, inspectionType, isOpsMode, blobSize: videoBlob.size });
                     xhr.send(formData);
                 });
 
