@@ -24,6 +24,13 @@ function isRetriable(errMsg) {
            msg.includes('etimedout') ||
            msg.includes('socket hang up') ||
            msg.includes('fetch failed') ||
+           msg.includes('quota') ||
+           msg.includes('rate limit') ||
+           msg.includes('ratelimitexceeded') ||
+           msg.includes('userratelimitexceeded') ||
+           msg.includes('storagequotaexceeded') ||
+           msg.includes('503') ||
+           msg.includes('502') ||
            msg.includes('enotfound');
 }
 
@@ -172,6 +179,8 @@ function enqueueJob(jobId, fn) {
 const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
 
 function drainQueue() {
+    // Keep engine informed of current queue state for smart profile selection
+    engine.updateQueueState(activeJobs, jobQueue.length);
     while (activeJobs < MAX_CONCURRENT_JOBS && jobQueue.length > 0) {
         const { jobId, fn, queuedAt } = jobQueue.shift();
         activeJobs++;
@@ -267,6 +276,7 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
+const engine     = require('./engine');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
 const cron = require('node-cron');
@@ -520,6 +530,16 @@ function detectFFmpeg() {
     }
 }
 detectFFmpeg();
+
+// Initialize engine with available tools
+setTimeout(() => {
+    engine.init({
+        ffmpegPath,
+        ffprobePath,
+        esrganPath,
+        rifePath,
+    });
+}, 2000); // slight delay so detectFFmpeg/ESRGAN finish
 
 // ========================================
 // AI TOOL DETECTION
@@ -2116,6 +2136,13 @@ app.post('/upload-to-google-drive', (req, res, next) => {
     // and return proper JSON instead of crashing the route
     upload.single('video')(req, res, (err) => {
         if (err) {
+            // 'Request aborted' means the client dropped the connection mid-upload
+            // (WiFi blip, screen timeout, or a previous retry's stale connection dying)
+            // This is benign — the client will retry automatically
+            if (err.message === 'Request aborted') {
+                console.warn('⚠️  Client disconnected mid-upload (stale connection) — client will retry');
+                return res.status(499).json({ success: false, error: 'Upload interrupted — please retry' });
+            }
             console.error('❌ Multer error:', err.message);
             if (req.file) { try { require('fs').unlinkSync(req.file.path); } catch(_) {} }
             return res.status(400).json({
@@ -2269,21 +2296,43 @@ app.post('/upload-to-google-drive', (req, res, next) => {
         let finalVideoPath = videoPath;
         wasEnhanced = false;
 
-        // Skip enhancement if raw file is too large — FFmpeg inflates 3×, making Drive
-        // uploads of 50-60MB files impossible within Railway's bandwidth limits.
-        // Files over 20MB upload faster as raw video than as a bloated enhanced file.
-        const ENHANCE_MAX_MB = 20;
-        const rawFileMB      = parseFloat(fileSizeMB);
-        const shouldEnhance  = ffmpegPath && rawFileMB <= ENHANCE_MAX_MB;
+        // ── Engine: analyze video and select processing profile ────────────
+        // Wrap engine analysis in try/catch — if analysis fails, fall back to raw upload
+        let enginePlan;
+        try {
+            enginePlan = await engine.analyze(videoPath, fileSizeMB, jobId);
+        } catch (analyzeErr) {
+            console.warn('⚠️  Engine analysis failed, defaulting to RAW_UPLOAD:', analyzeErr.message);
+            enginePlan = {
+                analysis:  { brightness: 128, isDark: false, isPortrait: false, needsInterp: false, motionScore: 50, qualityScore: 50, fileBytes: 0 },
+                decision:  { profile: 'RAW_UPLOAD', reason: 'analysis error — safe fallback', score: 0 },
+                outputPath: null,
+            };
+        }
+        enginePlan.videoPath  = videoPath;
+        enginePlan.fileSizeMB = fileSizeMB;
+        enginePlan.jobId      = jobId;
 
-        if (shouldEnhance) {
-            updateJob(jobId, { status: 'enhancing', stage: 'Starting enhancement', progress: 5, message: 'Enhancing video quality...' });
-        } else if (rawFileMB > ENHANCE_MAX_MB) {
-            console.log(`⏭️  Skipping enhancement — file ${rawFileMB}MB > ${ENHANCE_MAX_MB}MB threshold (uploading raw)`);
-            updateJob(jobId, { status: 'enhancing', stage: 'Uploading raw', progress: 5, message: `File ${rawFileMB}MB — uploading original (faster)` });
+        // Build output path for enhanced file
+        const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
+        const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
+        enginePlan.outputPath = path.join(outputDir, enhancedFileName + '.mp4');
+        try { fs.mkdirSync(outputDir, { recursive: true }); } catch(_) {}
+
+        const engineResult = await engine.execute(enginePlan, jobId, updateJob);
+
+        if (engineResult.wasEnhanced) {
+            finalVideoPath    = engineResult.finalPath;
+            enhancedVideoPath = engineResult.finalPath;
+            wasEnhanced       = true;
+            updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 68, message: 'Enhancement complete — uploading to Google Drive...' });
+        } else {
+            finalVideoPath = engineResult.finalPath || videoPath;
+            updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 30, message: 'Uploading to Google Drive...' });
         }
 
-        if (shouldEnhance) {
+        if (false) { // legacy block replaced by engine — kept for diff readability
+        if (false) {
             try {
                 console.log('🎨 Starting video enhancement...');
                 const enhanceStart = Date.now();
@@ -2814,9 +2863,8 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                 const trfPath = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
                 try { if (fs.existsSync(trfPath)) fs.unlinkSync(trfPath); } catch(e) {}
             }
-        } else {
-            console.log('⏩ FFmpeg not available - uploading original');
-        }
+        } // end legacy block (never runs — engine handles above)
+        } // end engine section
 
         const finalStats = fs.statSync(finalVideoPath);
         const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
@@ -3009,8 +3057,13 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                 fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
             }
         } catch (_) {}
+        // Record outcome in engine telemetry for future decisions
+        try { engine.recordUploadComplete(enginePlan, finalStats.size, parseFloat(uploadTime) * 1000, true, null); } catch(_) {}
+
         console.log(`✅ Job ${jobId} complete in ${uploadTime}s`);
     } catch (error) {
+        // Record failure in engine telemetry
+        try { engine.recordUploadComplete(enginePlan, 0, 0, false, error.message); } catch(_) {}
         console.error('❌ Video upload error:', error);
 
         await appendLog(ERROR_LOG, {
@@ -3656,6 +3709,17 @@ const PORT = process.env.PORT || 8080;
     });
     console.log('✅ Maintenance agent forked');
 })();
+
+// ── Graceful shutdown ─────────────────────────────────────────
+// Railway sends SIGTERM before stopping container.
+// Log active jobs so they appear in manifests and can be recovered on restart.
+process.on('SIGTERM', () => {
+    console.log('⚠️  SIGTERM received — server shutting down');
+    console.log(`   Active jobs at shutdown: ${activeJobs}, Queue depth: ${jobQueue.length}`);
+    // Jobs with manifests will be recovered by agent on next startup
+    // Jobs in memory queue (not yet started) will be re-submitted by drivers
+    process.exit(0);
+});
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
