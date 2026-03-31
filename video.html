@@ -2166,6 +2166,14 @@
                     formData.append('supervisorName', opsSupervisor);
                 }
 
+                // Abort any previous XHR still alive before starting next attempt
+                if (window._activeXhr) {
+                    try { window._activeXhr.abort(); } catch(_) {}
+                    window._activeXhr = null;
+                }
+                // Small delay between retries to let the server connection fully close
+                if (attempt > 1) await new Promise(r => setTimeout(r, 2000));
+
                 jobId = await new Promise((resolve, reject) => {
                     const xhr = new XMLHttpRequest();
                     window._activeXhr = xhr; // allow beforeunload to abort
