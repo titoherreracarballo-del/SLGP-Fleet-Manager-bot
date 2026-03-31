@@ -679,7 +679,16 @@
 
     <div class="form-group">
         <label>Driver Full Name</label>
-        <input type="text" id="driverName" placeholder="Enter Full Name">
+        <input type="text" id="driverName" placeholder="Enter Full Name" oninput="checkOpsMode(this)">
+    </div>
+
+    <!-- OPS Supervisor Mode Banner (hidden until OPS detected) -->
+    <div id="opsBanner" style="display:none;background:rgba(245,158,11,0.12);border:2px solid #F59E0B;border-radius:var(--radius);padding:var(--space-md);margin-bottom:var(--space-md);">
+        <div style="color:#F59E0B;font-size:var(--font-sm);font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:var(--space-sm);">⚡ Supervisor Mode — OPS Detected</div>
+        <label style="color:#F59E0B;">Driver Being Submitted For</label>
+        <input type="text" id="opsDriverName" placeholder="Enter driver's full name" style="margin-bottom:var(--space-sm);">
+        <label style="color:#F59E0B;">Supervisor / Manager Name</label>
+        <input type="text" id="opsSupervisorName" placeholder="Enter your name">
     </div>
 
     <div class="form-group row-split">
@@ -1801,6 +1810,18 @@
         document.getElementById(type === 'Pre-Trip' ? 'btn-pre' : 'btn-post').classList.add('selected');
     }
 
+    // ── OPS Supervisor Mode ───────────────────────────────────
+    function checkOpsMode(input) {
+        const val = input.value.toUpperCase();
+        const isOps = val.includes('OPS');
+        const banner = document.getElementById('opsBanner');
+        banner.style.display = isOps ? 'block' : 'none';
+        if (!isOps) {
+            document.getElementById('opsDriverName').value = '';
+            document.getElementById('opsSupervisorName').value = '';
+        }
+    }
+
     function autoSelectInspection() {
         // Skip if driver has already manually chosen an inspection type
         if (_userChoseType) return;
@@ -2027,13 +2048,32 @@
         // Cancel any pending auto-reload — upload is in progress, don't interrupt it
         if (_reloadTimer) { clearTimeout(_reloadTimer); _reloadTimer = null; }
 
-        const driver = document.getElementById('driverName').value.trim();
+        const rawDriver  = document.getElementById('driverName').value.trim();
+        const isOpsMode  = rawDriver.toUpperCase().includes('OPS');
+        const opsDriver  = document.getElementById('opsDriverName')?.value.trim()  || '';
+        const opsSupervisor = document.getElementById('opsSupervisorName')?.value.trim() || '';
+
+        // In OPS mode use the actual driver name, not "OPS"
+        const driver = isOpsMode ? opsDriver : rawDriver;
+
         const vin    = document.getElementById('vinInput').value.trim();
 
         if (!videoBlob) {
             document.getElementById('status').innerText = '⚠️ Please record a video first.';
             return;
         }
+        // In OPS mode, require both the driver name and supervisor name
+        if (isOpsMode && !opsDriver) {
+            document.getElementById('status').innerText = '⚠️ OPS mode: please enter the driver name.';
+            document.getElementById('opsDriverName').focus();
+            return;
+        }
+        if (isOpsMode && !opsSupervisor) {
+            document.getElementById('status').innerText = '⚠️ OPS mode: please enter supervisor name.';
+            document.getElementById('opsSupervisorName').focus();
+            return;
+        }
+
         if (!driver || !vin || !inspectionType) {
             document.getElementById('status').innerText = '⚠️ Please fill in your name and VIN, then tap Submit.';
             document.getElementById('driverName').readOnly = false;
@@ -2121,6 +2161,10 @@
                 formData.append('driverName', driver);
                 formData.append('vin', vin);
                 formData.append('inspectionType', inspectionType);
+                if (isOpsMode) {
+                    formData.append('supervisorFiled', 'true');
+                    formData.append('supervisorName', opsSupervisor);
+                }
 
                 jobId = await new Promise((resolve, reject) => {
                     const xhr = new XMLHttpRequest();
