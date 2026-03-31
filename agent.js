@@ -10,6 +10,12 @@ const fs   = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// Engine — read-only from agent (engine runs in index.js process)
+// Agent reads the metrics file engine writes to disk
+const ENGINE_DIR      = '/app/meshcentral-data/engine';
+const ENGINE_METRICS  = path.join(ENGINE_DIR, 'metrics.json');
+const ENGINE_TELEMETRY = path.join(ENGINE_DIR, 'telemetry.json');
+
 // ── Paths (must match index.js) ──────────────────────────────
 const VOLUME_PATH       = '/app/meshcentral-data';
 const UPLOAD_DIR        = path.join(VOLUME_PATH, 'uploads');
@@ -317,6 +323,60 @@ async function healthPing() {
     }
 }
 
+// ── TASK 5b: Engine Health Monitor ──────────────────────────
+const ENGINE_HEALTH_INTERVAL = 10 * 60 * 1000; // every 10 min
+
+function checkEngineHealth() {
+    try {
+        if (!fs.existsSync(ENGINE_METRICS)) {
+            agentLog('ENGINE', 'No engine metrics yet — engine may not be initialized');
+            return;
+        }
+
+        const metrics = JSON.parse(fs.readFileSync(ENGINE_METRICS, 'utf8'));
+        const bw      = metrics.bandwidth || {};
+        const qs      = metrics.queueState || {};
+
+        // Log bandwidth stats
+        const avgBw  = bw.avgMBps ? parseFloat(bw.avgMBps).toFixed(2) : '?';
+        const p25Bw  = bw.p25MBps ? parseFloat(bw.p25MBps).toFixed(2) : '?';
+        agentLog('ENGINE', `Bandwidth: avg=${avgBw}MB/s, conservative=${p25Bw}MB/s | Queue: ${qs.activeJobs || 0} active, ${qs.queueDepth || 0} pending`, {
+            avgMBps: avgBw, p25MBps: p25Bw, ...qs
+        });
+
+        // Alert on very slow bandwidth
+        if (bw.p25MBps && bw.p25MBps < 0.5) {
+            agentLog('ENGINE', `🚨 CRITICAL: bandwidth ${p25Bw}MB/s — Drive uploads will timeout. Consider pausing submissions.`, { p25Bw });
+            try {
+                let errors = [];
+                try { errors = JSON.parse(fs.readFileSync(ERROR_LOG, 'utf8')); } catch(_) {}
+                errors.push({ type: 'engine_warning', severity: 'critical', message: `Critical bandwidth: ${p25Bw}MB/s`, source: 'agent-engine', timestamp: new Date().toISOString() });
+                if (errors.length > 1000) errors = errors.slice(-1000);
+                fs.writeFileSync(ERROR_LOG, JSON.stringify(errors, null, 2));
+            } catch(_) {}
+        }
+
+        // Log profile success rates
+        const stats = metrics.profileStats || {};
+        for (const [profile, s] of Object.entries(stats)) {
+            const total = s.success + s.fail;
+            if (total > 0) {
+                const rate = Math.round(s.success / total * 100);
+                if (rate < 50 && total >= 3) {
+                    agentLog('ENGINE', `⚠️  Profile ${profile} success rate: ${rate}% (${s.success}/${total}) — engine may auto-downgrade`, { profile, rate });
+                }
+            }
+        }
+
+        // Report retry outcomes back to engine telemetry
+        // (engine telemetry is in the same file — agent just appends context)
+        agentLog('ENGINE', 'Engine health check complete');
+
+    } catch(e) {
+        agentLog('ENGINE', `Engine health check error: ${e.message}`);
+    }
+}
+
 // ── TASK 6: Midnight Disk / Volume Summary ───────────────────
 function diskSummary() {
     try {
@@ -476,6 +536,16 @@ async function triggerRetry(entry) {
         });
     } catch(e) {
         agentLog('RETRY_WATCHER', `Failed to call retry endpoint for ${jobId}`, { error: e.message });
+        // Record retry failure in engine telemetry
+        try {
+            if (fs.existsSync(ENGINE_TELEMETRY)) {
+                const tel = JSON.parse(fs.readFileSync(ENGINE_TELEMETRY, 'utf8'));
+                tel.agentRetryFails = tel.agentRetryFails || [];
+                tel.agentRetryFails.push({ jobId, error: e.message, ts: Date.now() });
+                if (tel.agentRetryFails.length > 20) tel.agentRetryFails = tel.agentRetryFails.slice(-20);
+                fs.writeFileSync(ENGINE_TELEMETRY, JSON.stringify(tel));
+            }
+        } catch(_) {}
     }
 }
 
@@ -624,6 +694,7 @@ setTimeout(() => reapStaleUploads(),  10000);
 setTimeout(() => rotateLogs(),        15000);
 setTimeout(() => checkMemory(),       20000);
 setTimeout(() => checkDiskSpace(),    25000); // check disk early — before first upload could fail
+setTimeout(() => checkEngineHealth(),  35000); // check engine metrics after index.js warms up
 setTimeout(() => healthPing(),        30000);
 setTimeout(() => processRetryQueue(),      45000); // check retry queue after server fully warms up
 setTimeout(() => recoverInterruptedJobs(), 60000); // scan for jobs interrupted by deploy/restart
@@ -634,6 +705,7 @@ setInterval(reapStaleUploads,    UPLOAD_REAP_INTERVAL);
 setInterval(rotateLogs,          LOG_ROTATE_INTERVAL);
 setInterval(checkMemory,         MEMORY_CHECK_INTERVAL);
 setInterval(checkDiskSpace,      DISK_CHECK_INTERVAL);
+setInterval(checkEngineHealth,   ENGINE_HEALTH_INTERVAL);
 setInterval(healthPing,          HEALTH_PING_INTERVAL);
 setInterval(checkMidnight,       60 * 1000);   // check every minute for midnight
 setInterval(processRetryQueue,   RETRY_CHECK_INTERVAL); // watch for failed jobs to retry
