@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────
 # SLGP Fleet Web App
-# Node.js 20 + FFmpeg + Real-ESRGAN + RIFE (CPU mode)
+# Node.js 20 + FFmpeg + Real-ESRGAN + RIFE (CPU mode) + OpenCV
 # ─────────────────────────────────────────────────────────────
 FROM node:20-bookworm-slim
 
@@ -17,11 +17,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     wget \
     ca-certificates \
-    # OpenGL deps (ncnn runtime)
+    # OpenGL / runtime deps
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    # Python — dark recovery pipeline (engine.js OpenCV)
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Python packages — OpenCV dark recovery ───────────────────
+# opencv-python-headless: no GUI deps, works in headless containers
+RUN pip3 install --no-cache-dir --break-system-packages \
+    opencv-python-headless==4.10.0.84 \
+    numpy==1.26.4
 
 # ── Real-ESRGAN (ncnn-vulkan binary, CPU-compatible via -g -1) ──
 # v0.2.5.0 — last stable release with realesr-animevideov3 model
