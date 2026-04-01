@@ -2321,6 +2321,34 @@ app.post('/upload-to-google-drive', (req, res, next) => {
 
         const engineResult = await engine.execute(enginePlan, jobId, updateJob);
 
+        // ── Lens obstruction alert ─────────────────────────────
+        if (enginePlan.decision.obstructed) {
+            console.warn(`🚫 Job ${jobId}: lens obstruction detected for ${driverName} VIN ${vin}`);
+            // Fire Discord alert immediately
+            try {
+                if (discordClient) {
+                    const ch = discordClient.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
+                    if (ch) ch.send(`🚫 **Lens Obstruction** — Driver **${driverName}** VIN \`${vin}\` submitted a blocked video. Ask them to clean the lens and resubmit.`);
+                }
+            } catch(_) {}
+        }
+
+        // ── Driver quality history ──────────────────────────────
+        // Track consecutive poor submissions — alerts at 3 in a row
+        try {
+            const isGoodQuality = enginePlan.analysis.qualityScore >= 30 && !enginePlan.decision.obstructed;
+            const driverAlert   = engine.recordDriverQuality(driverName, vin, isGoodQuality, enginePlan.decision.obstructed);
+            if (driverAlert) {
+                console.warn(`⚠️  Driver quality alert: ${driverAlert.message}`);
+                try {
+                    if (discordClient) {
+                        const ch = discordClient.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
+                        if (ch) ch.send(driverAlert.message);
+                    }
+                } catch(_) {}
+            }
+        } catch(_) {}
+
         if (engineResult.wasEnhanced) {
             finalVideoPath    = engineResult.finalPath;
             enhancedVideoPath = engineResult.finalPath;
@@ -2870,6 +2898,17 @@ app.post('/upload-to-google-drive', (req, res, next) => {
         const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
         const fileName = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
 
+        // ── Pre-upload bandwidth probe ──────────────────────────
+        // Measure actual current bandwidth before committing to Drive upload.
+        // If probe shows < 0.8 MB/s and file is large, log a warning.
+        try {
+            const probeUrl  = `https://${req.hostname || 'slgpmeshserver.com'}/api/bandwidth-probe`;
+            const liveSpeed = await engine.probeBandwidth(probeUrl);
+            if (liveSpeed && liveSpeed < 0.8 && finalStats.size > 10 * 1024 * 1024) {
+                console.warn(`⚠️  Low bandwidth probe: ${liveSpeed.toFixed(2)} MB/s — ${finalSizeMB}MB upload may timeout`);
+            }
+        } catch(_) {}
+
         console.log(`☁️  Starting Google Drive upload (${wasEnhanced ? 'enhanced' : 'original'}, ${finalSizeMB}MB)...`);
 
         const fileMetadata = {
@@ -3404,6 +3443,14 @@ app.get('/version', (req, res) => {
 // NODE / ENVIRONMENT INFO ENDPOINT
 // Visit /api/node-version to see all runtime info
 // ============================================
+// ── Bandwidth probe endpoint (used by engine before Drive uploads) ──
+// Accepts any POST body, discards it, returns 200 immediately.
+// Engine measures how long the 100KB upload took = current bandwidth.
+app.post('/api/bandwidth-probe', (req, res) => {
+    req.resume(); // drain body without processing
+    res.status(200).json({ ok: true, ts: Date.now() });
+});
+
 app.get('/api/node-version', (req, res) => {
     try {
         const { execSync } = require('child_process');
