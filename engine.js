@@ -126,14 +126,18 @@ function _writeDarkRecoveryScript() {
         '            if n % 60 == 0: print(f"PROGRESS:{n}/{total}", flush=True)',
         '        cap.release()',
         '        ffmpeg = os.environ.get("FFMPEG_PATH", "ffmpeg")',
+        '        # Detect audio stream before mapping — -map 1:a fails on silent videos',
+        '        probe = subprocess.run([ffmpeg, "-i", inp, "-hide_banner"], capture_output=True, timeout=10)',
+        '        has_audio = b"Audio:" in probe.stderr',
+        '        audio_args = ["-map", "1:a", "-c:a", "aac", "-b:a", "128k"] if has_audio else ["-an"]',
         '        r = subprocess.run([',
         '            ffmpeg, "-y", "-r", str(fps),',
         '            "-i", os.path.join(frame_dir, "frame_%06d.png"),',
-        '            "-i", inp, "-map", "0:v", "-map", "1:a",',
+        '            "-i", inp, "-map", "0:v", *audio_args,',
         '            "-c:v", "libx264", "-preset", "medium", "-crf", "23",',
         '            "-maxrate", "8000k", "-bufsize", "16000k",',
         '            "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",',
-        '            "-c:a", "aac", "-b:a", "128k", "-shortest", out',
+        '            "-shortest", out',
         '        ], capture_output=True, timeout=600)',
         '        if r.returncode != 0: sys.exit(f"FFmpeg failed: {r.stderr.decode()[:200]}")',
         '        print(f"DONE:{n}", flush=True)',
@@ -370,8 +374,11 @@ function verifyOutput(filePath) {
         if (!stream || !stream.codec_name)
             return { ok: false, reason: 'no video stream found' };
 
-        const frames = parseInt(stream.nb_frames || 0);
-        if (frames < 5) return { ok: false, reason: `only ${frames} frames` };
+        const frames   = parseInt(stream.nb_frames || 0);
+        const duration = parseFloat(stream.duration || 0);
+        // nb_frames may be absent in some containers (fragmented mp4, etc.)
+        // Fall back to duration check — if > 0.5s the file is valid
+        if (frames < 5 && duration < 0.5) return { ok: false, reason: `too short: ${frames} frames, ${duration}s` };
 
         return { ok: true, frames, codec: stream.codec_name, sizeMB: (stat.size/1024/1024).toFixed(1) };
     } catch (err) {
