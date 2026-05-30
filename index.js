@@ -9,8 +9,8 @@ const { Pool } = require('pg');
 // touches a live enhancement job
 // ============================================
 const activeFfmpegPids = new Set();
-const ACTIVE_PIDS_FILE  = '/app/meshcentral-data/active_pids.json';
-const RETRY_QUEUE_FILE  = '/app/meshcentral-data/retry_queue.json';
+const ACTIVE_PIDS_FILE  = (process.env.VOLUME_PATH || '/app/meshcentral-data') + '/active_pids.json';
+const RETRY_QUEUE_FILE  = (process.env.VOLUME_PATH || '/app/meshcentral-data') + '/retry_queue.json';
 const MAX_RETRY_ATTEMPTS = 3;
 
 // Errors worth retrying — network/timeout blips, not corrupt files or auth failures
@@ -305,7 +305,7 @@ const BUILD_INFO = {
     nodeVersion: process.version
 };
 
-const VOLUME_PATH = '/app/meshcentral-data';
+const VOLUME_PATH = process.env.VOLUME_PATH || '/app/meshcentral-data';
 const UPLOAD_DIR    = path.join(VOLUME_PATH, 'uploads');
 const ENHANCED_DIR  = path.join(VOLUME_PATH, 'enhanced'); // FFmpeg output - always writable on Railway
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -644,7 +644,7 @@ function initializeDrive() {
         const credentials = JSON.parse(process.env.GCP_SA_KEY);
         const auth = new google.auth.GoogleAuth({
             credentials: credentials,
-            scopes: ['https://www.googleapis.com/auth/drive.file']
+            scopes: ['https://www.googleapis.com/auth/drive']
         });
         driveClient = google.drive({ version: 'v3', auth });
         console.log('✅ Google Drive connected');
