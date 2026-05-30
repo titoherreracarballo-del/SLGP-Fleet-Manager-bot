@@ -333,11 +333,10 @@ const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 async function ensureDirectories() {
     const dirs = [UPLOAD_DIR, LOGS_DIR, ENHANCED_DIR];
     for (const dir of dirs) {
-        if (!fs.existsSync(dir)) {
-            try {
-                fs.mkdirSync(dir, { recursive: true });
-                console.log(`✅ Created directory: ${dir}`);
-            } catch (e) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+        } catch (e) {
+            if (e.code !== 'EEXIST') {
                 console.error(`❌ Failed to create ${dir}:`, e.message);
             }
         }
@@ -637,15 +636,22 @@ detectAITools();
 
 function initializeDrive() {
     try {
-        if (!process.env.GCP_SA_KEY) {
-            console.error('❌ GCP_SA_KEY not set - Google Drive disabled');
+        let auth;
+        if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+            // Use key file — avoids OpenSSL 3 RSA issues with env var escaping
+            auth = new google.auth.GoogleAuth({
+                scopes: ['https://www.googleapis.com/auth/drive']
+            });
+        } else if (process.env.GCP_SA_KEY) {
+            const credentials = JSON.parse(process.env.GCP_SA_KEY);
+            auth = new google.auth.GoogleAuth({
+                credentials,
+                scopes: ['https://www.googleapis.com/auth/drive']
+            });
+        } else {
+            console.error('❌ No Google credentials - Drive disabled');
             return;
         }
-        const credentials = JSON.parse(process.env.GCP_SA_KEY);
-        const auth = new google.auth.GoogleAuth({
-            credentials: credentials,
-            scopes: ['https://www.googleapis.com/auth/drive']
-        });
         driveClient = google.drive({ version: 'v3', auth });
         console.log('✅ Google Drive connected');
     } catch (error) {
