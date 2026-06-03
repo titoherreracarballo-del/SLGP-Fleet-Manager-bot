@@ -9,8 +9,8 @@ const { Pool } = require('pg');
 // touches a live enhancement job
 // ============================================
 const activeFfmpegPids = new Set();
-const ACTIVE_PIDS_FILE  = (process.env.VOLUME_PATH || '/app/meshcentral-data') + '/active_pids.json';
-const RETRY_QUEUE_FILE  = (process.env.VOLUME_PATH || '/app/meshcentral-data') + '/retry_queue.json';
+const ACTIVE_PIDS_FILE  = '/app/meshcentral-data/active_pids.json';
+const RETRY_QUEUE_FILE  = '/app/meshcentral-data/retry_queue.json';
 const MAX_RETRY_ATTEMPTS = 3;
 
 // Errors worth retrying — network/timeout blips, not corrupt files or auth failures
@@ -286,9 +286,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 // Shared nodemailer transporter — created once at startup, reused for all sends.
 // Endpoints that need a different mailbox create their own transporter locally.
 const mailTransport = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+    host: 'smtp.gmail.com', port: 587, secure: false,
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     tls: { rejectUnauthorized: false }
 });
@@ -308,7 +306,7 @@ const BUILD_INFO = {
     nodeVersion: process.version
 };
 
-const VOLUME_PATH = process.env.VOLUME_PATH || '/app/meshcentral-data';
+const VOLUME_PATH = '/app/meshcentral-data';
 const UPLOAD_DIR    = path.join(VOLUME_PATH, 'uploads');
 const ENHANCED_DIR  = path.join(VOLUME_PATH, 'enhanced'); // FFmpeg output - always writable on Railway
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -336,10 +334,11 @@ const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 async function ensureDirectories() {
     const dirs = [UPLOAD_DIR, LOGS_DIR, ENHANCED_DIR];
     for (const dir of dirs) {
-        try {
-            fs.mkdirSync(dir, { recursive: true });
-        } catch (e) {
-            if (e.code !== 'EEXIST') {
+        if (!fs.existsSync(dir)) {
+            try {
+                fs.mkdirSync(dir, { recursive: true });
+                console.log(`✅ Created directory: ${dir}`);
+            } catch (e) {
                 console.error(`❌ Failed to create ${dir}:`, e.message);
             }
         }
@@ -641,7 +640,6 @@ function initializeDrive() {
     try {
         let auth;
         if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-            // Use key file — avoids OpenSSL 3 RSA issues with env var escaping
             auth = new google.auth.GoogleAuth({
                 scopes: ['https://www.googleapis.com/auth/drive']
             });
@@ -3000,9 +2998,7 @@ app.post('/upload-to-google-drive', (req, res, next) => {
 
         try {
             const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false,
+                host: 'smtp.gmail.com', port: 587, secure: false,
                 auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
                 connectionTimeout: 10000,
                 greetingTimeout:   10000,
@@ -3333,9 +3329,7 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         // Send email notification
         try {
             const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false,
+                host: 'smtp.gmail.com', port: 587, secure: false,
                 auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
                 connectionTimeout: 10000,
                 greetingTimeout:   10000,
