@@ -3914,6 +3914,32 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
             } else {
                 console.log('✅ Startup recovery: no orphaned jobs found');
             }
+            // ── Orphan MP4 scan — uploaded files with no manifest ────────────
+            try {
+                const allMp4s  = fs.readdirSync(UPLOAD_DIR).filter(f => f.endsWith('.mp4'));
+                const manifests = fs.readdirSync(UPLOAD_DIR).filter(f => f.endsWith('.manifest.json'))
+                    .map(f => { try { return JSON.parse(fs.readFileSync(path.join(UPLOAD_DIR, f), 'utf8')); } catch(_){return null;} })
+                    .filter(Boolean);
+                const knownFiles = new Set(manifests.map(m => m.videoFile).filter(Boolean));
+                const orphans = allMp4s.filter(f => !knownFiles.has(f));
+
+                if (orphans.length > 0) {
+                    console.warn(`⚠️  Found ${orphans.length} orphaned video(s) with no manifest — mid-upload crash likely`);
+                    const fileList = orphans.map(f => {
+                        const stat = fs.statSync(path.join(UPLOAD_DIR, f));
+                        return `• ${f} (${(stat.size/1024/1024).toFixed(1)}MB, ${Math.round((Date.now()-stat.mtimeMs)/60000)}min old)`;
+                    }).join('\n');
+                    mailTransport.sendMail({
+                        from: process.env.EMAIL_USER,
+                        to:   ['slgpfleetmanager@gmail.com'],
+                        subject: `⚠️ ${orphans.length} Walk-Around Video(s) Lost — Driver Resubmit Needed`,
+                        text: `Fleet Bot restarted and found ${orphans.length} video file(s) that were mid-upload with no submission record.\n\nThese videos cannot be auto-recovered.\nPlease ask the affected driver(s) to resubmit their walk-around.\n\nOrphaned files:\n${fileList}`
+                    }).catch(e => console.warn('⚠️  Orphan email failed:', e.message));
+                }
+            } catch (orphanErr) {
+                console.warn('⚠️  Orphan scan error:', orphanErr.message);
+            }
+
         } catch (scanErr) {
             console.warn('⚠️  Startup manifest scan failed:', scanErr.message);
         }
