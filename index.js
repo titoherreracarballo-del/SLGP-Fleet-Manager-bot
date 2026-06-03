@@ -3747,6 +3747,28 @@ app.get('/health', (req, res) => {
     });
 });
 
+// ── GitHub webhook — auto-deploy on push ─────────────────────────────────────
+app.post('/hooks/deploy-fleet', express.raw({ type: '*/*' }), (req, res) => {
+    const secret = process.env.WEBHOOK_SECRET || '';
+    const sig    = req.headers['x-hub-signature-256'] || '';
+    const body   = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    const hmacSig = 'sha256=' + require('crypto')
+        .createHmac('sha256', secret)
+        .update(body)
+        .digest('hex');
+    if (secret && sig !== hmacSig) {
+        return res.status(401).send('Unauthorized');
+    }
+    res.status(200).send('Deploy triggered');
+    const { spawn } = require('child_process');
+    const proc = spawn('/bin/bash', ['/root/deploy-fleet.sh'], {
+        detached: true, stdio: 'ignore'
+    });
+    proc.unref();
+    console.log('[WEBHOOK] Deploy triggered via GitHub push');
+});
+
+
 const PORT = process.env.PORT || 8080;
 
 // ============================================
