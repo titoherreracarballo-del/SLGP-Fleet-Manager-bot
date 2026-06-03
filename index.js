@@ -2443,24 +2443,8 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     }
                 }
 
-                // ── Pass 1: Motion analysis (vidstab) ──────────────────────
-                const stabTrfPath = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
-                try {
-                    await new Promise((res, rej) => {
-                        const p1args = [
-                            '-y', '-i', videoPath,
-                            '-vf', `vidstabdetect=stepsize=4:shakiness=10:accuracy=15:mincontrast=0.2:result=${stabTrfPath}`,
-                            '-f', 'null', '-'
-                        ];
-                        const p1 = spawnFfmpeg(ffmpegPath, p1args);
-                        p1.on('close', code => code === 0 ? res() : rej(new Error('vidstab pass 1 failed')));
-                        p1.on('error', rej);
-                        setTimeout(() => { p1.kill(); rej(new Error('vidstab timeout')); }, 120000);
-                    });
-                    console.log('✅ vidstab pass 1 complete — transforms ready');
-                } catch (stabErr) {
-                    console.warn('⚠️ vidstab pass 1 skipped:', stabErr.message);
-                }
+                // vidstab removed — causes gelatin on walking footage.
+                // -vsync cfr in FFmpeg args fixes VFR jitter without any two-pass overhead.
                 // ── Pass 2: Enhancement + stabilization ──────────────────
                 const runFFmpeg = (filters) => new Promise((resolve, reject) => {
                     let settled = false; // guard: close fires after error — only settle once
@@ -2469,85 +2453,63 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     const args = [
                         '-y', '-i', videoPath,
                         '-vf', filters.join(','),
-                        '-r', '30',
-                        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',  // no bitrate cap — CRF controls quality
+                        '-r', '30', '-vsync', 'cfr',  // enforce CFR — fixes VFR jitter from Android phones
+                        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
                         '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
                         '-c:a', 'aac', '-b:a', '128k',
-                        '-f', 'mp4',
-                        '-movflags', 'frag_keyframe+empty_moov', // streamable mp4 - works over pipe
-                        'pipe:1'  // output to stdout so Node.js can write to volume
+                        '-movflags', '+faststart',  // standard MP4, not fragmented
+                        enhancedVideoPath           // write directly to file — no pipe fragility
                     ];
 
                     const proc      = spawnFfmpeg(ffmpegPath, args);
-                    let   outStream;
-                    try {
-                        outStream = fs.createWriteStream(enhancedVideoPath);
-                    } catch(streamOpenErr) {
-                        reject(new Error(`Cannot open output stream: ${streamOpenErr.message}`));
-                        return;
-                    }
                     let   stderrBuf = '';
-                    let   bytesOut  = 0;
                     const pid       = proc.pid;
                     if (pid) registerPid(pid);
                     console.log(`🎬 FFmpeg started (PID: ${pid || 'unknown'})`);
 
-                    // Handle stream write errors (e.g. dir vanishes, disk full)
-                    outStream.on('error', streamErr => {
-                        console.error('❌ Output stream error:', streamErr.message);
-                        clearTimeout(killTimer);
-                        if (pid) unregisterPid(pid);
-                        try { proc.kill('SIGKILL'); } catch(e) {}
-                        try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                        settle(reject, new Error(`Output stream error: ${streamErr.message}`));
-                    });
+                    // stdout is unused — FFmpeg writes directly to file
+                    proc.stdout.resume();
 
                     const killTimer = setTimeout(() => {
                         console.error('❌ FFmpeg 4-min timeout - killing');
                         if (pid) unregisterPid(pid);
                         try { proc.kill('SIGKILL'); } catch(e) {}
-                        outStream.destroy();
+                        try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
                         settle(reject, new Error('FFmpeg timeout - exceeded 4 minutes'));
                     }, FFMPEG_TIMEOUT_MS);
 
-                    proc.stdout.on('data', chunk => {
-                        bytesOut += chunk.length;
-                        const ok = outStream.write(chunk);
-                        if (!ok) {
-                            proc.stdout.pause();
-                            outStream.once('drain', () => proc.stdout.resume());
+                    // stdout unused — FFmpeg writes directly to file
+                    proc.stdout.resume();
+
+                    proc.stderr.on('data', d => {
+                        stderrBuf += d.toString();
+                        const m = stderrBuf.match(/frame=\s*(\d+)/g);
+                        if (m) {
+                            const f = parseInt(m[m.length-1].replace('frame=','').trim());
+                            updateJob(jobId, {
+                                status: 'enhancing', stage: 'Enhancing video',
+                                progress: Math.min(90, 10 + Math.round(f/9)), message: `Encoding frame ${f}...`
+                            });
                         }
-                        // Approximate progress from bytes (rough estimate)
-                        const approxPct = Math.min(Math.round(bytesOut / 50000), 90);
-                        updateJob(jobId, {
-                            status: 'enhancing', stage: 'Enhancing video',
-                            progress: approxPct, message: `Enhancing video quality...`
-                        });
                     });
-                    proc.stderr.on('data', d => { stderrBuf += d.toString(); });
 
                     proc.on('close', code => {
                         clearTimeout(killTimer);
                         if (pid) unregisterPid(pid);
-                        // Wait for write stream to fully flush before stat-ing the file.
-                        // Without the callback, fs.statSync can race against buffered bytes.
-                        outStream.end(() => {
-                            if (settled) return; // stream error already rejected — don't double-fire
-                            if (code === 0 && bytesOut > 10000) {
-                                try {
-                                    const enhancedStats = fs.statSync(enhancedVideoPath);
-                                    const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                                    const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
-                                    console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
-                                    settle(resolve);
-                                } catch (statErr) {
-                                    console.warn('⚠️  Enhanced file missing after code=0:', statErr.message);
-                                    settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
-                                }
-                            } else {
-                                // Clean up partial file
-                                try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                                const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
+                        if (settled) return;
+                        if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) {
+                            try {
+                                const enhancedStats = fs.statSync(enhancedVideoPath);
+                                const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
+                                const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
+                                console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
+                                settle(resolve);
+                            } catch (statErr) {
+                                settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
+                            }
+                        } else {
+                            try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
+                            const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
                                 settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
                             }
                         });
@@ -2555,7 +2517,6 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     proc.on('error', err => {
                         clearTimeout(killTimer);
                         if (pid) unregisterPid(pid);
-                        outStream.destroy();
                         settle(reject, err);
                     });
                 });
@@ -2600,8 +2561,7 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
                     : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
                 // vidstab transform file written by pass 1 (if available)
-                const stabTrf = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
-                const hasStab = fs.existsSync(stabTrf);
+                // stabilization removed — CFR handles timing
 
                 // ── Auto-detect input FPS and interpolate if below 25fps ──────────────
                 // Samsung XCover7 (and most Android phones via Chrome MediaRecorder)
@@ -2625,15 +2585,15 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     }
                 } catch(e) { console.warn('fps probe failed, assuming 30fps'); }
 
-                const needsInterpolation = inputFps < 20;
+                const needsInterpolation = inputFps < 25; // interpolate anything under 25fps for smooth 30fps output
+                // Always apply fps filter to normalize timing jitter even at 30fps
+                const fpsFilter = 'fps=30,settb=1/90000';
                 console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'needs interpolation' : 'no interpolation needed'));
 
-                // ── Server stabilization: DISABLED ───────────────────────────────
-                // Recording now uses raw camera stream (not stabilized canvas), so
-                // vidstab would be the only pass — but it still interacts badly with
-                // the browser's own gyro-compensated video stream. Disabled until
-                // a clean single-pass stab approach is confirmed to help.
-                const stabFilter = null;
+                // ── Server stabilization ─────────────────────────────────────────
+                // Light stabilization (shakiness=5, smoothing=5) removes hand shake
+                // without causing the gelatin/wobbly effect from over-stabilization.
+
 
                 console.log('🎨 Scene mode: ' + (isDark ? 'DARK/INDOOR' : 'OUTDOOR') + ' (brightness=' + srcBrightness.toFixed(0) + ')');
                 console.log('🤖 AI tools: ESRGAN=' + (esrganPath ? 'YES' : 'NO') + ' RIFE=' + (rifePath ? 'YES' : 'NO'));
@@ -2725,7 +2685,7 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                         const preFilters = [
                             ...(interpSource === videoPath ? [scaleFilter] : []), // already scaled by RIFE
                             ...(cropFilter   ? [cropFilter]   : []),
-                            ...(stabFilter   ? [stabFilter]   : []),
+                            fpsFilter,
                             // Pre-denoise dark footage lightly before ESRGAN
                             // ESRGAN handles noise, but very heavy grain confuses the model
                             isDark ? 'nlmeans=s=4:p=3:r=5' : 'hqdn3d=1:0.7:1.5:1',
@@ -2811,24 +2771,18 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                                 '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
                                 '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
                                 '-c:a', 'aac', '-b:a', '128k',
-                                '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov',
-                                'pipe:1'
+                                '-movflags', '+faststart',
+                                '-vsync', 'cfr',
+                                enhancedVideoPath
                             ];
-                            const proc    = spawnAI(ffmpegPath, args);
-                            let outStream;
-                            try {
-                                outStream = fs.createWriteStream(enhancedVideoPath);
-                            } catch(e) { rej(e); return; }
-                            outStream.on('error', e => { try { proc.kill(); } catch(_){} rej(e); });
-                            proc.stdout.pipe(outStream);
+                            const proc = spawnAI(ffmpegPath, args);
+                            proc.stdout.resume();
                             proc.stderr.on('data', () => {});
                             const killT = setTimeout(() => { proc.kill(); rej(new Error('Encode timeout')); }, 8 * 60 * 1000);
                             proc.on('close', code => {
                                 clearTimeout(killT);
-                                outStream.end(() => {
-                                    if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
-                                    else rej(new Error('Final encode exit ' + code));
-                                });
+                                if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
+                                else rej(new Error('Final encode exit ' + code));
                             });
                             proc.on('error', rej);
                         });
@@ -2847,13 +2801,14 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                     ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
                     : null;
 
+                // Clean filter chain — -vsync cfr handles VFR at encoder level
                 const fullFilters = [
                     scaleFilter,
-                    ...(cropFilter   ? [cropFilter]   : []),
-                    ...(interpFilter ? [interpFilter] : []),
-                    isDark ? 'hqdn3d=0.8:0.6:1.2:1.0' : 'hqdn3d=0.9:0.7:1.4:1.1',
-                    isDark ? 'eq=brightness=0.10:contrast=1.18:saturation=1.08:gamma=0.96' : 'eq=brightness=0.03:contrast=1.06:saturation=1.03',
-                    'unsharp=5:5:0.8:3:3:0.0',
+                    ...(cropFilter ? [cropFilter] : []),
+                    'fps=30',
+                    isDark ? 'hqdn3d=2.0:1.5:2.5:2.0' : 'hqdn3d=1.5:1.2:2.0:1.5',
+                    isDark ? 'eq=brightness=0.10:contrast=1.15:saturation=1.05:gamma=0.95' : 'eq=brightness=0.03:contrast=1.05:saturation=1.03',
+                    'unsharp=5:5:0.6:3:3:0.0',
                 ].filter(Boolean);
 
                 // ── Execute: AI pipeline → FFmpeg full → FFmpeg basic ─────────────
