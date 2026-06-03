@@ -765,7 +765,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       6000000,
+        VIDEO_BITRATE:       8000000, // 8Mbps — better source quality for server enhancement
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -1293,9 +1293,9 @@
             const constraints = {
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width:      { min: 1080, ideal: 1920 },
-                    height:     { min: 1080, ideal: 1920 },
-                    frameRate:  { min: 24, ideal: 30, max: 30 }, // min:24 tells Android not to drop fps in low light — use flash/ISO instead
+                    width:      { min: 720, ideal: 1920 },
+                    height:     { min: 720, ideal: 1080 },
+                    frameRate:  { min: 24, ideal: 30, max: 30 }, // min:24 tells Android not to drop fps in low light
                     aspectRatio: { ideal: 9 / 16 }
                 },
                 audio: {
@@ -1998,7 +1998,7 @@
                     isRecording = false;
                 };
 
-                mediaRecorder.start(); // no timeslice — one clean blob on stop, avoids per-second main thread interruptions
+                mediaRecorder.start(1000); // 1s timeslice — reduces memory pressure on budget phones, prevents frame drops
                 isRecording = true;
                 startTimer();
                 document.getElementById('btn-record').classList.add('recording');
