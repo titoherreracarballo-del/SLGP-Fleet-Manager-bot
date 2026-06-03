@@ -229,7 +229,7 @@ async function analyzeVideo(videoPath) {
         }
         analysis.durationSec = parseFloat(format.duration || 0);
         analysis.hasAudio    = !!aStream;
-        analysis.needsInterp = analysis.fps < 20;
+        analysis.needsInterp = analysis.fps < 25; // interpolate anything under 25fps
 
         // ── Lens obstruction ────────────────────────────────────
         const obs = await detectLensObstruction(videoPath, analysis.durationSec);
@@ -608,36 +608,48 @@ function selectProfile(analysis, fileSizeMB, isRetry, attemptCount) {
 // FFMPEG RUNNER
 // ═══════════════════════════════════════════════════════════════
 async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
+    // Write directly to file — eliminates pipe fragility and fragmented MP4.
+    // -vsync cfr enforces constant frame rate at encoder level, fixing VFR jitter
+    // from Android phones that record at variable frame rates under CPU load.
     return new Promise((resolve, reject) => {
         const args = [
-            '-y', '-i', inputPath, '-vf', filters.join(','), '-r', '30',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+            '-y', '-i', inputPath,
+            '-vf', filters.join(','),
+            '-r', '30', '-vsync', 'cfr',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
             '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '128k',
-            '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov', 'pipe:1'
+            '-movflags', '+faststart',
+            outputPath
         ];
-        const proc = spawn(_ffmpegPath, args);
-        let outStream, settled = false;
-        const settle = (fn, v) => { if (!settled) { settled = true; fn(v); } };
-        try { outStream = fs.createWriteStream(outputPath); }
-        catch (e) { return reject(e); }
 
-        outStream.on('error', e => { try { proc.kill('SIGKILL'); } catch(_) {} settle(reject, e); });
-        proc.stdout.pipe(outStream);
+        let settled  = false;
+        let stderrBuf = '';
+        const settle = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+        const proc   = spawn(_ffmpegPath, args);
+
         proc.stderr.on('data', chunk => {
-            const m = chunk.toString().match(/frame=\s*(\d+)/);
-            if (m && updateJobFn) updateJobFn(jobId, { progress: 30, message: `Encoding frame ${m[1]}` });
+            stderrBuf += chunk.toString();
+            const m = stderrBuf.match(/frame=\s*(\d+)/g);
+            if (m && updateJobFn) {
+                const f = parseInt(m[m.length-1].replace('frame=','').trim());
+                updateJobFn(jobId, { progress: Math.min(90, 10 + Math.round(f/9)), message: `Encoding frame ${f}` });
+            }
         });
 
-        const wd = setTimeout(() => { try { proc.kill('SIGKILL'); } catch(_) {} settle(reject, new Error('FFmpeg timeout')); }, 5*60*1000);
+        const wd = setTimeout(() => {
+            try { proc.kill('SIGKILL'); } catch(_) {}
+            settle(reject, new Error('FFmpeg timeout (5min)'));
+        }, 5 * 60 * 1000);
+
         proc.on('close', code => {
             clearTimeout(wd);
-            outStream.end(() => {
-                if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 10000)
-                    settle(resolve);
-                else
-                    settle(reject, new Error(`FFmpeg exit ${code}`));
-            });
+            if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 10000)
+                settle(resolve);
+            else {
+                try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch(_) {}
+                settle(reject, new Error(`FFmpeg exit ${code}: ${stderrBuf.slice(-300)}`));
+            }
         });
         proc.on('error', e => { clearTimeout(wd); settle(reject, e); });
     });
@@ -735,30 +747,36 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
         ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
         : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
 
-    const interpFilter = analysis.needsInterp
-        ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100' : null;
+    // ── Clean filter chains — no vidstab (causes gelatin on walking footage) ──
+    // The -vsync cfr in _runFFmpeg already fixes VFR jitter at encoder level.
+    // fps filter here ensures consistent filter chain timing.
+    const fpsFilter    = 'fps=30';
+    const denoiseLight = 'hqdn3d=1.5:1.2:2.0:1.5';
+    const denoiseMed   = 'hqdn3d=2.0:1.5:2.5:2.0';
+    const sharpFilter  = 'unsharp=5:5:0.6:3:3:0.0';
+    const colorDark    = 'eq=brightness=0.10:contrast=1.15:saturation=1.05:gamma=0.95';
+    const colorNormal  = 'eq=brightness=0.03:contrast=1.05:saturation=1.03';
 
     let filters = [];
     if (profile === 'MINIMAL') {
-        filters = [scaleFilter, ...(interpFilter ? [interpFilter] : []),
-            analysis.isDark ? 'eq=brightness=0.12:contrast=1.15:gamma=0.90' : 'eq=brightness=0.03:contrast=1.04',
-        ].filter(Boolean);
+        // Minimal: scale + fps normalize only
+        filters = [scaleFilter, fpsFilter];
 
     } else if (profile === 'TARGETED') {
-        const f = [scaleFilter];
-        if (interpFilter)               f.push(interpFilter);
-        if (analysis.isDark)            f.push('eq=brightness=0.10:contrast=1.18:saturation=1.08:gamma=0.96');
-        else if (!analysis.isOutdoor)   f.push('eq=brightness=0.03:contrast=1.06:saturation=1.03');
-        if (analysis.motionScore < 40)  f.push('hqdn3d=0.6:0.4:0.8:0.8');
-        if (analysis.qualityScore < 40) f.push('unsharp=3:3:0.6:3:3:0.0');
-        filters = f.filter(Boolean);
+        // Targeted: scale + fps + light denoise + color
+        filters = [
+            scaleFilter, fpsFilter, denoiseLight,
+            analysis.isDark ? colorDark : colorNormal,
+        ];
 
     } else { // STANDARD or AI_ENHANCED
-        filters = [scaleFilter, ...(interpFilter ? [interpFilter] : []),
-            analysis.isDark ? 'hqdn3d=0.8:0.6:1.2:1.0' : 'hqdn3d=0.9:0.7:1.4:1.1',
-            analysis.isDark ? 'eq=brightness=0.10:contrast=1.18:saturation=1.08:gamma=0.96' : 'eq=brightness=0.03:contrast=1.06:saturation=1.03',
-            'unsharp=5:5:0.8:3:3:0.0',
-        ].filter(Boolean);
+        // Standard: scale + fps + denoise + sharpen + color
+        filters = [
+            scaleFilter, fpsFilter,
+            analysis.isDark ? denoiseMed : denoiseLight,
+            sharpFilter,
+            analysis.isDark ? colorDark : colorNormal,
+        ];
     }
 
     try {
