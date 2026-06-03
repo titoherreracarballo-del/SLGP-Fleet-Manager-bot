@@ -286,8 +286,11 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 // Shared nodemailer transporter — created once at startup, reused for all sends.
 // Endpoints that need a different mailbox create their own transporter locally.
 const mailTransport = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    tls: { rejectUnauthorized: false }
 });
 
 const app = express();
@@ -960,7 +963,11 @@ app.post('/submit-report', async (req, res) => {
             emailPass = process.env.INCIDENTS_PASS;
         }
 
-        const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: emailUser, pass: emailPass } });
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com', port: 587, secure: false,
+            auth: { user: emailUser, pass: emailPass },
+            tls: { rejectUnauthorized: false }
+        });
 
         if (data.reportType === 'ACCIDENT_REPORT') {
             // ================================================================
@@ -2993,11 +3000,14 @@ app.post('/upload-to-google-drive', (req, res, next) => {
 
         try {
             const transporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
                 auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-                connectionTimeout: 10000,  // 10s to connect
-                greetingTimeout:   10000,  // 10s for SMTP greeting
-                socketTimeout:     30000,  // 30s per socket operation
+                connectionTimeout: 10000,
+                greetingTimeout:   10000,
+                socketTimeout:     30000,
+                tls: { rejectUnauthorized: false }
             });
 
             await transporter.sendMail({
@@ -3323,11 +3333,14 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         // Send email notification
         try {
             const transporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
                 auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-                connectionTimeout: 10000,  // 10s to connect
-                greetingTimeout:   10000,  // 10s for SMTP greeting
-                socketTimeout:     30000,  // 30s per socket operation
+                connectionTimeout: 10000,
+                greetingTimeout:   10000,
+                socketTimeout:     30000,
+                tls: { rejectUnauthorized: false }
             });
             await transporter.sendMail({
                 from:    process.env.EMAIL_USER,
