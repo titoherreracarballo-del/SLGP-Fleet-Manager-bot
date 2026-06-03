@@ -3925,15 +3925,68 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
                 if (orphans.length > 0) {
                     console.warn(`⚠️  Found ${orphans.length} orphaned video(s) with no manifest — mid-upload crash likely`);
-                    const fileList = orphans.map(f => {
-                        const stat = fs.statSync(path.join(UPLOAD_DIR, f));
-                        return `• ${f} (${(stat.size/1024/1024).toFixed(1)}MB, ${Math.round((Date.now()-stat.mtimeMs)/60000)}min old)`;
+
+                    // Try to match orphan files to recent upload logs via journalctl
+                    const { execSync } = require('child_process');
+                    const orphanDetails = orphans.map(f => {
+                        const stat    = fs.statSync(path.join(UPLOAD_DIR, f));
+                        const fileMB  = (stat.size / 1024 / 1024).toFixed(1);
+                        const fileMs  = stat.mtimeMs;
+                        const ageMins = Math.round((Date.now() - fileMs) / 60000);
+
+                        // Search journalctl for an "Upload received" log near this file's mtime
+                        let matchedDriver = null;
+                        try {
+                            const since = new Date(fileMs - 60000).toISOString(); // 1 min before
+                            const until = new Date(fileMs + 60000).toISOString(); // 1 min after
+                            const logs  = execSync(
+                                `journalctl -u slgp-fleet --since "${since}" --until "${until}" --no-pager 2>/dev/null | grep "Upload received"`,
+                                { timeout: 5000 }
+                            ).toString().trim();
+                            if (logs) {
+                                // Extract driver name and VIN from log line
+                                // Format: 📹 Upload received - Driver: NAME, VIN: XXXX, Size: XXX
+                                const dMatch = logs.match(/Driver:\s*([^,]+)/);
+                                const vMatch = logs.match(/VIN:\s*(\S+)/);
+                                if (dMatch) {
+                                    matchedDriver = dMatch[1].trim();
+                                    if (vMatch) matchedDriver += ` (VIN: ${vMatch[1].trim()})`;
+                                }
+                            }
+                        } catch(_) {}
+
+                        return {
+                            file: f,
+                            size: fileMB,
+                            age: ageMins,
+                            driver: matchedDriver
+                        };
+                    });
+
+                    const fileList = orphanDetails.map(o => {
+                        const driverLine = o.driver
+                            ? `  → Likely driver: ${o.driver}`
+                            : `  → Driver unknown (check logs around ${new Date(fs.statSync(path.join(UPLOAD_DIR, o.file)).mtimeMs).toLocaleTimeString()})`;
+                        return `• ${o.file} (${o.size}MB, ${o.age}min old)\n${driverLine}`;
                     }).join('\n');
+
+                    const knownDrivers = orphanDetails.filter(o => o.driver).map(o => o.driver);
+                    const unknownCount = orphanDetails.filter(o => !o.driver).length;
+
+                    let bodyText = `Fleet Bot restarted and found ${orphans.length} video file(s) that were mid-upload with no submission record.\n\n`;
+                    if (knownDrivers.length > 0) {
+                        bodyText += `Please ask the following driver(s) to resubmit their walk-around:\n${knownDrivers.map(d => `• ${d}`).join('\n')}\n\n`;
+                    }
+                    if (unknownCount > 0) {
+                        bodyText += `${unknownCount} file(s) could not be matched to a driver — check server logs.\n\n`;
+                    }
+                    bodyText += `Orphaned files:\n${fileList}`;
+
                     mailTransport.sendMail({
-                        from: process.env.EMAIL_USER,
-                        to:   ['slgpfleetmanager@gmail.com'],
+                        from:    process.env.EMAIL_USER,
+                        to:      ['slgpfleetmanager@gmail.com'],
                         subject: `⚠️ ${orphans.length} Walk-Around Video(s) Lost — Driver Resubmit Needed`,
-                        text: `Fleet Bot restarted and found ${orphans.length} video file(s) that were mid-upload with no submission record.\n\nThese videos cannot be auto-recovered.\nPlease ask the affected driver(s) to resubmit their walk-around.\n\nOrphaned files:\n${fileList}`
+                        text:    bodyText
                     }).catch(e => console.warn('⚠️  Orphan email failed:', e.message));
                 }
             } catch (orphanErr) {
