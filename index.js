@@ -306,7 +306,7 @@ const BUILD_INFO = {
     nodeVersion: process.version
 };
 
-const VOLUME_PATH = '/app/meshcentral-data';
+const VOLUME_PATH = process.env.VOLUME_PATH || '/app/meshcentral-data';
 const UPLOAD_DIR    = path.join(VOLUME_PATH, 'uploads');
 const ENHANCED_DIR  = path.join(VOLUME_PATH, 'enhanced'); // FFmpeg output - always writable on Railway
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
@@ -334,11 +334,10 @@ const ISSUE_DRIVE_ID = '0AC-a_EQMLYpLUk9PVA';
 async function ensureDirectories() {
     const dirs = [UPLOAD_DIR, LOGS_DIR, ENHANCED_DIR];
     for (const dir of dirs) {
-        if (!fs.existsSync(dir)) {
-            try {
-                fs.mkdirSync(dir, { recursive: true });
-                console.log(`✅ Created directory: ${dir}`);
-            } catch (e) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+        } catch (e) {
+            if (e.code !== 'EEXIST') {
                 console.error(`❌ Failed to create ${dir}:`, e.message);
             }
         }
