@@ -2510,9 +2510,8 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                         } else {
                             try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
                             const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
-                                settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
-                            }
-                        });
+                            settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
+                        }
                     });
                     proc.on('error', err => {
                         clearTimeout(killTimer);
