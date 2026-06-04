@@ -2235,14 +2235,30 @@ async function extractKeyframes(videoPath, jobId) {
         const scored = await Promise.all(frameFiles.map(async fp => {
             try {
                 const { data } = await sharp(fp).greyscale().resize(320,180).raw().toBuffer({ resolveWithObject: true });
-                let sum=0, sumSq=0;
-                for (let i=1; i<data.length; i++) {
-                    const d = Math.abs(data[i]-data[i-1]);
-                    sum+=d; sumSq+=d*d;
+                const W = 320, H = 180;
+                // Laplacian variance — standard focus/blur metric
+                // Sharp frame = high variance. Blurry frame = low variance.
+                let lapSum = 0, lapSq = 0, n = 0;
+                for (let y=1; y<H-1; y++) {
+                    for (let x=1; x<W-1; x++) {
+                        const i = y*W+x;
+                        const lap = data[i]*4 - data[i-1] - data[i+1] - data[i-W] - data[i+W];
+                        lapSum += lap; lapSq += lap*lap; n++;
+                    }
                 }
-                const mean = sum/data.length;
-                return { path: fp, sharpness: sumSq/data.length - mean*mean };
-            } catch(_) { return { path: fp, sharpness: 0 }; }
+                const lapVar = lapSq/n - (lapSum/n)*(lapSum/n);
+                // Motion blur direction: pan blur = high H-diff, low V-diff
+                let hd=0, vd=0;
+                for (let i=1; i<data.length; i++) {
+                    if (i%W!==0) hd += Math.abs(data[i]-data[i-1]);
+                    if (i>=W)    vd += Math.abs(data[i]-data[i-W]);
+                }
+                const blurRatio = hd > 0 ? vd/hd : 1;
+                const isMotionBlurred = blurRatio < 0.55 || blurRatio > 1.8;
+                // Penalize motion-blurred frames — we want static sharp frames for damage detection
+                const sharpness = isMotionBlurred ? lapVar * 0.15 : lapVar;
+                return { path: fp, sharpness: Math.round(sharpness), lapVar: Math.round(lapVar), isBlurred: isMotionBlurred };
+            } catch(_) { return { path: fp, sharpness: 0, isBlurred: true }; }
         }));
 
         const best = scored.sort((a,b) => b.sharpness-a.sharpness).slice(0,5);
