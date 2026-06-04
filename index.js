@@ -2889,7 +2889,7 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
     // ── Generate jobId and respond IMMEDIATELY ─────────────────
     // Phone gets a response right away — no waiting for FFmpeg or Drive
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-    createJob(jobId, { driverName, vin, inspectionType, fileSizeMB });
+    jobStore.set(jobId, { status:"queued", stage:"Queued", progress:0, driverName, vin, inspectionType, fileSizeMB });
     registerUpload(driverName, vin, inspectionType, jobId); // register for dedup
     const queuePos = jobQueue.length + 1; // position before enqueue
     const estimatedMinutes = Math.max(1, Math.round(queuePos * 3));
