@@ -1295,7 +1295,8 @@
                     facingMode: { ideal: 'environment' },
                     width:      { min: 720, ideal: 1920 },
                     height:     { min: 720, ideal: 1080 },
-                    frameRate:  { min: 24, ideal: 30, max: 30 }, // min:24 tells Android not to drop fps in low light
+                    frameRate:  { min: 24, ideal: 30, max: 30 },
+                    advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous', zoom: 1.0 }]
                     aspectRatio: { ideal: 9 / 16 }
                 },
                 audio: {
@@ -1895,8 +1896,10 @@
             requestWakeLock();
 
             const codecOptions = [
-                // Baseline H.264: hardware encoder path on Android — much lighter CPU load
-                // than High profile. Best choice for budget chips (XCover 7 / Dimensity 6100+)
+                // H.264 High profile: better quality at same bitrate, worth the CPU cost
+                // for damage detection accuracy. Falls back to Baseline if unsupported.
+                { mimeType: 'video/mp4; codecs="avc1.640028"', name: 'H.264 High L4.0' },
+                { mimeType: 'video/mp4; codecs="avc1.4d002a"', name: 'H.264 Main L4.2' },
                 { mimeType: 'video/mp4; codecs="avc1.42E01E"', name: 'H.264 Baseline' },
                 // Standard H.264 — broad fallback if Baseline profile string rejected
                 { mimeType: 'video/mp4; codecs="avc1"',        name: 'H.264' },
@@ -1998,6 +2001,21 @@
                     isRecording = false;
                 };
 
+                // ── Lens warmup: 2s before recording ──────────────────────────
+                // Allows autofocus + autoexposure to stabilize before capture starts.
+                // Critical for damage detection — blurry first frames are useless.
+                await new Promise(resolve => {
+                    let countdown = 2;
+                    const btn = document.querySelector('[data-record-btn]') || 
+                                document.getElementById('recordBtn') ||
+                                document.querySelector('.record-btn');
+                    const warmupInterval = setInterval(() => {
+                        countdown--;
+                        if (btn) btn.textContent = countdown > 0 ? `Ready in ${countdown}…` : 'Recording…';
+                        if (countdown <= 0) { clearInterval(warmupInterval); resolve(); }
+                    }, 1000);
+                    console.log('📷 Lens warmup: 2s for autofocus/autoexposure to stabilize...');
+                });
                 mediaRecorder.start(1000); // 1s timeslice — reduces memory pressure on budget phones, prevents frame drops
                 isRecording = true;
                 startTimer();
