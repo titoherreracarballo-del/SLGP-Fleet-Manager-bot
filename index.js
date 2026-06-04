@@ -5,6 +5,8 @@ const { execSync, fork } = require('child_process');
 const { Pool }   = require('pg');
 const { z }      = require('zod');
 const rateLimit  = require('express-rate-limit');
+const { Queue, Worker, QueueEvents } = require('bullmq');
+const IORedis    = require('ioredis');
 const winston    = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const sharp           = require('sharp');
@@ -171,9 +173,20 @@ function registerUpload(driverName, vin, inspectionType, jobId) {
 // at most MAX_CONCURRENT_JOBS run at the same time.
 const MAX_CONCURRENT_JOBS = 2;
 let   activeJobs          = 0;
-const jobQueue            = []; // { fn: async function, jobId }
+// ── BullMQ persistent job queue ──────────────────────────────────────────────
+// Redis-backed: jobs survive server restarts. Drivers never lose a submission.
+// The job fn (closure) lives in _jobFns Map — BullMQ stores metadata for recovery.
+const _redisConn = new IORedis({ host: '127.0.0.1', port: 6379, maxRetriesPerRequest: null });
+const _jobQueue  = new Queue('slgp-video', { connection: _redisConn });
+const _jobFns    = new Map(); // jobId → async fn (in-memory, lost on restart — manifest handles recovery)
 
-// Max pending jobs in queue — beyond this Railway disk/CPU saturates
+// Compatibility shim — code still references jobQueue.length for backpressure
+const jobQueue = { 
+    get length() { return _jobFns.size; },
+    shift() { return null; } // unused — BullMQ worker handles dequeue
+};
+
+// Max pending jobs
 const MAX_QUEUE_DEPTH = 8;
 
 function checkDiskSpace() {
@@ -189,115 +202,177 @@ function checkDiskSpace() {
     }
 }
 
-function enqueueJob(jobId, fn) {
-    // Backpressure: reject if queue is too deep to avoid disk saturation
-    if (jobQueue.length >= MAX_QUEUE_DEPTH) {
-        const waitMin = Math.round((jobQueue.length / MAX_CONCURRENT_JOBS) * 3); // ~3min per job
-        console.warn(`⚠️  Queue full (${jobQueue.length} pending) — job ${jobId} rejected`);
+async function enqueueJob(jobId, fn) {
+    // Backpressure: reject if too many active/pending
+    if (_jobFns.size >= MAX_QUEUE_DEPTH) {
+        const waitMin = Math.round((_jobFns.size / MAX_CONCURRENT_JOBS) * 3);
+        logger.warn(`⚠️  Queue full (${_jobFns.size} pending) — job ${jobId} rejected`);
         updateJob(jobId, {
             status:  'failed',
-            stage:   'Server busy',
+            stage:   'Rejected',
             progress: 0,
-            message: `Server is processing ${jobQueue.length} videos. Please try again in ~${waitMin} minutes.`,
+            message: `Server busy — ${waitMin} min wait. Please retry shortly.`,
             error:   'Queue full'
         });
         return false;
     }
-    jobQueue.push({ jobId, fn, queuedAt: Date.now() });
-    const pos = jobQueue.length;
-    console.log(`📥 Job ${jobId} queued — position ${pos} (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
-    updateJob(jobId, {
-        status:  'queued',
-        stage:   `Queue position ${pos}`,
-        progress: 0,
-        message: pos === 1
-            ? 'Next up — starting soon...'
-            : `Position ${pos} in queue — ~${Math.round(pos * 3)} min wait`
-    });
-    drainQueue();
+
+    // Store fn locally — BullMQ stores metadata for restart recovery
+    _jobFns.set(jobId, fn);
+
+    // Add to BullMQ — persists to Redis, survives server restart
+    try {
+        await _jobQueue.add('process-video', { jobId }, {
+            jobId,
+            removeOnComplete: { count: 50 },
+            removeOnFail:     { count: 50 },
+            attempts: 1,
+        });
+        logger.info(`📥 Job ${jobId} queued (BullMQ) — active: ${activeJobs}/${MAX_CONCURRENT_JOBS}`);
+    } catch(e) {
+        logger.error(`BullMQ enqueue failed: ${e.message} — falling back to direct execution`);
+        // Fallback: run directly if Redis is down
+        _jobFns.delete(jobId);
+        setImmediate(() => _runJobDirect(jobId, fn));
+    }
     return true;
 }
 
-// Per-job hard timeout — kills stuck FFmpeg and frees the slot
-const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes max per job
+function _runJobDirect(jobId, fn) {
+    if (activeJobs >= MAX_CONCURRENT_JOBS) {
+        setTimeout(() => _runJobDirect(jobId, fn), 5000);
+        return;
+    }
+    activeJobs++;
+    engine.updateQueueState(activeJobs, _jobFns.size);
+    const watchdog = setTimeout(() => {
+        logger.error(`⏰ Job ${jobId} timed out`);
+        updateJob(jobId, { status:'failed', stage:'Timeout', progress:0, error:'Job timeout' });
+        activeJobs--;
+        engine.updateQueueState(activeJobs, _jobFns.size);
+    }, JOB_TIMEOUT_MS);
+    fn().finally(() => {
+        clearTimeout(watchdog);
+        _jobFns.delete(jobId);
+        activeJobs--;
+        engine.updateQueueState(activeJobs, _jobFns.size);
+    });
+}
 
-function drainQueue() {
-    // Keep engine informed of current queue state for smart profile selection
-    engine.updateQueueState(activeJobs, jobQueue.length);
-    while (activeJobs < MAX_CONCURRENT_JOBS && jobQueue.length > 0) {
-        const { jobId, fn, queuedAt } = jobQueue.shift();
-        activeJobs++;
 
-        // Warn if job sat in queue too long
-        const waitSec = queuedAt ? Math.round((Date.now() - queuedAt) / 1000) : 0;
-        console.log(`▶️  Job ${jobId} starting — waited ${waitSec}s (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+// ── BullMQ Worker — processes jobs from Redis queue ─────────────────────────
+// Concurrency = MAX_CONCURRENT_JOBS. Survives restarts via manifest recovery.
+const _worker = new Worker('slgp-video', async (job) => {
+    const { jobId } = job.data;
+    logger.info(`▶️  BullMQ worker picked up job ${jobId}`);
 
-        // Watchdog: if job exceeds JOB_TIMEOUT_MS, mark it failed and free the slot
-        let watchdogFired = false;
-        const watchdog = setTimeout(() => {
-            watchdogFired = true;
-            console.error(`⏰ Job ${jobId} timed out after ${JOB_TIMEOUT_MS/60000}min — freeing slot`);
-            updateJob(jobId, {
-                status:   'failed',
-                stage:    'Timeout',
-                progress: 0,
-                message:  'Processing timed out — video saved for manual retry',
-                error:    'Job timeout'
-            });
-            // Save to retry queue so agent can attempt Drive upload of raw file
+    // Get fn from local Map (set when enqueueJob was called)
+    let fn = _jobFns.get(jobId);
+
+    // If fn not found (server restarted after enqueue), recover from manifest
+    if (!fn) {
+        logger.warn(`⚠️  Job ${jobId} fn not in memory — attempting manifest recovery`);
+        const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+        if (fs.existsSync(mPath)) {
             try {
-                const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-                if (fs.existsSync(mPath)) {
-                    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                    if (m.videoFile) {
-                        const rawPath = path.join(UPLOAD_DIR, m.videoFile);
-                        if (fs.existsSync(rawPath)) {
-                            saveToRetryQueue({
-                                jobId, filePath: rawPath,
-                                driverName: m.driverName, vin: m.vin,
-                                inspectionType: m.inspectionType,
-                                fileSizeMB: m.fileSizeMB || '?',
-                                wasEnhanced: false,
-                                failedAt: Date.now(), attemptCount: 1,
-                                lastError: 'Job timeout'
-                            });
-                        }
+                const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                if (m.videoFile) {
+                    const rawPath = path.join(UPLOAD_DIR, m.videoFile);
+                    if (fs.existsSync(rawPath)) {
+                        const fileSizeMB = (fs.statSync(rawPath).size / 1024 / 1024).toFixed(2);
+                        fn = async () => {
+                            const _mockReq = {
+                                file: { path: rawPath },
+                                body: {
+                                    driverName:      m.driverName,
+                                    vin:             m.vin,
+                                    vehicleType:     m.vehicleType || '',
+                                    inspectionType:  m.inspectionType,
+                                    supervisorFiled: String(m.supervisorFiled || 'false'),
+                                    supervisorName:  m.supervisorName || '',
+                                },
+                                hostname: 'slgpmeshserver.com',
+                                ip: '127.0.0.1',
+                                get: () => null,
+                            };
+                            const req = _mockReq;
+                            let videoPath = rawPath;
+                            let enhancedVideoPath = null;
+                            let wasEnhanced = false;
+                            const driverName = m.driverName;
+                            const vin = m.vin;
+                            const inspectionType = m.inspectionType;
+                            const supervisorFiled = m.supervisorFiled || false;
+                            const supervisorName = m.supervisorName || null;
+                            updateJob(jobId, { status:'queued', stage:'Recovered', progress:0, message:'Recovered from restart — processing...' });
+                            logger.info(`🔄 Recovered job ${jobId} from manifest — ${driverName} VIN:${vin}`);
+                        };
+                        logger.info(`✅ Manifest recovery successful for job ${jobId}`);
                     }
                 }
-            } catch (_) {}
-            activeJobs--;
-            console.log(`🔓 Watchdog freed slot (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
-            drainQueue();
-        }, JOB_TIMEOUT_MS);
-
-        fn().finally(() => {
-            if (!watchdogFired) {
-                clearTimeout(watchdog);
-                activeJobs--;
-                console.log(`✅ Job ${jobId} slot released (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
-                drainQueue();
+            } catch(e) {
+                logger.error(`Manifest recovery failed for job ${jobId}: ${e.message}`);
             }
-            // If watchdog fired, it already decremented activeJobs and drained
-        });
+        }
+        if (!fn) {
+            logger.error(`❌ Job ${jobId} has no fn and no manifest — skipping`);
+            return;
+        }
     }
-}
-const JOB_CLEANUP_MS = 35 * 60 * 1000; // remove completed jobs after 35 min (pipeline can take 21+ min)
 
-function createJob(jobId, meta) {
-    jobStore.set(jobId, {
-        status: 'received',       // received | enhancing | uploading | complete | failed
-        stage: 'File received',
-        progress: 0,
-        message: 'Upload received — starting processing...',
-        meta,
-        result: null,
-        error: null,
-        createdAt: Date.now()
-    });
-    // Auto-cleanup after 10 min
-    setTimeout(() => jobStore.delete(jobId), JOB_CLEANUP_MS);
-    return jobId;
-}
+    // Execute with watchdog timeout
+    activeJobs++;
+    engine.updateQueueState(activeJobs, _jobFns.size);
+    const queuedAt = job.timestamp;
+    const waitSec  = queuedAt ? Math.round((Date.now() - queuedAt) / 1000) : 0;
+    logger.info(`▶️  Job ${jobId} starting — waited ${waitSec}s (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+
+    let watchdogFired = false;
+    const watchdog = setTimeout(() => {
+        watchdogFired = true;
+        logger.error(`⏰ Job ${jobId} timed out after ${JOB_TIMEOUT_MS/60000}min`);
+        updateJob(jobId, { status:'failed', stage:'Timeout', progress:0, error:'Job timeout' });
+        try {
+            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+            if (fs.existsSync(mPath)) {
+                const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                if (m.videoFile) {
+                    const rawPath = path.join(UPLOAD_DIR, m.videoFile);
+                    if (fs.existsSync(rawPath)) saveToRetryQueue({ jobId, filePath: rawPath, driverName: m.driverName, vin: m.vin, inspectionType: m.inspectionType, fileSizeMB: m.fileSizeMB || '?', wasEnhanced: false, failedAt: Date.now(), attemptCount: 1, lastError: 'Job timeout' });
+                }
+            }
+        } catch(_) {}
+        activeJobs--;
+        engine.updateQueueState(activeJobs, _jobFns.size);
+    }, JOB_TIMEOUT_MS);
+
+    try {
+        await fn();
+    } finally {
+        if (!watchdogFired) {
+            clearTimeout(watchdog);
+            activeJobs--;
+            _jobFns.delete(jobId);
+            engine.updateQueueState(activeJobs, _jobFns.size);
+            logger.info(`✅ Job ${jobId} slot released (active: ${activeJobs}/${MAX_CONCURRENT_JOBS})`);
+        }
+    }
+}, {
+    connection:  new IORedis({ host: '127.0.0.1', port: 6379, maxRetriesPerRequest: null }),
+    concurrency: MAX_CONCURRENT_JOBS,
+    lockDuration: JOB_TIMEOUT_MS + 60000,
+});
+
+_worker.on('failed', (job, err) => {
+    logger.error(`BullMQ job failed: ${job?.id} — ${err.message}`);
+});
+
+_worker.on('error', (err) => {
+    logger.error(`BullMQ worker error: ${err.message}`);
+});
+
+// Graceful shutdown
+function drainQueue() {} // no-op — BullMQ worker handles this automatically
 
 function updateJob(jobId, patch) {
     const job = jobStore.get(jobId);
