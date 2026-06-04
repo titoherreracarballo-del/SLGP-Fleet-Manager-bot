@@ -4,8 +4,10 @@ const compression = require('compression');
 const { execSync, fork } = require('child_process');
 const { Pool }   = require('pg');
 const { z }      = require('zod');
+const rateLimit  = require('express-rate-limit');
 const winston    = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
+const sharp           = require('sharp');
 
 // ── Structured logger ─────────────────────────────────────────────────────────
 // Replaces console.log — writes to journalctl AND rotating daily log files.
@@ -334,6 +336,21 @@ const mailTransport = nodemailer.createTransport({
 
 const app = express();
 app.use(compression()); // gzip all responses — saves ~70% bandwidth on JSON
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, max: 20,
+    keyGenerator: (req) => req.ip + (req.body?.vin || ''),
+    handler: (req, res) => {
+        logger.warn('Rate limit hit on /upload', { ip: req.ip, vin: req.body?.vin });
+        res.status(429).json({ success: false, error: 'Too many uploads — please wait before retrying.' });
+    },
+    standardHeaders: true, legacyHeaders: false,
+});
+const chunkLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, max: 300,
+    handler: (req, res) => res.status(429).json({ success: false, error: 'Chunk rate limit exceeded.' }),
+});
 
 // ============================================
 // CONFIGURATION
@@ -2183,6 +2200,230 @@ app.get('/api/speed-limit', async (req, res) => {
 // ============================================
 // VIDEO UPLOAD WITH FFMPEG AUTO-DETECTION
 // ============================================
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHUNKED RESUMABLE UPLOAD
+// Prevents orphaned videos on crash/disconnect — each chunk is persisted
+// independently. If the app restarts mid-upload, driver resumes from last chunk.
+//
+// Flow:  init → chunk(0..N) → complete → processVideo()
+// ═══════════════════════════════════════════════════════════════════════════════
+const CHUNK_DIR = process.env.CHUNK_DIR || path.join(UPLOAD_DIR, '.chunks');
+try { fs.mkdirSync(CHUNK_DIR, { recursive: true }); } catch(_) {}
+
+// ── Chunk session state (in-memory index, chunks are on disk) ─────────────────
+const _chunkSessions = new Map();
+
+// ── /upload/init ──────────────────────────────────────────────────────────────
+app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
+    const { driverName, vin, vehicleType, inspectionType, totalSize, totalChunks, mimeType } = req.body;
+
+    // Validate required fields
+    if (!driverName || !vin || !inspectionType || !totalSize || !totalChunks) {
+        return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+    if (totalSize > 200 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: 'File too large (max 200MB)' });
+    }
+
+    const sessionId  = require('crypto').randomBytes(16).toString('hex');
+    const sessionDir = path.join(CHUNK_DIR, sessionId);
+    try { fs.mkdirSync(sessionDir, { recursive: true }); } catch(e) {
+        return res.status(500).json({ success: false, error: 'Could not create upload session' });
+    }
+
+    _chunkSessions.set(sessionId, {
+        sessionId, driverName, vin, vehicleType, inspectionType,
+        totalSize, totalChunks, mimeType: mimeType || 'video/mp4',
+        receivedChunks: new Set(), sessionDir,
+        createdAt: Date.now(), lastActivity: Date.now(),
+    });
+
+    // Persist session metadata to disk so it survives restarts
+    try {
+        fs.writeFileSync(
+            path.join(sessionDir, 'session.json'),
+            JSON.stringify({ sessionId, driverName, vin, vehicleType, inspectionType, totalSize, totalChunks, mimeType, createdAt: Date.now() }, null, 2)
+        );
+    } catch(_) {}
+
+    logger.info(`📤 Chunk upload init: ${driverName} VIN:${vin} ${(totalSize/1024/1024).toFixed(1)}MB ${totalChunks} chunks`);
+    res.json({ success: true, sessionId, chunkSize: 512 * 1024 }); // 512KB chunks
+});
+
+// ── /upload/chunk ─────────────────────────────────────────────────────────────
+app.post('/upload/chunk', chunkLimiter, upload.single('chunk'), async (req, res) => {
+    const { sessionId, chunkIndex, totalChunks } = req.body;
+    const chunkIdx = parseInt(chunkIndex);
+
+    if (!sessionId || isNaN(chunkIdx)) {
+        if (req.file) try { fs.unlinkSync(req.file.path); } catch(_) {}
+        return res.status(400).json({ success: false, error: 'Missing sessionId or chunkIndex' });
+    }
+
+    // Restore session from disk if not in memory (after restart)
+    if (!_chunkSessions.has(sessionId)) {
+        const sessionDir = path.join(CHUNK_DIR, sessionId);
+        const metaPath   = path.join(sessionDir, 'session.json');
+        if (!fs.existsSync(metaPath)) {
+            if (req.file) try { fs.unlinkSync(req.file.path); } catch(_) {}
+            return res.status(404).json({ success: false, error: 'Upload session not found — please restart upload' });
+        }
+        try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            // Rebuild receivedChunks from existing chunk files
+            const existing = fs.readdirSync(sessionDir).filter(f => f.startsWith('chunk_')).map(f => parseInt(f.replace('chunk_','')));
+            meta.receivedChunks = new Set(existing);
+            meta.sessionDir     = sessionDir;
+            meta.lastActivity   = Date.now();
+            _chunkSessions.set(sessionId, meta);
+            logger.info(`🔄 Chunk session restored from disk: ${meta.driverName} VIN:${meta.vin} (${existing.length}/${meta.totalChunks} chunks already received)`);
+        } catch(e) {
+            if (req.file) try { fs.unlinkSync(req.file.path); } catch(_) {}
+            return res.status(500).json({ success: false, error: 'Could not restore session' });
+        }
+    }
+
+    const session    = _chunkSessions.get(sessionId);
+    session.lastActivity = Date.now();
+
+    const chunkPath  = path.join(session.sessionDir, `chunk_${chunkIdx}`);
+
+    // Move uploaded chunk to session dir
+    try {
+        if (req.file) {
+            fs.renameSync(req.file.path, chunkPath);
+        } else {
+            return res.status(400).json({ success: false, error: 'No chunk data received' });
+        }
+    } catch(e) {
+        return res.status(500).json({ success: false, error: 'Failed to save chunk' });
+    }
+
+    session.receivedChunks.add(chunkIdx);
+    const received = session.receivedChunks.size;
+
+    logger.info(`📦 Chunk ${chunkIdx+1}/${session.totalChunks} for ${session.driverName} VIN:${session.vin}`);
+    res.json({ success: true, received, total: session.totalChunks, sessionId });
+});
+
+// ── /upload/complete ──────────────────────────────────────────────────────────
+app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ success: false, error: 'Missing sessionId' });
+
+    // Restore from disk if needed
+    if (!_chunkSessions.has(sessionId)) {
+        const sessionDir = path.join(CHUNK_DIR, sessionId);
+        const metaPath   = path.join(sessionDir, 'session.json');
+        if (!fs.existsSync(metaPath))
+            return res.status(404).json({ success: false, error: 'Session not found' });
+        try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            const existing = fs.readdirSync(sessionDir).filter(f => f.startsWith('chunk_')).map(f => parseInt(f.replace('chunk_','')));
+            meta.receivedChunks = new Set(existing);
+            meta.sessionDir = sessionDir;
+            _chunkSessions.set(sessionId, meta);
+        } catch(e) {
+            return res.status(500).json({ success: false, error: 'Could not restore session' });
+        }
+    }
+
+    const session = _chunkSessions.get(sessionId);
+
+    // Verify all chunks received
+    const missing = [];
+    for (let i = 0; i < session.totalChunks; i++) {
+        if (!session.receivedChunks.has(i)) missing.push(i);
+    }
+    if (missing.length > 0) {
+        return res.status(400).json({
+            success: false, error: 'Missing chunks',
+            missing, received: session.receivedChunks.size, total: session.totalChunks
+        });
+    }
+
+    // Assemble chunks into final file
+    const ext       = session.mimeType.includes('webm') ? '.webm' : '.mp4';
+    const finalPath = path.join(UPLOAD_DIR, `${Date.now()}_${session.vin}${ext}`);
+
+    try {
+        const writeStream = fs.createWriteStream(finalPath);
+        await new Promise((resolve, reject) => {
+            const pipeNext = (idx) => {
+                if (idx >= session.totalChunks) { writeStream.end(); return; }
+                const chunkPath = path.join(session.sessionDir, `chunk_${idx}`);
+                const rs = fs.createReadStream(chunkPath);
+                rs.on('error', reject);
+                rs.on('end', () => pipeNext(idx + 1));
+                rs.pipe(writeStream, { end: false });
+            };
+            writeStream.on('error', reject);
+            writeStream.on('finish', resolve);
+            pipeNext(0);
+        });
+    } catch(e) {
+        try { fs.unlinkSync(finalPath); } catch(_) {}
+        return res.status(500).json({ success: false, error: `Assembly failed: ${e.message}` });
+    }
+
+    // Verify assembled file
+    const stat = fs.statSync(finalPath);
+    if (stat.size < 10000) {
+        try { fs.unlinkSync(finalPath); } catch(_) {}
+        return res.status(500).json({ success: false, error: 'Assembled file too small — upload corrupt' });
+    }
+
+    logger.info(`✅ Chunks assembled: ${session.driverName} VIN:${session.vin} ${(stat.size/1024/1024).toFixed(1)}MB`);
+
+    // Clean up chunk directory
+    try { fs.rmSync(session.sessionDir, { recursive: true }); } catch(_) {}
+    _chunkSessions.delete(sessionId);
+
+    // Respond immediately — processing happens async
+    const jobId = require('crypto').randomUUID();
+    res.json({ success: true, jobId, message: 'Upload complete — processing started' });
+
+    // Hand off to existing processing pipeline
+    setImmediate(() => {
+        processVideo({
+            filePath:       finalPath,
+            driverName:     session.driverName,
+            vin:            session.vin,
+            vehicleType:    session.vehicleType,
+            inspectionType: session.inspectionType,
+            jobId,
+        }).catch(e => logger.error('Chunk upload processVideo error', { error: e.message, jobId }));
+    });
+});
+
+// ── Chunk session cleanup — remove stale sessions older than 2 hours ──────────
+setInterval(() => {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    for (const [sid, sess] of _chunkSessions.entries()) {
+        if ((sess.lastActivity || sess.createdAt) < cutoff) {
+            logger.warn(`🗑 Removing stale chunk session: ${sess.driverName} VIN:${sess.vin}`);
+            try { fs.rmSync(sess.sessionDir, { recursive: true }); } catch(_) {}
+            _chunkSessions.delete(sid);
+        }
+    }
+    // Also scan disk for orphaned session dirs
+    try {
+        const dirs = fs.readdirSync(CHUNK_DIR);
+        for (const dir of dirs) {
+            const dirPath  = path.join(CHUNK_DIR, dir);
+            const metaPath = path.join(dirPath, 'session.json');
+            if (!_chunkSessions.has(dir) && fs.existsSync(metaPath)) {
+                const stat = fs.statSync(dirPath);
+                if (Date.now() - stat.mtimeMs > 4 * 60 * 60 * 1000) {
+                    logger.warn(`🗑 Removing orphaned chunk dir: ${dir}`);
+                    try { fs.rmSync(dirPath, { recursive: true }); } catch(_) {}
+                }
+            }
+        }
+    } catch(_) {}
+}, 30 * 60 * 1000); // every 30 minutes
+
 // ── Zod validation schema for driver submissions ─────────────────────────────
 const UploadSchema = z.object({
     driverName:     z.string().min(2, 'Driver name too short').max(100).trim(),
@@ -2194,7 +2435,7 @@ const UploadSchema = z.object({
     supervisorName: z.string().max(100).nullable().optional(),
 }).strict();
 
-app.post('/upload-to-google-drive', (req, res, next) => {
+app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
     // Wrap multer to catch MulterError (file too large, wrong field, etc)
     // and return proper JSON instead of crashing the route
     upload.single('video')(req, res, (err) => {
@@ -2921,6 +3162,34 @@ app.post('/upload-to-google-drive', (req, res, next) => {
         const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
         const fileName = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
 
+        // ── Keyframe extraction + damage classification ────────────────────────
+        // Extract 5 sharpest frames from the final video, classify damage with Gemini.
+        // Non-blocking — failure here never affects the Drive upload.
+        let keyframes    = [];
+        let damageReport = null;
+        try {
+            updateJob(jobId, { status: 'uploading', stage: 'Analyzing frames', progress: 65, message: 'Extracting key frames for damage review...' });
+            keyframes    = await extractKeyframes(finalVideoPath, jobId);
+            if (keyframes.length > 0) {
+                damageReport = await classifyDamage(keyframes, driverName, vin, inspectionType);
+                if (damageReport) {
+                    // Save damage report to manifest
+                    try {
+                        const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+                        if (fs.existsSync(mPath)) {
+                            const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+                            m.damageReport = damageReport;
+                            m.keyframeCount = keyframes.length;
+                            fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
+                        }
+                    } catch(_) {}
+                    logger.info(`🔍 Damage: ${damageReport.overallCondition} — ${damageReport.items?.length || 0} item(s) — confidence: ${damageReport.confidenceScore}%`);
+                }
+            }
+        } catch(e) {
+            logger.warn(`⚠️ Frame analysis failed (non-fatal): ${e.message}`);
+        }
+
         // ── Pre-upload bandwidth probe ──────────────────────────
         // Measure actual current bandwidth before committing to Drive upload.
         // If probe shows < 0.8 MB/s and file is large, log a warning.
@@ -3037,7 +3306,20 @@ app.post('/upload-to-google-drive', (req, res, next) => {
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${finalSizeMB} MB${wasEnhanced ? " (raw: " + fileSizeMB + " MB)" : ""}</td></tr>
                                 <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
                                 <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">${wasEnhanced ? '1920x1080 H.264 Enhanced (20Mbps) + denoising' : '1920x1080 Original'}</td></tr>
+                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">${wasEnhanced ? '1920x1080 H.264 Enhanced + denoising' : '1920x1080 Original'}</td></tr>
+                                ${(() => {
+                                    if (!damageReport) return '';
+                                    const cond = damageReport.overallCondition || 'unknown';
+                                    const color = cond==='good'?'#059669':cond==='fair'?'#d97706':'#dc2626';
+                                    let html = '<tr style="background:white"><td style="padding:12px;font-weight:bold;color:#4b5563">Condition:</td><td style="padding:12px;color:'+color+';font-weight:bold">'+cond.toUpperCase()+'</td></tr>';
+                                    if (damageReport.damageFound && damageReport.items && damageReport.items.length) {
+                                        html += '<tr style="background:#fef3c7"><td style="padding:12px;font-weight:bold;color:#92400e">⚠️ Damage:</td><td style="padding:12px;color:#92400e">';
+                                        html += damageReport.items.map(x => x.severity+' '+x.type+' — '+x.location).join('<br>');
+                                        html += '</td></tr>';
+                                    }
+                                    html += '<tr style="background:#f3f4f6"><td style="padding:12px;font-weight:bold;color:#4b5563">Action:</td><td style="padding:12px;color:#1f2937">'+(damageReport.recommendedAction||'none').replace(/_/g,' ')+'</td></tr>';
+                                    return html;
+                                })()}
                             </table>
                             <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
                                 <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">📹 FULL QUALITY 1080p VIDEO</h3>
