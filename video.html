@@ -1296,7 +1296,6 @@
                     width:      { min: 720, ideal: 1920 },
                     height:     { min: 720, ideal: 1080 },
                     frameRate:  { min: 24, ideal: 30, max: 30 },
-                    advanced: [{ focusMode: 'continuous', exposureMode: 'continuous', whiteBalanceMode: 'continuous', zoom: 1.0 }]
                     aspectRatio: { ideal: 9 / 16 }
                 },
                 audio: {
@@ -1858,6 +1857,12 @@
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
             timerEl.innerText = `${mins}:${secs}`;
+            // Auto-stop at 3 minutes — prevents runaway recordings on forgotten phones
+            if (seconds >= 180) {
+                console.warn('⏱️ 3-minute max recording reached — auto-stopping');
+                stopRecording();
+                document.getElementById('status').innerText = '⚠️ Max 3-minute limit reached. Review and submit.';
+            }
         }, 1000);
     }
 
