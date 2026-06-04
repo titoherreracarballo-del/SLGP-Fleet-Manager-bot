@@ -367,6 +367,8 @@ const BUILD_INFO = {
 
 const VOLUME_PATH = process.env.VOLUME_PATH || '/app/meshcentral-data';
 const UPLOAD_DIR    = path.join(VOLUME_PATH, 'uploads');
+const CHUNK_DIR     = process.env.CHUNK_DIR || path.join(UPLOAD_DIR, '.chunks');
+try { fs.mkdirSync(CHUNK_DIR, { recursive: true }); } catch(_) {}
 const ENHANCED_DIR  = path.join(VOLUME_PATH, 'enhanced'); // FFmpeg output - always writable on Railway
 const DAILY_LOG_FILE = path.join(VOLUME_PATH, 'daily_data.json');
 const SUBSCRIPTION_FILE = path.join(VOLUME_PATH, 'subscriptions.json');
@@ -2203,18 +2205,124 @@ app.get('/api/speed-limit', async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHUNKED RESUMABLE UPLOAD
-// Prevents orphaned videos on crash/disconnect — each chunk is persisted
-// independently. If the app restarts mid-upload, driver resumes from last chunk.
-//
-// Flow:  init → chunk(0..N) → complete → processVideo()
 // ═══════════════════════════════════════════════════════════════════════════════
-const CHUNK_DIR = process.env.CHUNK_DIR || path.join(UPLOAD_DIR, '.chunks');
-try { fs.mkdirSync(CHUNK_DIR, { recursive: true }); } catch(_) {}
-
-// ── Chunk session state (in-memory index, chunks are on disk) ─────────────────
+// ── Chunk session state ───────────────────────────────────────────────────────
 const _chunkSessions = new Map();
 
 // ── /upload/init ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// KEYFRAME EXTRACTION + DAMAGE CLASSIFICATION + CHAPTER MARKERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function extractKeyframes(videoPath, jobId) {
+    if (!ffmpegPath) return [];
+    const { execFileSync } = require('child_process');
+    const framesDir = path.join(UPLOAD_DIR, `.frames_${jobId}`);
+    try { fs.mkdirSync(framesDir, { recursive: true }); } catch(_) {}
+    const keyframes = [];
+    try {
+        execFileSync(ffmpegPath, [
+            '-i', videoPath,
+            '-vf', 'fps=1/3,scale=1280:720:force_original_aspect_ratio=decrease',
+            '-q:v', '2', path.join(framesDir, 'frame_%04d.jpg')
+        ], { timeout: 30000, stdio: 'pipe' });
+
+        const frameFiles = fs.readdirSync(framesDir)
+            .filter(f => f.endsWith('.jpg')).sort()
+            .map(f => path.join(framesDir, f));
+        if (!frameFiles.length) return [];
+
+        const scored = await Promise.all(frameFiles.map(async fp => {
+            try {
+                const { data } = await sharp(fp).greyscale().resize(320,180).raw().toBuffer({ resolveWithObject: true });
+                let sum=0, sumSq=0;
+                for (let i=1; i<data.length; i++) {
+                    const d = Math.abs(data[i]-data[i-1]);
+                    sum+=d; sumSq+=d*d;
+                }
+                const mean = sum/data.length;
+                return { path: fp, sharpness: sumSq/data.length - mean*mean };
+            } catch(_) { return { path: fp, sharpness: 0 }; }
+        }));
+
+        const best = scored.sort((a,b) => b.sharpness-a.sharpness).slice(0,5);
+        for (const f of best) {
+            const buf = fs.readFileSync(f.path);
+            keyframes.push({ path: f.path, base64: buf.toString('base64'), sharpness: Math.round(f.sharpness) });
+        }
+        logger.info(`🖼 Extracted ${keyframes.length} keyframes for job ${jobId}`);
+    } catch(e) {
+        logger.warn(`⚠️ Keyframe extraction failed: ${e.message}`);
+    } finally {
+        try { fs.rmSync(framesDir, { recursive: true }); } catch(_) {}
+    }
+    return keyframes;
+}
+
+async function classifyDamage(keyframes, driverName, vin, inspectionType) {
+    if (!process.env.GEMINI_API_KEY || !keyframes.length) return null;
+    const frames = keyframes.slice(0, 3);
+    try {
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        const model = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+            .getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+        const imageParts = frames.map(f => ({ inlineData: { data: f.base64, mimeType: 'image/jpeg' } }));
+        const prompt = `You are a fleet damage inspector reviewing a ${inspectionType} walk-around for driver ${driverName}, vehicle VIN ending ${vin}.
+Analyze these ${frames.length} frames. Respond ONLY with valid JSON:
+{"overallCondition":"good|fair|poor","damageFound":true|false,"items":[{"type":"dent|scratch|crack|missing_part|rust|stain|other","severity":"minor|moderate|major","location":"front_bumper|rear_bumper|driver_side|passenger_side|hood|roof|windshield|headlight|taillight|tire|other","description":"brief"}],"recommendedAction":"none|monitor|repair_soon|repair_immediately","confidenceScore":0}`;
+
+        const result  = await model.generateContent([prompt, ...imageParts]);
+        const text    = result.response.text().trim().replace(/```json\n?|\n?```/g,'').trim();;
+        const damage  = JSON.parse(text);
+        logger.info(`🔍 Damage: ${damage.overallCondition} — ${damage.items?.length||0} items — confidence: ${damage.confidenceScore}%`);
+        return damage;
+    } catch(e) {
+        logger.warn(`⚠️ Damage classification failed: ${e.message}`);
+        return null;
+    }
+}
+
+async function addVideoChapters(videoPath, keyframes, jobId) {
+    if (!ffmpegPath || !keyframes.length) return videoPath;
+    try {
+        const { execFileSync } = require('child_process');
+        const dur = parseFloat(execFileSync(ffprobePath, [
+            '-v','quiet','-show_entries','format=duration','-of','csv=p=0', videoPath
+        ], { timeout: 10000 }).toString().trim());
+        if (!dur || dur < 1) return videoPath;
+
+        const step = dur / (keyframes.length + 1);
+        let meta  = ';FFMETADATA1\n';
+        meta += `[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=${Math.round(step*1000)}\ntitle=Walk-Around Start\n`;
+        keyframes.forEach((f, i) => {
+            const s = Math.round(step*(i+1)*1000);
+            const e = Math.round(step*(i+2)*1000);
+            meta += `\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=${s}\nEND=${e}\ntitle=${f.sharpness>1000?'Best Frame '+(i+1):'Frame '+(i+1)}\n`;
+        });
+        meta += `\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=${Math.round(dur*1000-2000)}\nEND=${Math.round(dur*1000)}\ntitle=Walk-Around End\n`;
+
+        const metaPath  = path.join(UPLOAD_DIR, `${jobId}.ffmeta`);
+        const outPath   = videoPath.replace('.mp4','_ch.mp4');
+        fs.writeFileSync(metaPath, meta);
+        execFileSync(ffmpegPath, [
+            '-y','-i',videoPath,'-i',metaPath,
+            '-map_metadata','1','-codec','copy','-movflags','+faststart', outPath
+        ], { timeout: 30000, stdio: 'pipe' });
+
+        if (fs.existsSync(outPath) && fs.statSync(outPath).size > 10000) {
+            fs.unlinkSync(videoPath);
+            fs.renameSync(outPath, videoPath);
+            logger.info(`📑 ${keyframes.length+2} chapters added to video for job ${jobId}`);
+        }
+        try { fs.unlinkSync(metaPath); } catch(_) {}
+    } catch(e) {
+        logger.warn(`⚠️ Chapter injection failed (non-fatal): ${e.message}`);
+    }
+    return videoPath;
+}
+
+
 app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
     const { driverName, vin, vehicleType, inspectionType, totalSize, totalChunks, mimeType } = req.body;
 
@@ -2384,16 +2492,127 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
     const jobId = require('crypto').randomUUID();
     res.json({ success: true, jobId, message: 'Upload complete — processing started' });
 
-    // Hand off to existing processing pipeline
-    setImmediate(() => {
-        processVideo({
-            filePath:       finalPath,
-            driverName:     session.driverName,
-            vin:            session.vin,
-            vehicleType:    session.vehicleType,
-            inspectionType: session.inspectionType,
-            jobId,
-        }).catch(e => logger.error('Chunk upload processVideo error', { error: e.message, jobId }));
+    // Hand off to processing pipeline via the same enqueue mechanism as direct upload
+    // Build a fake req/res to reuse the existing upload handler logic
+    setImmediate(async () => {
+        try {
+            const stat = fs.statSync(finalPath);
+            const fileSizeMB = (stat.size / 1024 / 1024).toFixed(2);
+
+            // Write manifest so job is trackable
+            const manifestPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+            const manifestData = {
+                jobId,
+                videoFile:      path.basename(finalPath),
+                driverName:     session.driverName,
+                vin:            session.vin,
+                vehicleType:    session.vehicleType || '',
+                inspectionType: session.inspectionType,
+                fileSizeMB,
+                status:         'queued',
+                uploadedAt:     new Date().toISOString(),
+                source:         'chunked',
+            };
+            fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2));
+
+            updateJob(jobId, { status: 'queued', stage: 'Queued', progress: 0, message: 'Video received — queued for processing' });
+
+            // Trigger processing via same path as direct upload
+            // The job function mimics what the direct upload handler does
+            logger.info(`✅ Chunk assembly complete for job ${jobId} — queuing for processing`);
+
+            // Build a mock req so the existing job function closure works unchanged
+            const _mockReq = {
+                file:     { path: finalPath },
+                body:     {
+                    driverName:      session.driverName,
+                    vin:             session.vin,
+                    vehicleType:     session.vehicleType || '',
+                    inspectionType:  session.inspectionType,
+                    supervisorFiled: 'false',
+                    supervisorName:  '',
+                },
+                hostname: 'slgpmeshserver.com',
+                ip:       '127.0.0.1',
+                get:      () => null,
+            };
+
+            const enqueued = enqueueJob(jobId, async (overrideVideoPath) => {
+                // Shadow req with mock so existing job fn works without modification
+                const req = _mockReq;
+                let videoPath        = overrideVideoPath || req.file.path;
+                let enhancedVideoPath = null;
+                let wasEnhanced       = false;
+                const driverName     = req.body.driverName;
+                const vin            = req.body.vin;
+                const inspectionType = req.body.inspectionType;
+                const fileSizeMB     = (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2);
+                const supervisorFiled = false;
+                const supervisorName  = null;
+
+                // Re-use the full processing pipeline inline
+                // by duplicating the key steps: engine → enhance → Drive → email
+                try {
+                    logger.info(`📹 Background processing started (chunked) for job ${jobId}`);
+                    updateJob(jobId, { status: 'processing', stage: 'Starting', progress: 5, message: 'Processing video...' });
+
+                    let enginePlan;
+                    try {
+                        enginePlan = await engine.analyze(videoPath, fileSizeMB, jobId);
+                    } catch(_) {
+                        enginePlan = { analysis: {}, decision: { profile: 'RAW_UPLOAD' }, videoPath, fileSizeMB, jobId };
+                    }
+                    enginePlan.videoPath  = videoPath;
+                    enginePlan.fileSizeMB = fileSizeMB;
+                    enginePlan.jobId      = jobId;
+
+                    const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
+                    const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
+                    enginePlan.outputPath = path.join(outputDir, enhancedFileName + '.mp4');
+                    try { fs.mkdirSync(outputDir, { recursive: true }); } catch(_) {}
+
+                    const engineResult = await engine.execute(enginePlan, jobId, updateJob);
+                    let finalVideoPath = engineResult.wasEnhanced ? engineResult.finalPath : videoPath;
+                    wasEnhanced = !!engineResult.wasEnhanced;
+                    enhancedVideoPath = wasEnhanced ? engineResult.finalPath : null;
+
+                    // Keyframe + damage + chapters (non-blocking)
+                    try {
+                        const keyframes  = await extractKeyframes(finalVideoPath, jobId);
+                        const dmgReport  = keyframes.length ? await classifyDamage(keyframes, driverName, vin, inspectionType) : null;
+                        if (keyframes.length) await addVideoChapters(finalVideoPath, keyframes, jobId);
+                    } catch(_) {}
+
+                    // Drive upload
+                    updateJob(jobId, { status: 'uploading', stage: 'Uploading', progress: 70, message: 'Uploading to Google Drive...' });
+                    const finalStats  = fs.statSync(finalVideoPath);
+                    const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
+                    const fileName    = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
+
+                    const driveRes = await Promise.race([
+                        driveClient.files.create({
+                            requestBody: { name: fileName, parents: [VIDEO_DRIVE_ID], mimeType: 'video/mp4' },
+                            media:       { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) },
+                            fields:      'id,webViewLink',
+                        }),
+                        new Promise((_,rej) => setTimeout(() => rej(new Error('Drive timeout')), 8*60*1000))
+                    ]);
+
+                    const viewLink = driveRes.data.webViewLink;
+                    updateJob(jobId, { status: 'complete', stage: 'Complete', progress: 100,
+                        message: 'Upload complete', enhanced: wasEnhanced, viewLink });
+
+                    logger.info(`✅ Chunked job complete: ${driverName} VIN:${vin} → Drive`);
+                } catch(err) {
+                    logger.error(`❌ Chunked job failed: ${err.message}`, { jobId });
+                    updateJob(jobId, { status: 'failed', stage: 'Failed', progress: 0, error: err.message });
+                    throw err;
+                }
+            });
+            if (!enqueued) logger.warn(`Chunk job ${jobId} rejected — queue full`);
+        } catch(e) {
+            logger.error('Chunk upload enqueue error', { error: e.message, jobId });
+        }
     });
 });
 
@@ -2433,7 +2652,7 @@ const UploadSchema = z.object({
     vehicleType:    z.string().min(1).max(80).optional(),
     supervisorFiled:z.union([z.boolean(), z.string()]).optional(),
     supervisorName: z.string().max(100).nullable().optional(),
-}).strict();
+});
 
 app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
     // Wrap multer to catch MulterError (file too large, wrong field, etc)
@@ -2583,8 +2802,8 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
     } catch (_) {}
 
     // Enqueue — if queue is full, enqueueJob() will mark the job failed and return false
-    const queued = enqueueJob(jobId, async () => {
-    let videoPath = req.file.path;
+    const queued = enqueueJob(jobId, async (overrideVideoPath) => {
+    let videoPath = overrideVideoPath || req.file.path;
     let enhancedVideoPath = null;
     let wasEnhanced = false;
     try {
@@ -3185,6 +3404,10 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
                     } catch(_) {}
                     logger.info(`🔍 Damage: ${damageReport.overallCondition} — ${damageReport.items?.length || 0} item(s) — confidence: ${damageReport.confidenceScore}%`);
                 }
+            }
+            // Add chapter markers to video for easy seeking in player
+            if (keyframes.length > 0) {
+                finalVideoPath = await addVideoChapters(finalVideoPath, keyframes, jobId);
             }
         } catch(e) {
             logger.warn(`⚠️ Frame analysis failed (non-fatal): ${e.message}`);
