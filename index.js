@@ -1,7 +1,48 @@
 require('dotenv').config();
-const express = require('express');
+const express    = require('express');
+const compression = require('compression');
 const { execSync, fork } = require('child_process');
-const { Pool } = require('pg');
+const { Pool }   = require('pg');
+const { z }      = require('zod');
+const winston    = require('winston');
+const DailyRotateFile = require('winston-daily-rotate-file');
+
+// ── Structured logger ─────────────────────────────────────────────────────────
+// Replaces console.log — writes to journalctl AND rotating daily log files.
+// Log files: /var/log/slgp-fleet/YYYY-MM-DD.log, kept 14 days, max 20MB each.
+const logger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.errors({ stack: true }),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+            const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+            return `${timestamp} [${level.toUpperCase()}] ${message}${metaStr}`;
+        })
+    ),
+    transports: [
+        // Console → journalctl
+        new winston.transports.Console(),
+        // Rotating file — survives log rotation, keeps 14 days
+        new DailyRotateFile({
+            filename:    '/var/log/slgp-fleet/%DATE%.log',
+            datePattern: 'YYYY-MM-DD',
+            maxFiles:    '14d',
+            maxSize:     '20m',
+            zippedArchive: true,
+        }),
+    ],
+});
+
+// Create log directory if it doesn't exist
+const fs_sync = require('fs');
+try { fs_sync.mkdirSync('/var/log/slgp-fleet', { recursive: true }); } catch(_) {}
+
+// Intercept console.log/warn/error → winston so all existing logs go through it
+const _origLog   = console.log.bind(console);
+console.log   = (...a) => logger.info(a.map(String).join(' '));
+console.warn  = (...a) => logger.warn(a.map(String).join(' '));
+console.error = (...a) => logger.error(a.map(String).join(' '));
 
 // ============================================
 // ACTIVE FFMPEG PID TRACKING
@@ -292,6 +333,7 @@ const mailTransport = nodemailer.createTransport({
 });
 
 const app = express();
+app.use(compression()); // gzip all responses — saves ~70% bandwidth on JSON
 
 // ============================================
 // CONFIGURATION
@@ -2141,6 +2183,17 @@ app.get('/api/speed-limit', async (req, res) => {
 // ============================================
 // VIDEO UPLOAD WITH FFMPEG AUTO-DETECTION
 // ============================================
+// ── Zod validation schema for driver submissions ─────────────────────────────
+const UploadSchema = z.object({
+    driverName:     z.string().min(2, 'Driver name too short').max(100).trim(),
+    vin:            z.string().length(4, 'VIN must be exactly 4 characters')
+                     .regex(/^[0-9A-Za-z]+$/, 'VIN must be alphanumeric'),
+    inspectionType: z.enum(['Pre-Trip', 'Post-Trip'], { message: 'Invalid inspection type' }),
+    vehicleType:    z.string().min(1).max(80).optional(),
+    supervisorFiled:z.union([z.boolean(), z.string()]).optional(),
+    supervisorName: z.string().max(100).nullable().optional(),
+}).strict();
+
 app.post('/upload-to-google-drive', (req, res, next) => {
     // Wrap multer to catch MulterError (file too large, wrong field, etc)
     // and return proper JSON instead of crashing the route
@@ -2171,11 +2224,17 @@ app.post('/upload-to-google-drive', (req, res, next) => {
     if (!driveClient) return res.status(503).json({ success: false, error: 'Google Drive not available' });
     if (!req.file)    return res.status(400).json({ success: false, error: 'No video file received' });
 
-    const { driverName, vin, inspectionType } = req.body;
-    const supervisorFiled = req.body.supervisorFiled === 'true' || req.body.supervisorFiled === true;
-    const supervisorName  = req.body.supervisorName  || null;
-    if (!driverName || !vin || !inspectionType)
-        return res.status(400).json({ success: false, error: 'Missing required fields' });
+    // Zod validation — sanitizes and validates all fields before touching FFmpeg
+    const parsed = UploadSchema.safeParse(req.body);
+    if (!parsed.success) {
+        const details = parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        logger.warn('Upload validation failed', { details, ip: req.ip });
+        if (req.file) { try { require('fs').unlinkSync(req.file.path); } catch(_) {} }
+        return res.status(400).json({ success: false, error: 'Invalid submission', details });
+    }
+    const { driverName, vin, inspectionType, vehicleType } = parsed.data;
+    const supervisorFiled = parsed.data.supervisorFiled === true || parsed.data.supervisorFiled === 'true';
+    const supervisorName  = parsed.data.supervisorName  || null;
 
     // ── Duplicate detection ───────────────────────────────────────────────────
     // If this driver already submitted the same inspection within 5 minutes,
