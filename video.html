@@ -2062,6 +2062,65 @@
         }
     }
 
+
+    // ─── Chunked resumable upload ────────────────────────────────────────────────
+    // 512KB chunks persisted independently on server.
+    // Server restart mid-upload? Driver resumes from last successful chunk.
+    const CHUNK_SIZE = 512 * 1024;
+
+    async function uploadChunked(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor) {
+        const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
+        const ext         = blob.type.includes('webm') ? 'webm' : 'mp4';
+        setProgress(0, `Starting upload (${(blob.size/1024/1024).toFixed(1)}MB, ${totalChunks} parts)...`);
+
+        // Init session
+        const initRes  = await fetch('/upload/init', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ driverName: driver, vin, vehicleType: vehicle,
+                inspectionType: inspType, totalSize: blob.size, totalChunks,
+                mimeType: blob.type || 'video/mp4',
+                supervisorFiled: isSupervisor, supervisorName: supervisor }),
+        });
+        const initData = await initRes.json();
+        if (!initData.success) throw new Error('Upload init failed: ' + initData.error);
+        const { sessionId } = initData;
+
+        // Upload chunks with per-chunk retry
+        for (let i = 0; i < totalChunks; i++) {
+            const chunk = blob.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const pct   = Math.round((i / totalChunks) * 85);
+            setProgress(pct, `Uploading ${pct}% (${i+1}/${totalChunks} parts)...`);
+            let ok = false;
+            for (let r = 0; r < 3 && !ok; r++) {
+                try {
+                    const fd = new FormData();
+                    fd.append('chunk', chunk, `chunk_${i}.${ext}`);
+                    fd.append('sessionId', sessionId);
+                    fd.append('chunkIndex', String(i));
+                    fd.append('totalChunks', String(totalChunks));
+                    const res = await fetch('/upload/chunk', { method: 'POST', body: fd });
+                    const d   = await res.json();
+                    if (d.success) ok = true;
+                    else if (r < 2) await new Promise(x => setTimeout(x, 1500 * (r + 1)));
+                } catch(e) {
+                    if (r < 2) await new Promise(x => setTimeout(x, 2000));
+                    else throw new Error('Chunk ' + i + ' failed: ' + e.message);
+                }
+            }
+            if (!ok) throw new Error('Chunk ' + i + ' failed after 3 retries');
+        }
+
+        setProgress(88, 'Finalizing...');
+        const compRes  = await fetch('/upload/complete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+        });
+        const compData = await compRes.json();
+        if (!compData.success) throw new Error('Upload complete failed: ' + compData.error);
+        setProgress(92, 'Upload complete — processing started...');
+        return compData.jobId;
+    }
+
     async function uploadVideo() {
         // Cancel any pending auto-reload — upload is in progress, don't interrupt it
         if (_reloadTimer) { clearTimeout(_reloadTimer); _reloadTimer = null; }
@@ -2172,6 +2231,21 @@
                 console.log(`📤 Upload attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS}`);
                 if (attempt > 1) setProgress(0, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`);
 
+                // ── Chunked upload (primary) — falls back to XHR on error ────────────
+                // Chunked is resumable: server restart mid-upload doesn't lose the video.
+                try {
+                    jobId = await uploadChunked(
+                        videoBlob, driver, vin, inspectionType,
+                        document.getElementById('vehicleType')?.value || '',
+                        isOpsMode, opsSupervisor
+                    );
+                    break; // Success — exit retry loop
+                } catch(chunkErr) {
+                    console.warn('⚠️ Chunked upload failed, falling back to direct upload:', chunkErr.message);
+                    // Fall through to XHR below
+                }
+
+                // ── Direct XHR upload (fallback) ──────────────────────────────────────
                 // FIX: rebuild FormData on every attempt — reusing the same FormData
                 // after a failed XHR produces an empty body on Samsung/Android devices
                 const formData = new FormData();
