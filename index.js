@@ -2339,11 +2339,58 @@ async function extractKeyframes(videoPath, jobId) {
         }));
 
         const best = scored.sort((a,b) => b.sharpness-a.sharpness).slice(0,5);
+
+        // Run Real-ESRGAN on each keyframe — 2x AI upscale for better damage detection
+        // CPU-only: ~5-10s per frame. Only runs on 5 frames, not the full video.
+        const esrganModel = '/root/realesrgan/weights/RealESRGAN_x4plus.pth';
+        const esrganAvailable = fs.existsSync(esrganModel);
+        if (esrganAvailable) logger.info(`🤖 Real-ESRGAN available — enhancing ${best.length} keyframes`);
+
         for (const f of best) {
-            const buf = fs.readFileSync(f.path);
-            keyframes.push({ path: f.path, base64: buf.toString('base64'), sharpness: Math.round(f.sharpness) });
+            let finalPath = f.path;
+
+            if (esrganAvailable && !f.isBlurred) {
+                // Only enhance non-blurry frames — ESRGAN on motion-blurred frames
+                // amplifies the blur rather than fixing it
+                const enhPath = f.path.replace('.jpg', '_enhanced.jpg');
+                try {
+                    const { execFileSync } = require('child_process');
+                    execFileSync('python3', [
+                        '-c',
+                        [
+                            'import sys, torch',
+                            'from basicsr.archs.rrdbnet_arch import RRDBNet',
+                            'from realesrgan import RealESRGANer',
+                            'from PIL import Image',
+                            'import numpy as np',
+                            '',
+                            'model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)',
+                            'upsampler = RealESRGANer(',
+                            '    scale=4, model_path=sys.argv[1],',
+                            '    model=model, tile=256, tile_pad=10,',
+                            '    pre_pad=0, half=False, device="cpu"',
+                            ')',
+                            'img = np.array(Image.open(sys.argv[2]).convert("RGB"))',
+                            'out, _ = upsampler.enhance(img, outscale=2)',
+                            'Image.fromarray(out).save(sys.argv[3], quality=92)',
+                            'print("OK")',
+                        ].join(';'),
+                        esrganModel, f.path, enhPath
+                    ], { timeout: 60000, stdio: ['pipe','pipe','pipe'] });
+
+                    if (fs.existsSync(enhPath) && fs.statSync(enhPath).size > 10000) {
+                        finalPath = enhPath;
+                        logger.info(`✨ ESRGAN enhanced keyframe ${best.indexOf(f)+1}/${best.length}`);
+                    }
+                } catch(e) {
+                    logger.warn(`⚠️ ESRGAN failed on frame (non-fatal): ${e.message.slice(0,80)}`);
+                }
+            }
+
+            const buf = fs.readFileSync(finalPath);
+            keyframes.push({ path: finalPath, base64: buf.toString('base64'), sharpness: Math.round(f.sharpness), enhanced: finalPath !== f.path });
         }
-        logger.info(`🖼 Extracted ${keyframes.length} keyframes for job ${jobId}`);
+        logger.info(`🖼 Extracted ${keyframes.length} keyframes for job ${jobId} (${keyframes.filter(k=>k.enhanced).length} ESRGAN enhanced)`);
     } catch(e) {
         logger.warn(`⚠️ Keyframe extraction failed: ${e.message}`);
     } finally {
