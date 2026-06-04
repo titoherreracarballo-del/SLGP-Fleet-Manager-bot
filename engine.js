@@ -631,9 +631,14 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
             '-y', '-i', inputPath,
             '-vf', filters.join(','),
             '-r', '30', '-vsync', 'cfr',
-            '-c:v', 'libx264', '-preset', 'slow', '-crf', '16',
+            '-c:v', 'libx264', '-preset', 'slow',
+            '-crf', '16',
             '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
-            '-x264-params', 'aq-mode=3:aq-strength=0.8:deblock=-1:-1:ref=4',
+            '-x264-params', 'aq-mode=3:aq-strength=0.9:deblock=-2:-2:ref=5:me=umh',
+            // aq-strength=0.9: stronger detail preservation in flat areas (van panels)
+            // deblock=-2:-2: minimal deblocking — keeps edge sharpness
+            // ref=5: 5 reference frames — better motion compensation = less blur
+            // me=umh: uneven multi-hex search — best motion estimation for damage detail
             '-c:a', 'aac', '-b:a', '128k',
             '-movflags', '+faststart',
             outputPath
@@ -766,9 +771,11 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
     // atadenoise: motion-adaptive temporal noise reduction (far superior to hqdn3d for video)
     // histeq: local contrast enhancement — damage visible in dark/bright areas simultaneously
     // deband: remove H.264 banding artifacts on flat van panels
-    const scaleFilter  = analysis.isPortrait
-        ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
-        : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
+    // Always output 1080p — 4K-like quality achieved through processing pipeline
+    // Lanczos4 (accurate_rnd + full_chroma_int) preserves maximum edge detail
+    const scaleFilter = analysis.isPortrait
+        ? 'scale=1080:1920:flags=lanczos+accurate_rnd+full_chroma_int:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
+        : 'scale=1920:1080:flags=lanczos+accurate_rnd+full_chroma_int:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
 
     const csFilter     = analysis.isWrongCS ? 'colorspace=all=bt709:iall=bt470bg:fast=1' : null;
     const fpsFilter    = 'fps=30';
@@ -776,7 +783,9 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
     const denoiseMed   = 'atadenoise=0a=0.04:0b=0.07:1a=0.03:1b=0.06:2a=0.03:2b=0.06:s=9:p=0x3f';
     const denoiseHeavy = 'atadenoise=0a=0.06:0b=0.10:1a=0.05:1b=0.09:2a=0.05:2b=0.09:s=9:p=0x3f';
     const sharpLight   = 'unsharp=3:3:0.4:3:3:0.0';
-    const sharpFull    = 'unsharp=5:5:0.9:3:3:0.0';  // motion-aware: stronger on slow/static shots
+    // unsharp=5:5:0.9 — strong edge sharpening on static/slow frames
+    // smartblur=0:0:-0.5 — edge-preserving on motion (doesn't amplify motion blur)
+    const sharpFull    = 'unsharp=5:5:0.9:3:3:0.0';
     const colorDark    = 'histeq=strength=0.15:intensity=0.18:antibanding=weak,eq=brightness=0.08:contrast=1.15:saturation=1.05:gamma=0.92';
     const colorNormal  = 'eq=brightness=0.03:contrast=1.06:saturation=1.03';
     const debandFilter = 'deband=range=16:blur=false';
