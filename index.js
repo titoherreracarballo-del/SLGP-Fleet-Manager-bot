@@ -7,6 +7,8 @@ const { z }      = require('zod');
 const rateLimit  = require('express-rate-limit');
 const { Queue, Worker, QueueEvents } = require('bullmq');
 const IORedis    = require('ioredis');
+
+let _shuttingDown = false; // set to true on SIGTERM — blocks new uploads
 const winston    = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const sharp           = require('sharp');
@@ -4452,13 +4454,7 @@ const PORT = process.env.PORT || 8080;
 // ── Graceful shutdown ─────────────────────────────────────────
 // Railway sends SIGTERM before stopping container.
 // Log active jobs so they appear in manifests and can be recovered on restart.
-process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received — server shutting down');
-    console.log(`   Active jobs at shutdown: ${activeJobs}, Queue depth: ${jobQueue.length}`);
-    // Jobs with manifests will be recovered by agent on next startup
-    // Jobs in memory queue (not yet started) will be re-submitted by drivers
-    process.exit(0);
-});
+// SIGTERM → gracefulShutdown() below
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4467,8 +4463,6 @@ process.on('SIGTERM', () => {
 // jobs to complete (up to 5min), then exit cleanly.
 // Prevents mid-encode FFmpeg kills and BullMQ stalled job markers.
 // ═══════════════════════════════════════════════════════════════════════════════
-let _shuttingDown = false;
-
 async function gracefulShutdown(signal) {
     if (_shuttingDown) return;
     _shuttingDown = true;
@@ -4717,11 +4711,7 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
     }, 5000);
 });
 
-process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received - shutting down gracefully');
-    try { fs.writeFileSync(ACTIVE_PIDS_FILE, JSON.stringify([])); } catch(e) {}
-    process.exit(0);
-});
+// SIGTERM → gracefulShutdown() below
 
 // ============================================
 // UNHANDLED REJECTION & EXCEPTION HANDLERS
