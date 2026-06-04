@@ -134,10 +134,11 @@ function _writeDarkRecoveryScript() {
         '            ffmpeg, "-y", "-r", str(fps),',
         '            "-i", os.path.join(frame_dir, "frame_%06d.png"),',
         '            "-i", inp, "-map", "0:v", *audio_args,',
-        '            "-c:v", "libx264", "-preset", "medium", "-crf", "23",',
+        '            "-c:v", "libx264", "-preset", "slow", "-crf", "16",',
+        '            "-x264-params", "aq-mode=3:aq-strength=0.8:deblock=-1:-1",',
         '            "-maxrate", "8000k", "-bufsize", "16000k",',
         '            "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",',
-        '            "-shortest", out',
+        '            "-movflags", "+faststart", "-shortest", out',
         '        ], capture_output=True, timeout=600)',
         '        if r.returncode != 0: sys.exit(f"FFmpeg failed: {r.stderr.decode()[:200]}")',
         '        print(f"DONE:{n}", flush=True)',
@@ -202,6 +203,7 @@ async function analyzeVideo(videoPath) {
         codec: 'unknown', isPortrait: false, brightness: 128,
         motionScore: 50, qualityScore: 50, isDark: false, isOutdoor: false,
         hasAudio: false, needsInterp: false, isObstructed: false,
+        colorSpace: 'unknown', isWrongCS: false,
         fileBytes: 0, error: null,
     };
 
@@ -229,7 +231,7 @@ async function analyzeVideo(videoPath) {
         }
         analysis.durationSec = parseFloat(format.duration || 0);
         analysis.hasAudio    = !!aStream;
-        analysis.needsInterp = analysis.fps < 25; // interpolate anything under 25fps
+        analysis.needsInterp = analysis.fps < 20;
 
         // ── Lens obstruction ────────────────────────────────────
         const obs = await detectLensObstruction(videoPath, analysis.durationSec);
@@ -296,6 +298,18 @@ async function analyzeVideo(videoPath) {
 
         analysis.isDark    = analysis.brightness < DARK_THRESHOLD;
         analysis.isOutdoor = analysis.brightness > 140;
+
+        // ── Color space detection ───────────────────────────────
+        // bt470bg from Android phones causes per-frame color inconsistency
+        // Force colorspace correction filter if detected
+        const colorSpc       = (vStream && vStream.color_space) || 'unknown';
+        analysis.colorSpace  = colorSpc;
+        analysis.isWrongCS   = colorSpc === 'bt470bg' || colorSpc === 'bt470bg-16' || colorSpc === 'smpte170m';
+        if (analysis.isWrongCS)
+            console.log(`📊 Engine: color space ${colorSpc} detected — applying bt709 correction`);
+
+        // ── qualityScore for driver tracking ────────────────────
+        analysis.qualityScore = Math.max(0, Math.min(100, analysis.qualityScore));
 
     } catch (err) {
         analysis.error = err.message;
@@ -608,26 +622,29 @@ function selectProfile(analysis, fileSizeMB, isRetry, attemptCount) {
 // FFMPEG RUNNER
 // ═══════════════════════════════════════════════════════════════
 async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
-    // Write directly to file — eliminates pipe fragility and fragmented MP4.
-    // -vsync cfr enforces constant frame rate at encoder level, fixing VFR jitter
-    // from Android phones that record at variable frame rates under CPU load.
+    // Write directly to file — no pipe, no fragmented MP4.
+    // -vsync cfr: enforces CFR at encoder level, eliminates VFR jitter from Android phones.
+    // CRF 16 + preset slow: visually lossless for damage review.
+    // x264-params: aq-mode=3 preserves detail in flat van panels, deblock=-1 reduces edge blur.
     return new Promise((resolve, reject) => {
         const args = [
             '-y', '-i', inputPath,
             '-vf', filters.join(','),
             '-r', '30', '-vsync', 'cfr',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
+            '-c:v', 'libx264', '-preset', 'slow', '-crf', '16',
             '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
+            '-x264-params', 'aq-mode=3:aq-strength=0.8:deblock=-1:-1:ref=4',
             '-c:a', 'aac', '-b:a', '128k',
             '-movflags', '+faststart',
             outputPath
         ];
 
-        let settled  = false;
+        let settled   = false;
         let stderrBuf = '';
-        const settle = (fn, v) => { if (!settled) { settled = true; fn(v); } };
-        const proc   = spawn(_ffmpegPath, args);
+        const settle  = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+        const proc    = spawn(_ffmpegPath, args);
 
+        proc.stdout.resume(); // stdout unused — writing to file
         proc.stderr.on('data', chunk => {
             stderrBuf += chunk.toString();
             const m = stderrBuf.match(/frame=\s*(\d+)/g);
@@ -639,6 +656,7 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
 
         const wd = setTimeout(() => {
             try { proc.kill('SIGKILL'); } catch(_) {}
+            try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch(_) {}
             settle(reject, new Error('FFmpeg timeout (5min)'));
         }, 5 * 60 * 1000);
 
@@ -654,6 +672,7 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
         proc.on('error', e => { clearTimeout(wd); settle(reject, e); });
     });
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // DARK RECOVERY RUNNER
@@ -742,41 +761,58 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
         }
     }
 
-    // ── FFmpeg profiles ───────────────────────────────────────
-    const scaleFilter = analysis.isPortrait
+    // ── Advanced filter chains — v3 upgrade ─────────────────────────────────
+    // colorspace: fix bt470bg→bt709 (Android phone color space bug — causes per-frame color shifts)
+    // atadenoise: motion-adaptive temporal noise reduction (far superior to hqdn3d for video)
+    // histeq: local contrast enhancement — damage visible in dark/bright areas simultaneously
+    // deband: remove H.264 banding artifacts on flat van panels
+    const scaleFilter  = analysis.isPortrait
         ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
         : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
 
-    // ── Clean filter chains — no vidstab (causes gelatin on walking footage) ──
-    // The -vsync cfr in _runFFmpeg already fixes VFR jitter at encoder level.
-    // fps filter here ensures consistent filter chain timing.
+    const csFilter     = analysis.isWrongCS ? 'colorspace=all=bt709:iall=bt470bg:fast=1' : null;
     const fpsFilter    = 'fps=30';
-    const denoiseLight = 'hqdn3d=1.5:1.2:2.0:1.5';
-    const denoiseMed   = 'hqdn3d=2.0:1.5:2.5:2.0';
-    const sharpFilter  = 'unsharp=5:5:0.6:3:3:0.0';
-    const colorDark    = 'eq=brightness=0.10:contrast=1.15:saturation=1.05:gamma=0.95';
-    const colorNormal  = 'eq=brightness=0.03:contrast=1.05:saturation=1.03';
+    const denoiseLight = 'atadenoise=0a=0.02:0b=0.04:1a=0.02:1b=0.04:s=7:p=0x3f';
+    const denoiseMed   = 'atadenoise=0a=0.04:0b=0.07:1a=0.03:1b=0.06:2a=0.03:2b=0.06:s=9:p=0x3f';
+    const denoiseHeavy = 'atadenoise=0a=0.06:0b=0.10:1a=0.05:1b=0.09:2a=0.05:2b=0.09:s=9:p=0x3f';
+    const sharpLight   = 'unsharp=3:3:0.4:3:3:0.0';
+    const sharpFull    = 'unsharp=5:5:0.9:3:3:0.0';  // motion-aware: stronger on slow/static shots
+    const colorDark    = 'histeq=strength=0.15:intensity=0.18:antibanding=weak,eq=brightness=0.08:contrast=1.15:saturation=1.05:gamma=0.92';
+    const colorNormal  = 'eq=brightness=0.03:contrast=1.06:saturation=1.03';
+    const debandFilter = 'deband=range=16:blur=false';
+
+    // Determine denoise level by scene
+    const denoiseFilter = analysis.brightness < 50 ? denoiseHeavy
+                        : analysis.isDark           ? denoiseMed
+                        : denoiseLight;
 
     let filters = [];
     if (profile === 'MINIMAL') {
-        // Minimal: scale + fps normalize only
-        filters = [scaleFilter, fpsFilter];
+        filters = [
+            ...(csFilter ? [csFilter] : []),
+            scaleFilter, fpsFilter,
+            sharpLight,
+        ].filter(Boolean);
 
     } else if (profile === 'TARGETED') {
-        // Targeted: scale + fps + light denoise + color
         filters = [
-            scaleFilter, fpsFilter, denoiseLight,
+            ...(csFilter ? [csFilter] : []),
+            scaleFilter, fpsFilter,
+            denoiseLight,
+            ...(analysis.motionScore < 40 ? [sharpFull] : [sharpLight]),
             analysis.isDark ? colorDark : colorNormal,
-        ];
+            debandFilter,
+        ].filter(Boolean);
 
     } else { // STANDARD or AI_ENHANCED
-        // Standard: scale + fps + denoise + sharpen + color
         filters = [
+            ...(csFilter ? [csFilter] : []),
             scaleFilter, fpsFilter,
-            analysis.isDark ? denoiseMed : denoiseLight,
-            sharpFilter,
+            denoiseFilter,
+            sharpFull,
             analysis.isDark ? colorDark : colorNormal,
-        ];
+            debandFilter,
+        ].filter(Boolean);
     }
 
     try {
