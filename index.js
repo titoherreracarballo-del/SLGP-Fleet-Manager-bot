@@ -4413,6 +4413,66 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GRACEFUL SHUTDOWN
+// On SIGTERM (systemctl stop/restart): stop accepting new jobs, wait for active
+// jobs to complete (up to 5min), then exit cleanly.
+// Prevents mid-encode FFmpeg kills and BullMQ stalled job markers.
+// ═══════════════════════════════════════════════════════════════════════════════
+let _shuttingDown = false;
+
+async function gracefulShutdown(signal) {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    logger.info(`🛑 ${signal} received — graceful shutdown started`);
+
+    // Stop BullMQ worker from picking up new jobs
+    try {
+        await _worker.pause();
+        logger.info('⏸️  BullMQ worker paused — no new jobs');
+    } catch(e) { logger.warn('Worker pause failed:', e.message); }
+
+    // Wait for active jobs to finish (max 5 minutes)
+    const SHUTDOWN_TIMEOUT = 5 * 60 * 1000;
+    const start = Date.now();
+
+    if (activeJobs > 0) {
+        logger.info(`⏳ Waiting for ${activeJobs} active job(s) to complete...`);
+        await new Promise(resolve => {
+            const check = setInterval(() => {
+                if (activeJobs === 0 || Date.now() - start > SHUTDOWN_TIMEOUT) {
+                    clearInterval(check);
+                    if (activeJobs > 0)
+                        logger.warn(`⚠️  Shutdown timeout — ${activeJobs} job(s) still running`);
+                    else
+                        logger.info('✅ All jobs complete — shutting down cleanly');
+                    resolve();
+                }
+            }, 1000);
+        });
+    }
+
+    // Close BullMQ connections
+    try { await _worker.close(); } catch(_) {}
+    try { await _jobQueue.close(); } catch(_) {}
+    try { _redisConn.disconnect(); } catch(_) {}
+
+    logger.info('👋 Fleet Bot shut down cleanly');
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
+// Block new uploads during shutdown
+app.use((req, res, next) => {
+    if (_shuttingDown && req.method === 'POST' && req.path.includes('upload')) {
+        return res.status(503).json({ success: false, error: 'Server restarting — please retry in 30 seconds' });
+    }
+    next();
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
