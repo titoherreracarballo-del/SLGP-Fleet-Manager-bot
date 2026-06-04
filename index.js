@@ -173,6 +173,8 @@ function registerUpload(driverName, vin, inspectionType, jobId) {
 // at most MAX_CONCURRENT_JOBS run at the same time.
 const MAX_CONCURRENT_JOBS = 2;
 let   activeJobs          = 0;
+const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes — watchdog kills stalled jobs
+
 // ── BullMQ persistent job queue ──────────────────────────────────────────────
 // Redis-backed: jobs survive server restarts. Drivers never lose a submission.
 // The job fn (closure) lives in _jobFns Map — BullMQ stores metadata for recovery.
