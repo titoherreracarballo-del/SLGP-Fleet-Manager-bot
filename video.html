@@ -765,7 +765,7 @@
     // CONFIGURATION
     // ============================================
     const CONFIG = {
-        VIDEO_BITRATE:       8000000, // 8Mbps — better source quality for server enhancement
+        VIDEO_BITRATE:       16000000, // 16Mbps — 4K-capable bitrate for maximum source quality
         VIDEO_WIDTH: 1920,
         VIDEO_HEIGHT: 1080,
         MAX_RETRY_ATTEMPTS: 3,
@@ -955,9 +955,20 @@
             }
             const avgBrightness = totalBrightness / samples;
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
-            if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD && !flashEnabled) {
-                console.log('🔦 AUTO-FLASH ON (dark scene detected)');
-                setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
+            if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD) {
+                if (!flashEnabled) {
+                    console.log('🔦 AUTO-FLASH ON (dark scene detected)');
+                    setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
+                }
+                // Show low-light guidance — motion blur in dark = blurry video
+                if (!isRecording) {
+                    const statusEl = document.getElementById('status');
+                    if (statusEl) statusEl.innerText = '⚠️ Low light — walk slowly & keep flash ON for sharp video';
+                } else {
+                    // During recording — reminder on status
+                    const statusEl = document.getElementById('status');
+                    if (statusEl && avgBrightness < 60) statusEl.innerText = '🐢 Walk slowly — dark scenes blur when moving fast';
+                }
             }
             // Note: auto shutoff removed — repeated torch toggling creates inconsistent
             // lighting mid-inspection. Driver can manually turn off via flash button.
@@ -1293,6 +1304,7 @@
             const constraints = {
                 video: {
                     facingMode: { ideal: 'environment' },
+                    // 1080p target — 4K-like quality achieved via server-side processing
                     width:      { min: 720, ideal: 1920 },
                     height:     { min: 720, ideal: 1080 },
                     frameRate:  { min: 24, ideal: 30, max: 30 },
@@ -1847,6 +1859,8 @@
     }
 
     function startTimer() {
+        // Clear any existing interval first — prevents double-timer flicker
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         seconds = 0;
         const timerEl = document.getElementById('timer-display');
         timerEl.style.color   = '#ffffff';
@@ -2026,7 +2040,10 @@
                 startTimer();
                 document.getElementById('btn-record').classList.add('recording');
                 document.getElementById('btn-stop').style.display = 'flex';
-                document.getElementById('status').innerText = "Recording... Walk around vehicle";
+                const _dark = document.getElementById('status').innerText.includes('Low light') || document.getElementById('status').innerText.includes('dark');
+                document.getElementById('status').innerText = _dark
+                    ? "🐢 Dark scene — walk SLOWLY for sharp video"
+                    : "Recording... Walk around vehicle";
                 
             } catch (error) {
                 console.error('❌ Failed to start recording:', error);
