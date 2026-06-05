@@ -4270,6 +4270,124 @@ app.get('/', (req, res) => {
 // Deletes orphaned temp files and old manifests
 // to prevent Railway volume from filling up.
 // ============================================
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DRIVE UPLOAD RETRY PROCESSOR
+// Runs every 5 minutes. Picks up videos that were enhanced but never made it
+// to Google Drive (timeout, network blip, quota, etc.)
+// Videos stay in retry queue until successfully uploaded or max attempts hit.
+// ═══════════════════════════════════════════════════════════════════════════════
+const RETRY_BACKOFF_MINS  = [2, 5, 15, 30, 60]; // wait before each retry attempt
+
+async function processRetryQueue() {
+    if (!fs.existsSync(RETRY_QUEUE_FILE)) return;
+
+    let queue = [];
+    try { queue = JSON.parse(fs.readFileSync(RETRY_QUEUE_FILE, 'utf8')); }
+    catch(_) { return; }
+
+    if (queue.length === 0) return;
+    logger.info(`🔄 Retry queue: ${queue.length} pending Drive upload(s)`);
+
+    const now = Date.now();
+    let updated = false;
+
+    for (const entry of queue) {
+        // Skip if not yet due for retry
+        const backoffMs = (RETRY_BACKOFF_MINS[Math.min(entry.attemptCount - 1, RETRY_BACKOFF_MINS.length - 1)] || 60) * 60 * 1000;
+        if (entry.nextRetryAt && now < entry.nextRetryAt) continue;
+
+        // Skip if file no longer exists
+        const filePath = entry.enhancedPath || entry.filePath;
+        if (!filePath || !fs.existsSync(filePath)) {
+            logger.warn(`🗑 Retry: file missing for ${entry.driverName} VIN:${entry.vin} — removing from queue`);
+            entry._remove = true;
+            updated = true;
+            continue;
+        }
+
+        // Skip if max attempts hit
+        if (entry.attemptCount >= MAX_RETRY_ATTEMPTS) {
+            logger.error(`❌ Retry: max attempts (${MAX_RETRY_ATTEMPTS}) hit for ${entry.driverName} VIN:${entry.vin} — giving up`);
+            entry._remove = true;
+            updated = true;
+            continue;
+        }
+
+        logger.info(`↩️  Retry attempt ${entry.attemptCount + 1}/${MAX_RETRY_ATTEMPTS}: ${entry.driverName} VIN:${entry.vin}`);
+
+        try {
+            const stat     = fs.statSync(filePath);
+            const fileName = `${entry.driverName}_${entry.vin}_${entry.inspectionType}_RETRY_${Date.now()}.mp4`;
+
+            const driveRes = await Promise.race([
+                driveClient.files.create({
+                    requestBody: { name: fileName, parents: [VIDEO_DRIVE_ID], mimeType: 'video/mp4' },
+                    media:       { mimeType: 'video/mp4', body: fs.createReadStream(filePath) },
+                    fields:      'id,webViewLink',
+                }),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Drive timeout')), 8 * 60 * 1000))
+            ]);
+
+            const viewLink = driveRes.data.webViewLink;
+            logger.info(`✅ Retry SUCCESS: ${entry.driverName} VIN:${entry.vin} → ${viewLink}`);
+
+            // Send notification email on successful retry
+            try {
+                const _t = nodemailer.createTransport({
+                    host: 'smtp.gmail.com', port: 587, secure: false,
+                    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+                    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000,
+                    tls: { rejectUnauthorized: false }
+                });
+                await _t.sendMail({
+                    from: process.env.EMAIL_USER,
+                    to: ['slgpfleetmanager@gmail.com'],
+                    subject: `📹 Video Inspection Ready (retry): ${entry.inspectionType} - ${entry.driverName} (VIN: ${entry.vin})`,
+                    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+                        <h2 style="color:#2563EB;">✅ Video Inspection Uploaded (Retry Successful)</h2>
+                        <table style="width:100%;border-collapse:collapse;">
+                            <tr><td style="padding:8px;font-weight:bold;">Driver:</td><td style="padding:8px;">${entry.driverName}</td></tr>
+                            <tr><td style="padding:8px;font-weight:bold;">VIN:</td><td style="padding:8px;">${entry.vin}</td></tr>
+                            <tr><td style="padding:8px;font-weight:bold;">Type:</td><td style="padding:8px;">${entry.inspectionType}</td></tr>
+                            <tr><td style="padding:8px;font-weight:bold;">Size:</td><td style="padding:8px;">${(stat.size/1024/1024).toFixed(2)}MB</td></tr>
+                        </table>
+                        <p><a href="${viewLink}" style="background:#2563EB;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">▶ View Video</a></p>
+                        <p style="color:#6b7280;font-size:12px;">Note: This video was re-uploaded after initial upload failure.</p>
+                    </div>`
+                });
+            } catch(_) {}
+
+            entry._remove = true;
+            updated = true;
+
+            // Clean up file after successful upload
+            try { fs.unlinkSync(filePath); } catch(_) {}
+
+        } catch(err) {
+            entry.attemptCount  = (entry.attemptCount || 0) + 1;
+            entry.lastError     = err.message;
+            entry.lastAttemptAt = now;
+            entry.nextRetryAt   = now + backoffMs;
+            updated = true;
+            logger.warn(`⚠️  Retry failed (attempt ${entry.attemptCount}): ${entry.driverName} — ${err.message.slice(0,80)}`);
+        }
+    }
+
+    if (updated) {
+        const remaining = queue.filter(e => !e._remove);
+        try { fs.writeFileSync(RETRY_QUEUE_FILE, JSON.stringify(remaining, null, 2)); }
+        catch(_) {}
+        if (remaining.length < queue.length)
+            logger.info(`🔄 Retry queue: ${queue.length - remaining.length} resolved, ${remaining.length} remaining`);
+    }
+}
+
+// Run retry processor every 5 minutes
+setInterval(processRetryQueue, 5 * 60 * 1000);
+// Also run on startup after 30s (catch anything that failed before last restart)
+setTimeout(processRetryQueue, 30 * 1000);
+
 cron.schedule('*/5 * * * *', () => {
     try {
         const now = Date.now();
