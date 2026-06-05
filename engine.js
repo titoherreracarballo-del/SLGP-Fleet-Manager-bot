@@ -769,7 +769,7 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
     // ── Advanced filter chains — v3 upgrade ─────────────────────────────────
     // colorspace: fix bt470bg→bt709 (Android phone color space bug — causes per-frame color shifts)
     // atadenoise: motion-adaptive temporal noise reduction (far superior to hqdn3d for video)
-    // histeq: local contrast enhancement — damage visible in dark/bright areas simultaneously
+    // shadow lift via curves — protects highlights from flooding
     // deband: remove H.264 banding artifacts on flat van panels
     // Always output 1080p — 4K-like quality achieved through processing pipeline
     // Lanczos4 (accurate_rnd + full_chroma_int) preserves maximum edge detail
@@ -786,7 +786,10 @@ async function executeProfile(profile, analysis, inputPath, outputPath, jobId, u
     // unsharp=5:5:0.9 — strong edge sharpening on static/slow frames
     // smartblur=0:0:-0.5 — edge-preserving on motion (doesn't amplify motion blur)
     const sharpFull    = 'unsharp=5:5:0.9:3:3:0.0';
-    const colorDark    = 'histeq=strength=0.15:intensity=0.18:antibanding=weak,eq=brightness=0.08:contrast=1.15:saturation=1.05:gamma=0.92';
+    // Shadow lift via curves — raises dark areas WITHOUT blooming headlights/warehouse lights
+    // histeq was flooding bright light sources outward (orange/green glow on dark frames)
+    // curves: lifts shadows 0→0.32, protects highlights above 0.7 (no bloom)
+    const colorDark    = 'curves=r=0/0 0.15/0.32 0.7/0.72 1/1:g=0/0 0.15/0.32 0.7/0.72 1/1:b=0/0 0.15/0.32 0.7/0.72 1/1,eq=brightness=0.05:contrast=1.12:saturation=1.04:gamma=0.93';
     const colorNormal  = 'eq=brightness=0.03:contrast=1.06:saturation=1.03';
     const debandFilter = 'deband=range=16:blur=false';
 
