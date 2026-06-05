@@ -2383,38 +2383,44 @@ async function extractKeyframes(videoPath, jobId) {
     return keyframes;
 }
 
-// Simple rate limiter for Gemini — free tier allows ~60 req/min
-// Track last call time per model to avoid 429s
-const _geminiLastCall = { ts: 0 };
-
+// ── Local damage classification — OpenCV + Tesseract, zero cost ──────────────
 async function classifyDamage(keyframes, driverName, vin, inspectionType) {
-    if (!process.env.GEMINI_API_KEY || !keyframes.length) return null;
+    if (!keyframes.length) return null;
 
-    // Enforce minimum 5s between Gemini calls — prevents 429 on rapid submissions
-    const now = Date.now();
-    const elapsed = now - _geminiLastCall.ts;
-    if (elapsed < 5000) {
-        await new Promise(r => setTimeout(r, 5000 - elapsed));
+    const analyzeScript = '/root/slgp-fleet/analyze_damage.py';
+    if (!fs.existsSync(analyzeScript)) {
+        logger.warn('analyze_damage.py not found — skipping damage classification');
+        return null;
     }
-    _geminiLastCall.ts = Date.now();
-    const frames = keyframes.slice(0, 3);
+
+    // Write keyframe paths to temp list and pass to Python script
+    const framePaths = keyframes.map(f => f.path).filter(p => p && fs.existsSync(p));
+    if (!framePaths.length) return null;
+
     try {
-        const { GoogleGenerativeAI } = require('@google/generative-ai');
-        const model = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-            .getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const { execFileSync } = require('child_process');
+        const output = execFileSync('python3', [analyzeScript, ...framePaths], {
+            timeout: 60000,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        }).toString().trim();
 
-        const imageParts = frames.map(f => ({ inlineData: { data: f.base64, mimeType: 'image/jpeg' } }));
-        const prompt = `You are a fleet damage inspector reviewing a ${inspectionType} walk-around for driver ${driverName}, vehicle VIN ending ${vin}.
-Analyze these ${frames.length} frames. Respond ONLY with valid JSON:
-{"overallCondition":"good|fair|poor","damageFound":true|false,"items":[{"type":"dent|scratch|crack|missing_part|rust|stain|other","severity":"minor|moderate|major","location":"front_bumper|rear_bumper|driver_side|passenger_side|hood|roof|windshield|headlight|taillight|tire|other","description":"brief"}],"recommendedAction":"none|monitor|repair_soon|repair_immediately","confidenceScore":0}`;
+        const result = JSON.parse(output);
 
-        const result  = await model.generateContent([prompt, ...imageParts]);
-        const text    = result.response.text().trim().replace(/```json\n?|\n?```/g,'').trim();;
-        const damage  = JSON.parse(text);
-        logger.info(`🔍 Damage: ${damage.overallCondition} — ${damage.items?.length||0} items — confidence: ${damage.confidenceScore}%`);
-        return damage;
+        // VIN cross-check — flag if detected VIN doesn't match submitted VIN
+        if (result.vinDetected && vin) {
+            const detectedLast4 = result.vinDetected.slice(-4).toUpperCase();
+            const submittedLast4 = vin.slice(-4).toUpperCase();
+            if (detectedLast4 !== submittedLast4) {
+                result.vinMismatch = true;
+                result.notes = (result.notes || '') + ` · ⚠️ VIN MISMATCH: detected ${detectedLast4} vs submitted ${submittedLast4}`;
+                logger.warn(`⚠️ VIN mismatch: ${driverName} submitted ${submittedLast4} but frame shows ${detectedLast4}`);
+            }
+        }
+
+        logger.info(`🔍 Local damage analysis: ${result.overallCondition} — score:${result.damageScore} items:${result.items?.length || 0} (OpenCV, no API)`);
+        return result;
     } catch(e) {
-        logger.warn(`⚠️ Damage classification failed: ${e.message}`);
+        logger.warn(`⚠️ Local damage classification failed (non-fatal): ${e.message.slice(0, 100)}`);
         return null;
     }
 }
