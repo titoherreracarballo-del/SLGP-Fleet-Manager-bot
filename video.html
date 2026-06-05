@@ -772,7 +772,275 @@
         CAMERA_TIMEOUT: 15000,
         BRIGHTNESS_THRESHOLD: 95,
         BRIGHTNESS_CHECK_INTERVAL: 2000
-    };
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // OFFLINE-RESILIENT UPLOAD QUEUE
+    // Videos saved to IndexedDB the moment driver hits submit.
+    // If signal drops, auto-retries when connectivity returns.
+    // Works even if browser tab is closed.
+    // ══════════════════════════════════════════════════════════════════
+    const PENDING_DB_NAME    = 'slgp_pending_uploads';
+    const PENDING_DB_VERSION = 1;
+    const PENDING_STORE      = 'pending';
+    let   _pendingDB         = null;
+
+    async function openPendingDB() {
+        if (_pendingDB) return _pendingDB;
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(PENDING_DB_NAME, PENDING_DB_VERSION);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(PENDING_STORE)) {
+                    const store = db.createObjectStore(PENDING_STORE, { keyPath: 'id' });
+                    store.createIndex('status', 'status', { unique: false });
+                }
+            };
+            req.onsuccess = e => { _pendingDB = e.target.result; resolve(_pendingDB); };
+            req.onerror   = () => reject(req.error);
+        });
+    }
+
+    async function savePendingUpload(id, blob, meta) {
+        try {
+            const db    = await openPendingDB();
+            const entry = {
+                id,
+                blob,
+                meta,               // { driverName, vin, vehicleType, inspectionType }
+                status:      'pending',
+                attempts:    0,
+                savedAt:     Date.now(),
+                nextRetryAt: Date.now(),
+            };
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(PENDING_STORE, 'readwrite');
+                tx.objectStore(PENDING_STORE).put(entry);
+                tx.oncomplete = () => { resolve(); updatePendingBadge(); };
+                tx.onerror    = () => reject(tx.error);
+            });
+        } catch(e) {
+            console.warn('Failed to save pending upload:', e);
+        }
+    }
+
+    async function removePendingUpload(id) {
+        try {
+            const db = await openPendingDB();
+            await new Promise((res, rej) => {
+                const tx = db.transaction(PENDING_STORE, 'readwrite');
+                tx.objectStore(PENDING_STORE).delete(id);
+                tx.oncomplete = res; tx.onerror = rej;
+            });
+            updatePendingBadge();
+        } catch(e) {}
+    }
+
+    async function getPendingUploads() {
+        try {
+            const db = await openPendingDB();
+            return new Promise((resolve, reject) => {
+                const tx  = db.transaction(PENDING_STORE, 'readonly');
+                const req = tx.objectStore(PENDING_STORE).getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror   = () => resolve([]);
+            });
+        } catch(e) { return []; }
+    }
+
+    async function updatePendingBadge() {
+        const pending = await getPendingUploads();
+        const count   = pending.filter(p => p.status === 'pending').length;
+        const badge   = document.getElementById('pending-badge');
+        if (badge) {
+            badge.textContent = count > 0 ? `📤 ${count} video${count>1?'s':''} pending upload` : '';
+            badge.style.display = count > 0 ? 'block' : 'none';
+        }
+    }
+
+    // Retry all pending uploads — called on page load and when signal returns
+    async function retryPendingUploads() {
+        if (!navigator.onLine) return;
+        const pending = await getPendingUploads();
+        const now     = Date.now();
+        const due     = pending.filter(p =>
+            p.status === 'pending' && p.attempts < 10 && p.nextRetryAt <= now
+        );
+        if (!due.length) return;
+
+        console.log(`📤 Retrying ${due.length} pending upload(s)...`);
+        for (const entry of due) {
+            try {
+                const file = new File([entry.blob],
+                    `${entry.meta.driverName}_${entry.meta.vin}_pending.mp4`,
+                    { type: 'video/mp4' }
+                );
+
+                // Update status to uploading
+                const db = await openPendingDB();
+                await new Promise(res => {
+                    const tx = db.transaction(PENDING_STORE, 'readwrite');
+                    const store = tx.objectStore(PENDING_STORE);
+                    const getReq = store.get(entry.id);
+                    getReq.onsuccess = () => {
+                        const rec = getReq.result;
+                        if (rec) {
+                            rec.status   = 'uploading';
+                            rec.attempts = (rec.attempts || 0) + 1;
+                            store.put(rec);
+                        }
+                        tx.oncomplete = res;
+                    };
+                });
+
+                // Use existing uploadChunked function
+                await uploadChunked(file, entry.meta);
+                await removePendingUpload(entry.id);
+                await reportCompleteToServer(entry.id);
+                console.log(`✅ Pending upload ${entry.id} complete`);
+
+                // Show success notification
+                const statusEl = document.getElementById('status');
+                if (statusEl) statusEl.innerText = `✅ Pending video uploaded for ${entry.meta.driverName}`;
+
+            } catch(retryErr) {
+                // Back off: 2min, 5min, 15min, 30min, 60min between retries
+                const backoffs = [2,5,15,30,60,60,60,60,60,60];
+                const delay    = (backoffs[entry.attempts] || 60) * 60 * 1000;
+                const db       = await openPendingDB();
+                await new Promise(res => {
+                    const tx = db.transaction(PENDING_STORE, 'readwrite');
+                    const store = tx.objectStore(PENDING_STORE);
+                    const getReq = store.get(entry.id);
+                    getReq.onsuccess = () => {
+                        const rec = getReq.result;
+                        if (rec) {
+                            rec.status      = 'pending';
+                            rec.nextRetryAt = Date.now() + delay;
+                            rec.lastError   = retryErr.message;
+                            store.put(rec);
+                        }
+                        tx.oncomplete = res;
+                    };
+                });
+                console.warn(`⚠️ Retry failed for ${entry.id}: ${retryErr.message}`);
+            }
+        }
+        updatePendingBadge();
+    }
+
+    // Auto-retry when signal returns
+    window.addEventListener('online', () => {
+        console.log('📶 Signal restored — retrying pending uploads...');
+        setTimeout(retryPendingUploads, 3000); // 3s delay for signal to stabilize
+    });
+
+    // Retry on page load (catches crashes/tab-reopens)
+    window.addEventListener('load', () => setTimeout(retryPendingUploads, 5000));
+
+    // Check every 5 minutes while app is open
+    setInterval(retryPendingUploads, 5 * 60 * 1000);
+
+    // ── Web Push subscription ─────────────────────────────────────────────────
+    // Registers device for silent push notifications from HR Dashboard
+    // Completely invisible to driver — no prompts, no notifications shown
+    async function registerPushSubscription() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        try {
+            // Get VAPID public key from server
+            const keyRes = await fetch('/push/vapid-public-key');
+            const { key } = await keyRes.json();
+            if (!key) return;
+
+            const reg = await navigator.serviceWorker.ready;
+
+            // Check if already subscribed
+            const existing = await reg.pushManager.getSubscription();
+            if (existing) {
+                // Re-register with server in case it was lost
+                await fetch('/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subscription: existing.toJSON(),
+                        driverName:   window._driverName || localStorage.getItem('lastDriverName') || 'unknown',
+                    }),
+                });
+                return;
+            }
+
+            // Subscribe — permission prompt only shows if not already granted
+            const sub = await reg.pushManager.subscribe({
+                userVisibleOnly:      true,
+                applicationServerKey: key,
+            });
+
+            // Send subscription to server
+            await fetch('/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subscription: sub.toJSON(),
+                    driverName:   window._driverName || localStorage.getItem('lastDriverName') || 'unknown',
+                }),
+            });
+            console.log('✅ Push subscription registered');
+        } catch(e) {
+            console.log('Push subscription skipped:', e.message);
+        }
+    }
+
+    // Register push when service worker is ready
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(() => {
+            setTimeout(registerPushSubscription, 3000);
+        });
+
+        // Listen for retry messages from service worker
+        navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data?.type === 'RETRY_UPLOADS') {
+                console.log('📲 Push retry triggered by HR Dashboard');
+                retryPendingUploads();
+            }
+        });
+    }
+
+    // Report pending submission to server (metadata only — no file)
+    async function reportPendingToServer(pendingId, meta, subscription) {
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            await fetch('/upload/report-pending', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id:             pendingId,
+                    driverName:     meta.driverName,
+                    vin:            meta.vin,
+                    inspectionType: meta.inspectionType,
+                    fileSizeMB:     meta.fileSizeMB || 0,
+                    subscription:   sub ? sub.toJSON() : null,
+                }),
+            });
+        } catch(e) {
+            console.log('Could not report pending to server:', e.message);
+        }
+    }
+
+    // Report completion to server when upload finishes
+    async function reportCompleteToServer(pendingId) {
+        try {
+            await fetch('/upload/report-complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: pendingId }),
+            });
+        } catch(_) {}
+    }
+
+
+
+;
 
     async function checkSunsetAndEnableFlash() {
         try {
@@ -2204,12 +2472,18 @@
         const progressFill   = document.getElementById('progress-fill');
         const percentOverlay = document.getElementById('progress-percentage');
 
-        function setProgress(pct, msg) {
-            progressFill.style.width = pct + '%';
-            if (percentOverlay) percentOverlay.innerText = pct + '%';
+        let _lastPct = 0;
+        function setProgress(pct, msg, force) {
+            // Monotonic: never go backwards unless force=true (new attempt start)
+            const safePct = force ? pct : Math.max(_lastPct, Math.max(0, Math.min(100, pct)));
+            if (force) _lastPct = pct;
+            else _lastPct = safePct;
+            progressFill.style.width = safePct + '%';
+            if (percentOverlay) percentOverlay.innerText = safePct + '%';
             if (status) status.innerText = msg;
-            console.log(`📊 ${pct}% - ${msg}`);
+            console.log(`📊 ${safePct}% - ${msg}`);
         }
+        function resetProgress() { _lastPct = 0; } // call explicitly when starting fresh
         function backoffDelay(attempt) {
             return Math.min(1000 * Math.pow(2, attempt - 1), 10000);
         }
@@ -2218,7 +2492,7 @@
         progressBar.style.display = 'block';
         progressFill.style.backgroundColor = '#3b82f6';
         isUploading = true;
-        setProgress(0, 'Preparing upload...');
+        resetProgress(); setProgress(0, 'Preparing upload...', true);
 
         let jobId = null;
         const MAX_UPLOAD_ATTEMPTS = CONFIG.MAX_RETRY_ATTEMPTS || 3;
@@ -2251,7 +2525,7 @@
 
             try {
                 console.log(`📤 Upload attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS}`);
-                if (attempt > 1) setProgress(0, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`);
+                if (attempt > 1) { resetProgress(); setProgress(5, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`, true); }
 
                 // ── Chunked upload (primary) — falls back to XHR on error ────────────
                 // Chunked is resumable: server restart mid-upload doesn't lose the video.
@@ -2297,7 +2571,8 @@
                     xhr.timeout = 65000;
 
                     const fileMB   = (videoBlob.size / 1024 / 1024).toFixed(1);
-                    let  simPct    = 0;
+                    // Start simulated progress from wherever chunked got to (not 0)
+                    let  simPct    = _lastPct || 0;
                     let  hasReal   = false;
                     let  simTimer  = null;
 
@@ -2372,6 +2647,27 @@
 
             } catch (uploadErr) {
                 console.error(`Upload attempt failed:`, uploadErr.message);
+
+                // Save to IndexedDB for background retry when signal returns
+                if (!uploadErr.message.includes('too large') &&
+                    !uploadErr.message.includes('Missing required')) {
+                    try {
+                        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+                        await savePendingUpload(pendingId, recordedBlob, {
+                            driverName, vin, vehicleType, inspectionType
+                        });
+                        // Report to server so HR Dashboard can see it
+                        await reportPendingToServer(pendingId, {
+                            driverName, vin, inspectionType,
+                            fileSizeMB: (recordedBlob.size / 1024 / 1024).toFixed(2)
+                        });
+                        setStatus(`📶 No signal — video saved. Will auto-upload when connection returns.`);
+                        console.log(`📦 Video saved to offline queue as ${pendingId}`);
+                    } catch(idbErr) {
+                        console.warn('Could not save to offline queue:', idbErr);
+                    }
+                }
+
                 // Fatal errors that should stop retrying immediately
                 const isFatal = uploadErr.message.includes('too large') ||
                                 uploadErr.message.includes('Missing') ||
@@ -2402,12 +2698,27 @@
                     return;
                 }
                 const delay = backoffDelay(attempt);
-                setProgress(0, `Upload failed — retrying in ${Math.round(delay/1000)}s... (${attempt}/${MAX_UPLOAD_ATTEMPTS})`);
+                resetProgress(); setProgress(3, `Upload failed — retrying in ${Math.round(delay/1000)}s... (${attempt}/${MAX_UPLOAD_ATTEMPTS})`, true);
                 await new Promise(r => setTimeout(r, delay));
             }
         }
 
-        } catch (outerErr) {
+
+        // ── Chunked upload success path ──────────────────────────────────────────
+        // uploadChunked() succeeded and `break` exited the for loop — handle success here
+        if (jobId) {
+            if (wakeLock) { wakeLock.release(); wakeLock = null; }
+            progressFill.style.transition = 'width 0.6s ease';
+            setProgress(100, '✅ Submitted! Processing your video...', true);
+            progressFill.style.backgroundColor = '#4ade80';
+            isUploading = false;
+            videoBlob = null;
+            chunks = [];
+            setTimeout(() => window.location.href = '/success', 1800);
+            return;
+        }
+
+                } catch (outerErr) {
             // Catches any unhandled exception — ensures isUploading always resets
             console.error('❌ Upload outer error:', outerErr.message);
             if (wakeLock) { wakeLock.release(); wakeLock = null; }
