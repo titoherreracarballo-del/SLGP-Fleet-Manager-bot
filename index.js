@@ -2357,27 +2357,9 @@ async function extractKeyframes(videoPath, jobId) {
                 const enhPath = f.path.replace('.jpg', '_enhanced.jpg');
                 try {
                     const { execFileSync } = require('child_process');
+                    const esrganScript = '/root/realesrgan/enhance_frame.py';
                     execFileSync('python3', [
-                        '-c',
-                        [
-                            'import sys, torch',
-                            'from basicsr.archs.rrdbnet_arch import RRDBNet',
-                            'from realesrgan import RealESRGANer',
-                            'from PIL import Image',
-                            'import numpy as np',
-                            '',
-                            'model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)',
-                            'upsampler = RealESRGANer(',
-                            '    scale=4, model_path=sys.argv[1],',
-                            '    model=model, tile=256, tile_pad=10,',
-                            '    pre_pad=0, half=False, device="cpu"',
-                            ')',
-                            'img = np.array(Image.open(sys.argv[2]).convert("RGB"))',
-                            'out, _ = upsampler.enhance(img, outscale=2)',
-                            'Image.fromarray(out).save(sys.argv[3], quality=92)',
-                            'print("OK")',
-                        ].join(';'),
-                        esrganModel, f.path, enhPath
+                        esrganScript, esrganModel, f.path, enhPath
                     ], { timeout: 60000, stdio: ['pipe','pipe','pipe'] });
 
                     if (fs.existsSync(enhPath) && fs.statSync(enhPath).size > 10000) {
@@ -2401,8 +2383,20 @@ async function extractKeyframes(videoPath, jobId) {
     return keyframes;
 }
 
+// Simple rate limiter for Gemini — free tier allows ~60 req/min
+// Track last call time per model to avoid 429s
+const _geminiLastCall = { ts: 0 };
+
 async function classifyDamage(keyframes, driverName, vin, inspectionType) {
     if (!process.env.GEMINI_API_KEY || !keyframes.length) return null;
+
+    // Enforce minimum 5s between Gemini calls — prevents 429 on rapid submissions
+    const now = Date.now();
+    const elapsed = now - _geminiLastCall.ts;
+    if (elapsed < 5000) {
+        await new Promise(r => setTimeout(r, 5000 - elapsed));
+    }
+    _geminiLastCall.ts = Date.now();
     const frames = keyframes.slice(0, 3);
     try {
         const { GoogleGenerativeAI } = require('@google/generative-ai');
