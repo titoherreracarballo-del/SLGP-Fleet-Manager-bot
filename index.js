@@ -181,6 +181,27 @@ const JOB_TIMEOUT_MS = 12 * 60 * 1000; // 12 minutes — watchdog kills stalled 
 // Redis-backed: jobs survive server restarts. Drivers never lose a submission.
 // The job fn (closure) lives in _jobFns Map — BullMQ stores metadata for recovery.
 const _redisConn = new IORedis({ host: '127.0.0.1', port: 6379, maxRetriesPerRequest: null });
+
+// ── Web Push VAPID config ──────────────────────────────────────────────────────
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || '';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+    webpush.setVapidDetails(
+        process.env.VAPID_EMAIL || 'mailto:slgpfleetmanager@gmail.com',
+        VAPID_PUBLIC,
+        VAPID_PRIVATE
+    );
+    logger.info('✅ Web Push VAPID configured');
+}
+
+// Push subscriptions + pending submissions stored in flat JSON files
+const PUSH_SUBS_FILE    = path.join(VOLUME_PATH, 'push_subscriptions.json');
+const PENDING_SUBS_FILE = path.join(VOLUME_PATH, 'pending_submissions.json');
+
+function readPushSubs()    { try { return JSON.parse(fs.readFileSync(PUSH_SUBS_FILE,  'utf8')); } catch(_) { return {}; } }
+function readPendingSubs() { try { return JSON.parse(fs.readFileSync(PENDING_SUBS_FILE,'utf8')); } catch(_) { return []; } }
+function writePushSubs(d)  { try { fs.writeFileSync(PUSH_SUBS_FILE,   JSON.stringify(d, null, 2)); } catch(_) {} }
+function writePendingSubs(d){ try { fs.writeFileSync(PENDING_SUBS_FILE, JSON.stringify(d, null, 2)); } catch(_) {} }
 const _jobQueue  = new Queue('slgp-video', { connection: _redisConn });
 const _jobFns    = new Map(); // jobId → async fn (in-memory, lost on restart — manifest handles recovery)
 
@@ -211,6 +232,7 @@ async function enqueueJob(jobId, fn) {
     if (_jobFns.size >= MAX_QUEUE_DEPTH) {
         const waitMin = Math.round((_jobFns.size / MAX_CONCURRENT_JOBS) * 3);
         logger.warn(`⚠️  Queue full (${_jobFns.size} pending) — job ${jobId} rejected`);
+        // Driver phone will save to IndexedDB and retry automatically
         updateJob(jobId, {
             status:  'failed',
             stage:   'Rejected',
@@ -266,6 +288,21 @@ function _runJobDirect(jobId, fn) {
 
 // ── BullMQ Worker — processes jobs from Redis queue ─────────────────────────
 // Concurrency = MAX_CONCURRENT_JOBS. Survives restarts via manifest recovery.
+// ── Adaptive concurrency ─────────────────────────────────────────────────────
+// When queue is deep (5+ jobs), reduce to 1 concurrent job so each gets
+// more CPU and RAM and doesn't timeout. When queue is light, use 2.
+async function updateConcurrency() {
+    try {
+        const waiting = await _jobQueue.getWaitingCount();
+        const target  = waiting >= 5 ? 1 : MAX_CONCURRENT_JOBS;
+        if (_worker.concurrency !== target) {
+            logger.info(`⚡ Adaptive concurrency: ${_worker.concurrency} → ${target} (${waiting} queued)`);
+            await _worker.setConcurrency(target);
+        }
+    } catch(_) {}
+}
+setInterval(updateConcurrency, 30 * 1000); // check every 30s
+
 const _worker = new Worker('slgp-video', async (job) => {
     const { jobId } = job.data;
     logger.info(`▶️  BullMQ worker picked up job ${jobId}`);
@@ -2342,39 +2379,48 @@ async function extractKeyframes(videoPath, jobId) {
 
         const best = scored.sort((a,b) => b.sharpness-a.sharpness).slice(0,5);
 
-        // Run Real-ESRGAN on each keyframe — 2x AI upscale for better damage detection
-        // CPU-only: ~5-10s per frame. Only runs on 5 frames, not the full video.
-        const esrganModel = '/root/realesrgan/weights/RealESRGAN_x4plus.pth';
-        const esrganAvailable = fs.existsSync(esrganModel);
-        if (esrganAvailable) logger.info(`🤖 Real-ESRGAN available — enhancing ${best.length} keyframes`);
+        const esrganModel  = '/root/realesrgan/weights/RealESRGAN_x4plus.pth';
+        const esrganScript = '/root/slgp-fleet/enhance_frame.py';
+        const esrganAvail  = fs.existsSync(esrganModel) && fs.existsSync(esrganScript);
+
+        // Build enhanced paths for non-blurry frames
+        const framesToEnhance = best.filter(f => !f.isBlurred);
+        const enhancedPaths   = new Map();
+
+        if (esrganAvail && framesToEnhance.length > 0) {
+            try {
+                // Batch: load model ONCE, process all frames — avoids per-frame 30s startup
+                const { execFileSync } = require('child_process');
+                const batchArgs = [esrganScript, esrganModel];
+                for (const f of framesToEnhance) {
+                    const enhPath = f.path.replace('.jpg', '_enh.jpg');
+                    batchArgs.push(f.path, enhPath);
+                    enhancedPaths.set(f.path, enhPath);
+                }
+                logger.info(`🤖 ESRGAN batch: loading model once for ${framesToEnhance.length} frame(s)...`);
+                execFileSync('python3', batchArgs, {
+                    timeout: 300000, // 5 min for full batch
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                });
+                logger.info(`✨ ESRGAN batch complete`);
+            } catch(e) {
+                logger.warn(`⚠️ ESRGAN batch failed (non-fatal): ${e.message.slice(0,80)}`);
+                enhancedPaths.clear();
+            }
+        }
 
         for (const f of best) {
-            let finalPath = f.path;
-
-            if (esrganAvailable && !f.isBlurred) {
-                // Only enhance non-blurry frames — ESRGAN on motion-blurred frames
-                // amplifies the blur rather than fixing it
-                const enhPath = f.path.replace('.jpg', '_enhanced.jpg');
-                try {
-                    const { execFileSync } = require('child_process');
-                    const esrganScript = '/root/realesrgan/enhance_frame.py';
-                    execFileSync('python3', [
-                        esrganScript, esrganModel, f.path, enhPath
-                    ], { timeout: 60000, stdio: ['pipe','pipe','pipe'] });
-
-                    if (fs.existsSync(enhPath) && fs.statSync(enhPath).size > 10000) {
-                        finalPath = enhPath;
-                        logger.info(`✨ ESRGAN enhanced keyframe ${best.indexOf(f)+1}/${best.length}`);
-                    }
-                } catch(e) {
-                    logger.warn(`⚠️ ESRGAN failed on frame (non-fatal): ${e.message.slice(0,80)}`);
-                }
-            }
-
+            const enhPath = enhancedPaths.get(f.path);
+            const finalPath = (enhPath && fs.existsSync(enhPath) && fs.statSync(enhPath).size > 10000)
+                ? enhPath : f.path;
             const buf = fs.readFileSync(finalPath);
-            keyframes.push({ path: finalPath, base64: buf.toString('base64'), sharpness: Math.round(f.sharpness), enhanced: finalPath !== f.path });
+            keyframes.push({
+                path: finalPath, base64: buf.toString('base64'),
+                sharpness: Math.round(f.sharpness), enhanced: finalPath !== f.path,
+            });
         }
-        logger.info(`🖼 Extracted ${keyframes.length} keyframes for job ${jobId} (${keyframes.filter(k=>k.enhanced).length} ESRGAN enhanced)`);
+        const nEnh = keyframes.filter(k => k.enhanced).length;
+        logger.info(`🖼 Extracted ${keyframes.length} keyframes for job ${jobId} (${nEnh} ESRGAN enhanced)`);
     } catch(e) {
         logger.warn(`⚠️ Keyframe extraction failed: ${e.message}`);
     } finally {
@@ -4573,6 +4619,177 @@ const PORT = process.env.PORT || 8080;
 // Railway sends SIGTERM before stopping container.
 // Log active jobs so they appear in manifests and can be recovered on restart.
 // SIGTERM → gracefulShutdown() below
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WEB PUSH + PENDING SUBMISSIONS API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Driver's phone registers push subscription on first load
+app.post('/push/subscribe', express.json(), (req, res) => {
+    try {
+        const { subscription, driverName } = req.body;
+        if (!subscription?.endpoint) return res.json({ ok: false });
+        const subs = readPushSubs();
+        // Store by endpoint (unique per browser/device)
+        subs[subscription.endpoint] = {
+            subscription,
+            driverName: driverName || 'unknown',
+            registeredAt: new Date().toISOString(),
+        };
+        writePushSubs(subs);
+        logger.info(`📲 Push subscription registered for ${driverName}`);
+        res.json({ ok: true });
+    } catch(e) {
+        res.json({ ok: false });
+    }
+});
+
+// Phone reports a pending video (metadata only — no file yet)
+app.post('/upload/report-pending', express.json(), (req, res) => {
+    try {
+        const { id, driverName, vin, inspectionType, fileSizeMB, subscription } = req.body;
+        if (!id || !driverName) return res.json({ ok: false });
+
+        const pending = readPendingSubs();
+        // Remove old entry for same id
+        const filtered = pending.filter(p => p.id !== id);
+        filtered.push({
+            id,
+            driverName,
+            vin:            vin || 'unknown',
+            inspectionType: inspectionType || 'unknown',
+            fileSizeMB:     fileSizeMB || 0,
+            subscription:   subscription || null,
+            status:         'pending',
+            reportedAt:     new Date().toISOString(),
+            lastRetryAt:    null,
+            completedAt:    null,
+        });
+        writePendingSubs(filtered);
+        logger.info(`📋 Pending submission reported: ${driverName} VIN:${vin}`);
+        res.json({ ok: true });
+    } catch(e) {
+        res.json({ ok: false });
+    }
+});
+
+// Phone reports upload completed — clears pending entry
+app.post('/upload/report-complete', express.json(), (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.json({ ok: false });
+        const pending = readPendingSubs();
+        const updated = pending.map(p =>
+            p.id === id
+                ? { ...p, status: 'complete', completedAt: new Date().toISOString() }
+                : p
+        );
+        writePendingSubs(updated);
+        res.json({ ok: true });
+    } catch(e) {
+        res.json({ ok: false });
+    }
+});
+
+// HR Dashboard: get all pending submissions
+app.get('/pending-submissions', (req, res) => {
+    try {
+        const pending = readPendingSubs();
+        // Only show last 48 hours
+        const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+        const recent = pending.filter(p =>
+            new Date(p.reportedAt).getTime() > cutoff
+        );
+        res.json({ ok: true, submissions: recent });
+    } catch(e) {
+        res.json({ ok: false, submissions: [] });
+    }
+});
+
+// HR triggers retry push to specific driver's phone
+app.post('/push/trigger-retry', express.json(), async (req, res) => {
+    try {
+        const { submissionId, driverName } = req.body;
+        if (!submissionId) return res.json({ ok: false, error: 'Missing submissionId' });
+
+        const pending = readPendingSubs();
+        const entry   = pending.find(p => p.id === submissionId);
+        if (!entry) return res.json({ ok: false, error: 'Submission not found' });
+
+        // Get subscription — either stored with submission or from push_subs file
+        let subscription = entry.subscription;
+        if (!subscription) {
+            const subs = readPushSubs();
+            const match = Object.values(subs).find(s =>
+                s.driverName?.toLowerCase() === driverName?.toLowerCase()
+            );
+            if (match) subscription = match.subscription;
+        }
+
+        if (!subscription) {
+            return res.json({ ok: false, error: 'No push subscription for this driver' });
+        }
+
+        // Send push notification to driver's phone
+        await webpush.sendNotification(
+            subscription,
+            JSON.stringify({
+                type:             'RETRY_UPLOAD',
+                submissionId,
+                showNotification: false, // Silent — driver doesn't need to do anything
+            })
+        );
+
+        // Update last retry timestamp
+        const updated = pending.map(p =>
+            p.id === submissionId
+                ? { ...p, lastRetryAt: new Date().toISOString(), status: 'retrying' }
+                : p
+        );
+        writePendingSubs(updated);
+
+        logger.info(`📲 Retry push sent to ${driverName} for submission ${submissionId}`);
+        res.json({ ok: true });
+    } catch(e) {
+        logger.error(`Push retry failed: ${e.message}`);
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+// Expose VAPID public key to client
+app.get('/push/vapid-public-key', (req, res) => {
+    res.json({ key: VAPID_PUBLIC });
+});
+
+// Auto-alert if submission pending > 2 hours
+setInterval(async () => {
+    const pending = readPendingSubs();
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+    const stuck = pending.filter(p =>
+        p.status === 'pending' &&
+        new Date(p.reportedAt).getTime() < twoHoursAgo
+    );
+    if (stuck.length > 0) {
+        logger.warn(`⚠️ ${stuck.length} submission(s) stuck > 2hrs: ${stuck.map(s=>s.driverName).join(', ')}`);
+        // Email alert
+        try {
+            const _t = nodemailer.createTransport({
+                host: 'smtp.gmail.com', port: 587, secure: false,
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+                tls: { rejectUnauthorized: false }
+            });
+            await _t.sendMail({
+                from: process.env.EMAIL_USER,
+                to:   ['slgpfleetmanager@gmail.com'],
+                subject: `⚠️ ${stuck.length} Video Upload(s) Stuck — Action Needed`,
+                html: `<h3>The following drivers have videos pending upload for over 2 hours:</h3>
+                    <ul>${stuck.map(s => `<li>${s.driverName} — VIN: ${s.vin} — ${s.inspectionType} — ${s.fileSizeMB}MB</li>`).join('')}</ul>
+                    <p>Use the HR Dashboard to trigger a retry push to their device.</p>`,
+            });
+        } catch(_) {}
+    }
+}, 30 * 60 * 1000); // Check every 30 minutes
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
