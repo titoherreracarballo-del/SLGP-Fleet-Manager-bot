@@ -1096,7 +1096,13 @@
     let mediaRecorder;
     let chunks = [];
     let videoBlob;
-    let selectedMimeType = 'video/mp4'; // updated when recording starts
+    let selectedMimeType = 'video/mp4'; // updated when recording
+
+    // Platform detection
+    const _isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const _isAndroid = /Android/.test(navigator.userAgent);
+    if (_isIOS)     console.log('📱 iOS device detected');
+    if (_isAndroid) console.log('🤖 Android device detected'); starts
     let timerInterval;
     let seconds = 0;
     let inspectionType = '';
@@ -1207,6 +1213,7 @@
     };
 
     async function requestWakeLock() {
+        if (_isIOS) return; // iOS Safari doesn't support Screen Wake Lock
         try {
             if ('wakeLock' in navigator && !wakeLock) {
                 wakeLock = await navigator.wakeLock.request('screen');
@@ -1233,7 +1240,11 @@
             const avgBrightness = totalBrightness / samples;
             console.log(`📊 Brightness: ${Math.round(avgBrightness)}/255`);
             if (avgBrightness < CONFIG.BRIGHTNESS_THRESHOLD) {
-                if (!flashEnabled) {
+                if (_isIOS) {
+                    // Can't auto-enable flash on iOS — warn driver to find better lighting
+                    const statusEl = document.getElementById('status');
+                    if (statusEl && !isRecording) statusEl.innerText = '⚠️ Low light detected — move to a brighter area before recording';
+                } else if (!flashEnabled) {
                     console.log('🔦 AUTO-FLASH ON (dark scene detected)');
                     setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
                 }
@@ -2318,9 +2329,10 @@
                 document.getElementById('btn-record').classList.add('recording');
                 document.getElementById('btn-stop').style.display = 'flex';
                 const _dark = document.getElementById('status').innerText.includes('Low light') || document.getElementById('status').innerText.includes('dark');
-                document.getElementById('status').innerText = _dark
-                    ? "🐢 Dark scene — walk SLOWLY for sharp video"
-                    : "Recording... Walk around vehicle";
+                const _recMsg = _dark ? "🐢 Dark scene — walk SLOWLY for sharp video" : "Recording... Walk around vehicle";
+                document.getElementById('status').innerText = _isIOS
+                    ? _recMsg + " (keep screen on)"
+                    : _recMsg;
                 
             } catch (error) {
                 console.error('❌ Failed to start recording:', error);
@@ -2567,9 +2579,8 @@
         } catch(_) {}
 
         // Show platform-appropriate message
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isIOS) {
-            setProgress(2, '📱 Keep this app open while uploading...', true);
+        if (_isIOS) {
+            setProgress(2, '📱 iOS detected — keep screen on while uploading...', true);
         }
 
         try { // outer try/finally so isUploading always resets
