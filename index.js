@@ -2678,6 +2678,19 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
 
     // Respond immediately — processing happens async
     const jobId = require('crypto').randomUUID();
+    // ← CRITICAL: set jobStore BEFORE sending response so dedup check works
+    // updateJob() is a no-op if job not in store — must call set() first
+    jobStore.set(jobId, {
+        status:         'queued',
+        stage:          'Queued',
+        progress:       0,
+        driverName:     session.driverName,
+        vin:            session.vin,
+        inspectionType: session.inspectionType,
+        fileSizeMB:     (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2),
+        source:         'chunked',
+        _createdAt:     Date.now(),
+    });
     res.json({ success: true, jobId, message: 'Upload complete — processing started' });
 
     // Hand off to processing pipeline via the same enqueue mechanism as direct upload
