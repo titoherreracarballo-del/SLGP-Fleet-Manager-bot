@@ -1068,8 +1068,17 @@
                 if (now > sunset || now < sunrise) {
                     console.log('🌙 After sunset - Auto-enabling flash');
                     if (!flashEnabled) {
-                        const ok = await setFlash(true);
-                        if (ok) updateFlashUI(true);
+                        // Wait for stream to be fully playing before attempting torch
+                        const _waitForTrack = async () => {
+                            let attempts = 0;
+                            while (!currentVideoTrack && attempts < 10) {
+                                await new Promise(r => setTimeout(r, 300));
+                                attempts++;
+                            }
+                            const ok = await setFlash(true);
+                            if (ok) updateFlashUI(true);
+                        };
+                        _waitForTrack();
                     }
                     return true;
                 } else {
@@ -1246,7 +1255,10 @@
                     if (statusEl && !isRecording) statusEl.innerText = '⚠️ Low light detected — move to a brighter area before recording';
                 } else if (!flashEnabled) {
                     console.log('🔦 AUTO-FLASH ON (dark scene detected)');
-                    setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
+                    // Guard: only attempt if stream track is confirmed active
+                    if (currentVideoTrack && currentVideoTrack.readyState === 'live') {
+                        setFlash(true).then(ok => { if (ok) updateFlashUI(true); });
+                    }
                 }
                 // Show low-light guidance — motion blur in dark = blurry video
                 if (!isRecording) {
@@ -1284,8 +1296,10 @@
         }
     }
 
-    async function setFlash(enable) {
+    async function setFlash(enable, _retries) {
+        if (_isIOS) return false; // torch not supported on iOS
         if (!currentVideoTrack) return false;
+        _retries = _retries || 0;
         try {
             const capabilities = currentVideoTrack.getCapabilities();
             if (capabilities.torch) {
@@ -1293,11 +1307,21 @@
                 flashEnabled = enable;
                 console.log(`💡 Flash ${enable ? 'ON' : 'OFF'}`);
                 return true;
+            } else if (_retries < 5) {
+                // Android: torch capability may not appear until stream is fully playing
+                // Retry up to 5 times with 500ms delay
+                console.log(`⏳ Torch not ready yet (attempt ${_retries+1}/5) — retrying...`);
+                await new Promise(r => setTimeout(r, 500));
+                return setFlash(enable, _retries + 1);
             } else {
-                console.log('⚠️  Flash not supported on this device');
+                console.log('⚠️  Flash/torch not supported on this device');
                 return false;
             }
         } catch (e) {
+            if (_retries < 3) {
+                await new Promise(r => setTimeout(r, 500));
+                return setFlash(enable, _retries + 1);
+            }
             console.log('Flash control error:', e.message);
             return false;
         }
