@@ -2935,7 +2935,7 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
     // ── Generate jobId and respond IMMEDIATELY ─────────────────
     // Phone gets a response right away — no waiting for FFmpeg or Drive
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-    jobStore.set(jobId, { status:"queued", stage:"Queued", progress:0, driverName, vin, inspectionType, fileSizeMB });
+    jobStore.set(jobId, { status:"queued", stage:"Queued", progress:0, driverName, vin, inspectionType, fileSizeMB, _createdAt: Date.now() });
     registerUpload(driverName, vin, inspectionType, jobId); // register for dedup
     const queuePos = jobQueue.length + 1; // position before enqueue
     const estimatedMinutes = Math.max(1, Math.round(queuePos * 3));
@@ -4791,6 +4791,99 @@ setInterval(async () => {
     }
 }, 30 * 60 * 1000); // Check every 30 minutes
 
+
+
+// ── Dedup check — did server already receive this upload? ────────────────────
+// Called by client before each retry to avoid triple-uploading when XHR timeout
+// fires but server already got the data and queued the job.
+app.get('/check-recent-upload', (req, res) => {
+    const { vin, type } = req.query;
+    if (!vin) return res.json({ found: false });
+
+    const cutoff = Date.now() - 10 * 60 * 1000; // last 10 minutes
+    let found = null;
+
+    // Search jobStore for recent matching job
+    for (const [jobId, job] of jobStore.entries()) {
+        if (job.vin === vin &&
+            (!type || job.inspectionType === type) &&
+            (job._createdAt || 0) > cutoff) {
+            found = { jobId, status: job.status, stage: job.stage };
+            break;
+        }
+    }
+
+    res.json({ found: !!found, jobId: found?.jobId, status: found?.status });
+});
+
+
+// ── /upload-raw — Background Fetch endpoint ───────────────────────────────────
+// Receives raw video binary from Background Fetch API (phone can be closed).
+// Metadata comes in request headers (Background Fetch can't use FormData).
+app.post('/upload-raw', uploadLimiter,
+    express.raw({ type: '*/*', limit: '500mb' }),
+    async (req, res) => {
+        try {
+            const driverName     = decodeURIComponent(req.headers['x-driver-name']     || 'Unknown');
+            const vin            = decodeURIComponent(req.headers['x-vin']              || 'UNKNOWN');
+            const inspectionType = decodeURIComponent(req.headers['x-inspection-type'] || 'Pre-Trip');
+            const vehicleType    = decodeURIComponent(req.headers['x-vehicle-type']    || '');
+            const supervisorFiled= req.headers['x-supervisor-filed'] === 'true';
+            const supervisorName = decodeURIComponent(req.headers['x-supervisor-name'] || '');
+            const pendingId      = req.headers['x-pending-id'] || null;
+            const contentType    = req.headers['content-type'] || 'video/mp4';
+            const ext            = contentType.includes('webm') ? '.webm' : '.mp4';
+
+            if (!req.body || req.body.length < 10000) {
+                return res.status(400).json({ success: false, error: 'Empty or too-small video body' });
+            }
+
+            const fileSizeMB = (req.body.length / 1024 / 1024).toFixed(2);
+            logger.info(`📲 Background Fetch upload: ${driverName} VIN:${vin} ${fileSizeMB}MB`);
+
+            // Write to disk
+            const fileName   = `${Date.now()}_${vin}${ext}`;
+            const filePath   = path.join(UPLOAD_DIR, fileName);
+            fs.writeFileSync(filePath, req.body);
+
+            // Generate jobId and respond immediately
+            const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+            jobStore.set(jobId, { status: 'queued', stage: 'Queued', progress: 0, driverName, vin, inspectionType, fileSizeMB, _createdAt: Date.now() });
+
+            res.json({ success: true, jobId, message: 'Background upload received' });
+
+            // Mark pending as complete on server
+            if (pendingId) {
+                const pending = readPendingSubs();
+                const updated = pending.map(p =>
+                    p.id === pendingId
+                        ? { ...p, status: 'complete', completedAt: new Date().toISOString() }
+                        : p
+                );
+                writePendingSubs(updated);
+            }
+
+            // Queue for processing
+            setImmediate(async () => {
+                const _mockReq = {
+                    file: { path: filePath },
+                    body: { driverName, vin, vehicleType, inspectionType,
+                            supervisorFiled: String(supervisorFiled),
+                            supervisorName },
+                    hostname: req.hostname, ip: req.ip, get: () => null,
+                };
+                await enqueueJob(jobId, async () => {
+                    updateJob(jobId, { status: 'processing', stage: 'Starting', progress: 5 });
+                    logger.info(`▶️ Background fetch job ${jobId} starting`);
+                });
+            });
+
+        } catch(e) {
+            logger.error(`/upload-raw error: ${e.message}`);
+            res.status(500).json({ success: false, error: e.message });
+        }
+    }
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRACEFUL SHUTDOWN
