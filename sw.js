@@ -1,42 +1,116 @@
-// SLGP Fleet Bot Service Worker
-// Handles push notifications for background upload retry
-// and offline caching
+// SLGP Fleet Bot Service Worker v2
+// Handles Background Fetch, push notifications, and offline retry
 
-const CACHE_NAME = 'slgp-v1';
+const CACHE_NAME = 'slgp-v2';
+
+// ── Background Fetch success ──────────────────────────────────────────────────
+// Fires when OS completes the upload — even if app was closed or phone restarted
+self.addEventListener('backgroundfetchsuccess', (event) => {
+    const bgFetch = event.registration;
+    event.waitUntil(async function() {
+        try {
+            const records  = await bgFetch.matchAll();
+            const response = await records[0].responseReady;
+
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+
+                // Notify the app to clear pending entry
+                const clients = await self.clients.matchAll({ type: 'window' });
+                clients.forEach(c => c.postMessage({
+                    type:    'BG_FETCH_COMPLETE',
+                    id:      bgFetch.id,
+                    success: true,
+                    jobId:   data.jobId,
+                }));
+
+                // Push notification to driver
+                await self.registration.showNotification('SLGP Fleet ✅', {
+                    body:   'Walk-around video uploaded successfully!',
+                    icon:   '/Final-01.jpg',
+                    badge:  '/Final-01.jpg',
+                    tag:    'slgp-upload-' + bgFetch.id,
+                    silent: false,
+                    data:   { jobId: data.jobId },
+                });
+            } else {
+                throw new Error('Upload response not OK: ' + response.status);
+            }
+        } catch(e) {
+            console.error('[SW] Background fetch success handler error:', e);
+            // Move to retry queue
+            const clients = await self.clients.matchAll({ type: 'window' });
+            clients.forEach(c => c.postMessage({
+                type:    'BG_FETCH_COMPLETE',
+                id:      bgFetch.id,
+                success: false,
+                error:   e.message,
+            }));
+        }
+    }());
+});
+
+// ── Background Fetch failure ───────────────────────────────────────────────────
+// Fires when OS gave up — keep in IndexedDB retry queue
+self.addEventListener('backgroundfetchfail', (event) => {
+    const bgFetch = event.registration;
+    event.waitUntil(async function() {
+        console.warn('[SW] Background fetch failed:', bgFetch.id);
+
+        // Notify app — it will retry from IndexedDB
+        const clients = await self.clients.matchAll({ type: 'window' });
+        clients.forEach(c => c.postMessage({
+            type:    'BG_FETCH_COMPLETE',
+            id:      bgFetch.id,
+            success: false,
+            error:   'Background upload failed — will retry when signal returns',
+        }));
+
+        // Show notification so driver knows
+        await self.registration.showNotification('SLGP Fleet ⏳', {
+            body:   'Upload paused — will resume when connected',
+            icon:   '/Final-01.jpg',
+            tag:    'slgp-retry-' + bgFetch.id,
+            silent: true,
+        });
+    }());
+});
+
+// ── Background Fetch abort ─────────────────────────────────────────────────────
+self.addEventListener('backgroundfetchabort', (event) => {
+    console.warn('[SW] Background fetch aborted:', event.registration.id);
+});
 
 // ── Push notification handler ─────────────────────────────────────────────────
-// Server sends push when HR wants to trigger retry of a stuck upload
 self.addEventListener('push', event => {
     const data = event.data ? event.data.json() : {};
-    
+
     if (data.type === 'RETRY_UPLOAD') {
-        // Trigger background sync to retry pending uploads
         event.waitUntil(
             self.registration.sync.register('retry-pending-uploads')
                 .catch(() => {
-                    // Background sync not supported — send message to open tabs
                     return self.clients.matchAll({ type: 'window' })
-                        .then(clients => clients.forEach(c => 
+                        .then(clients => clients.forEach(c =>
                             c.postMessage({ type: 'RETRY_UPLOADS' })
                         ));
                 })
         );
     }
-    
+
     if (data.showNotification) {
         event.waitUntil(
             self.registration.showNotification('SLGP Fleet', {
-                body: data.body || 'Retrying video upload...',
-                icon: '/Final-01.jpg',
-                badge: '/Final-01.jpg',
-                tag: 'slgp-retry',
-                silent: true, // Don't make noise — driver might be driving
+                body:   data.body || 'Retrying video upload...',
+                icon:   '/Final-01.jpg',
+                badge:  '/Final-01.jpg',
+                tag:    'slgp-retry',
+                silent: true,
             })
         );
     }
 });
 
-// ── Background sync handler ────────────────────────────────────────────────────
+// ── Background Sync handler ────────────────────────────────────────────────────
 self.addEventListener('sync', event => {
     if (event.tag === 'retry-pending-uploads') {
         event.waitUntil(
@@ -61,6 +135,6 @@ self.addEventListener('notificationclick', event => {
     );
 });
 
-// ── Install/activate ───────────────────────────────────────────────────────────
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+// ── Install / activate ─────────────────────────────────────────────────────────
+self.addEventListener('install',  () => self.skipWaiting());
+self.addEventListener('activate', e  => e.waitUntil(self.clients.claim()));
