@@ -2558,62 +2558,15 @@
         const MAX_UPLOAD_ATTEMPTS = CONFIG.MAX_RETRY_ATTEMPTS || 3;
         const ext = selectedMimeType.startsWith('video/webm') ? 'webm' : 'mp4';
 
-        // ── Background Fetch (phone can be closed after this point) ─────────────
-        // Save video to IndexedDB FIRST — it's never lost even if phone dies.
-        // Then try Background Fetch API (Android Chrome 74+) which lets the OS
-        // handle the upload even after the app is force-closed or phone restarts.
+        // ── Save to IndexedDB immediately — video is safe even if upload fails ───
+        // If upload fails at any point, IDB retry queue handles it on next open
         const _bgPendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
         try {
             await savePendingUpload(_bgPendingId, videoBlob, { driverName: driver, vin, vehicleType: document.getElementById('vehicleType')?.value || '', inspectionType });
             await reportPendingToServer(_bgPendingId, { driverName: driver, vin, inspectionType, fileSizeMB: (videoBlob.size/1024/1024).toFixed(2) });
         } catch(_) {}
 
-        // Try Background Fetch — Android Chrome only, iOS falls through to foreground
-        if ('serviceWorker' in navigator && 'BackgroundFetchManager' in self) {
-            try {
-                const reg = await navigator.serviceWorker.ready;
-                if (reg.backgroundFetch) {
-                    const bgFetch = await reg.backgroundFetch.fetch(
-                        _bgPendingId,
-                        new Request('/upload-raw', {
-                            method:  'POST',
-                            headers: {
-                                'Content-Type':          videoBlob.type || 'video/mp4',
-                                'X-Driver-Name':         encodeURIComponent(driver),
-                                'X-VIN':                 encodeURIComponent(vin),
-                                'X-Inspection-Type':     encodeURIComponent(inspectionType),
-                                'X-Vehicle-Type':        encodeURIComponent(document.getElementById('vehicleType')?.value || ''),
-                                'X-Supervisor-Filed':    isOpsMode ? 'true' : 'false',
-                                'X-Supervisor-Name':     encodeURIComponent(opsSupervisor || ''),
-                                'X-Pending-Id':          _bgPendingId,
-                            },
-                            body: videoBlob,
-                        }),
-                        {
-                            title:         'Uploading walk-around video',
-                            icons:         [{ sizes: '192x192', src: '/Final-01.jpg', type: 'image/jpeg' }],
-                            downloadTotal: videoBlob.size,
-                        }
-                    );
-
-                    // Show "Done" immediately — OS handles the upload
-                    if (wakeLock) { wakeLock.release(); wakeLock = null; }
-                    progressFill.style.transition      = 'width 0.6s ease';
-                    progressFill.style.backgroundColor = '#4ade80';
-                    setProgress(100, '✅ Video saved! Uploading in background — safe to close app.', true);
-                    isUploading = false;
-                    videoBlob   = null;
-                    chunks      = [];
-                    console.log('📲 Background Fetch registered:', bgFetch.id);
-                    setTimeout(() => window.location.href = '/success', 2500);
-                    return; // OS handles everything from here
-                }
-            } catch(bgErr) {
-                console.log('Background Fetch unavailable:', bgErr.message, '— using foreground upload');
-            }
-        }
-
-        // iOS / older Android: show message that app must stay open
+        // Show platform-appropriate message
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         if (isIOS) {
             setProgress(2, '📱 Keep this app open while uploading...', true);
