@@ -938,6 +938,15 @@
     // Retry on page load (catches crashes/tab-reopens)
     window.addEventListener('load', () => setTimeout(retryPendingUploads, 5000));
 
+    // Fire retry when driver unlocks phone or switches back to app
+    // This is the fastest path after phone restart — no manual open needed
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            console.log('👀 App visible — checking for pending uploads...');
+            setTimeout(retryPendingUploads, 2000); // 2s delay for network to stabilize
+        }
+    });
+
     // Check every 5 minutes while app is open
     setInterval(retryPendingUploads, 5 * 60 * 1000);
 
@@ -2388,7 +2397,15 @@
                     fd.append('sessionId', sessionId);
                     fd.append('chunkIndex', String(i));
                     fd.append('totalChunks', String(totalChunks));
-                    const res = await fetch('/upload/chunk', { method: 'POST', body: fd });
+                    // 60s per chunk — if signal drops mid-chunk, don't hang forever
+                    const _chunkCtrl = new AbortController();
+                    const _chunkTimer = setTimeout(() => _chunkCtrl.abort(), 60000);
+                    let res;
+                    try {
+                        res = await fetch('/upload/chunk', { method: 'POST', body: fd, signal: _chunkCtrl.signal });
+                    } finally {
+                        clearTimeout(_chunkTimer);
+                    }
                     const d   = await res.json();
                     if (d.success) ok = true;
                     else if (r < 2) await new Promise(x => setTimeout(x, 1500 * (r + 1)));
@@ -2401,10 +2418,19 @@
         }
 
         setProgress(88, 'Finalizing...');
-        const compRes  = await fetch('/upload/complete', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId }),
-        });
+        // 30s for server to assemble chunks and respond
+        const _complCtrl  = new AbortController();
+        const _complTimer = setTimeout(() => _complCtrl.abort(), 30000);
+        let compRes;
+        try {
+            compRes = await fetch('/upload/complete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId }),
+                signal: _complCtrl.signal,
+            });
+        } finally {
+            clearTimeout(_complTimer);
+        }
         const compData = await compRes.json();
         if (!compData.success) throw new Error('Upload complete failed: ' + compData.error);
         setProgress(92, 'Upload complete — processing started...');
@@ -2498,6 +2524,67 @@
         const MAX_UPLOAD_ATTEMPTS = CONFIG.MAX_RETRY_ATTEMPTS || 3;
         const ext = selectedMimeType.startsWith('video/webm') ? 'webm' : 'mp4';
 
+        // ── Background Fetch (phone can be closed after this point) ─────────────
+        // Save video to IndexedDB FIRST — it's never lost even if phone dies.
+        // Then try Background Fetch API (Android Chrome 74+) which lets the OS
+        // handle the upload even after the app is force-closed or phone restarts.
+        const _bgPendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+        try {
+            await savePendingUpload(_bgPendingId, videoBlob, { driverName: driver, vin, vehicleType: document.getElementById('vehicleType')?.value || '', inspectionType });
+            await reportPendingToServer(_bgPendingId, { driverName: driver, vin, inspectionType, fileSizeMB: (videoBlob.size/1024/1024).toFixed(2) });
+        } catch(_) {}
+
+        // Try Background Fetch — Android Chrome only, iOS falls through to foreground
+        if ('serviceWorker' in navigator && 'BackgroundFetchManager' in self) {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (reg.backgroundFetch) {
+                    const bgFetch = await reg.backgroundFetch.fetch(
+                        _bgPendingId,
+                        new Request('/upload-raw', {
+                            method:  'POST',
+                            headers: {
+                                'Content-Type':          videoBlob.type || 'video/mp4',
+                                'X-Driver-Name':         encodeURIComponent(driver),
+                                'X-VIN':                 encodeURIComponent(vin),
+                                'X-Inspection-Type':     encodeURIComponent(inspectionType),
+                                'X-Vehicle-Type':        encodeURIComponent(document.getElementById('vehicleType')?.value || ''),
+                                'X-Supervisor-Filed':    isOpsMode ? 'true' : 'false',
+                                'X-Supervisor-Name':     encodeURIComponent(opsSupervisor || ''),
+                                'X-Pending-Id':          _bgPendingId,
+                            },
+                            body: videoBlob,
+                        }),
+                        {
+                            title:         'Uploading walk-around video',
+                            icons:         [{ sizes: '192x192', src: '/Final-01.jpg', type: 'image/jpeg' }],
+                            downloadTotal: videoBlob.size,
+                        }
+                    );
+
+                    // Show "Done" immediately — OS handles the upload
+                    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+                    progressFill.style.transition      = 'width 0.6s ease';
+                    progressFill.style.backgroundColor = '#4ade80';
+                    setProgress(100, '✅ Video saved! Uploading in background — safe to close app.', true);
+                    isUploading = false;
+                    videoBlob   = null;
+                    chunks      = [];
+                    console.log('📲 Background Fetch registered:', bgFetch.id);
+                    setTimeout(() => window.location.href = '/success', 2500);
+                    return; // OS handles everything from here
+                }
+            } catch(bgErr) {
+                console.log('Background Fetch unavailable:', bgErr.message, '— using foreground upload');
+            }
+        }
+
+        // iOS / older Android: show message that app must stay open
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+            setProgress(2, '📱 Keep this app open while uploading...', true);
+        }
+
         try { // outer try/finally so isUploading always resets
 
         for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
@@ -2525,7 +2612,25 @@
 
             try {
                 console.log(`📤 Upload attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS}`);
-                if (attempt > 1) { resetProgress(); setProgress(5, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`, true); }
+                if (attempt > 1) {
+                    // Check if server already processed a previous attempt before retrying
+                    // This prevents triple-uploading when XHR timeout fires but server got data
+                    try {
+                        const checkRes = await fetch(`/check-recent-upload?vin=${encodeURIComponent(vin)}&type=${encodeURIComponent(inspectionType)}`, { signal: AbortSignal.timeout(5000) });
+                        if (checkRes.ok) {
+                            const checkData = await checkRes.json();
+                            if (checkData.found && checkData.jobId) {
+                                console.log('✅ Server already has this upload — no retry needed:', checkData.jobId);
+                                setProgress(100, '✅ Upload already received — processing your video...', true);
+                                progressFill.style.backgroundColor = '#4ade80';
+                                isUploading = false; videoBlob = null; chunks = [];
+                                setTimeout(() => window.location.href = '/success', 1800);
+                                return;
+                            }
+                        }
+                    } catch(_) { /* dedup check failed — proceed with retry */ }
+                    resetProgress(); setProgress(5, `Retrying upload (attempt ${attempt}/${MAX_UPLOAD_ATTEMPTS})...`, true);
+                }
 
                 // ── Chunked upload (primary) — falls back to XHR on error ────────────
                 // Chunked is resumable: server restart mid-upload doesn't lose the video.
@@ -2568,7 +2673,12 @@
                     xhr.open('POST', '/upload-to-google-drive', true);
                     // FIX: 65s timeout — just over Railway's 60s gateway limit so we
                     // get the server error rather than hanging an extra 60s
-                    xhr.timeout = 65000;
+                    // Dynamic timeout: 1ms per 1KB minimum (= ~1Mbps floor), min 5min, max 15min
+                    // 80MB on 2Mbps indoor LTE = 320s — 65s was completely wrong
+                    const _sizeMB = videoBlob.size / 1024 / 1024;
+                    xhr.timeout = Math.min(900000, Math.max(300000, Math.ceil(_sizeMB * 12000)));
+                    // e.g. 10MB=300s, 30MB=360s, 80MB=960s (capped at 900s=15min)
+                    console.log(`⏱ XHR timeout: ${Math.round(xhr.timeout/1000)}s for ${_sizeMB.toFixed(1)}MB`);
 
                     const fileMB   = (videoBlob.size / 1024 / 1024).toFixed(1);
                     // Start simulated progress from wherever chunked got to (not 0)
