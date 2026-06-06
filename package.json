@@ -1,36 +1,32 @@
 {
   "name": "slgp-fleet-manager",
-  "version": "2.0.0",
-  "description": "SLGP Fleet Management Portal",
+  "version": "1.0.0",
+  "description": "SLGP Fleet Manager Bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "start": "node index.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.6.0",
+    "bullmq": "^5.78.0",
     "compression": "^1.8.1",
-    "discord.js": "^14.18.0",
-    "dotenv": "^17.3.1",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
-    "googleapis": "^171.4.0",
-    "helmet": "^8.1.0",
-    "multer": "^2.1.1",
-    "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.4",
-    "pdf-lib": "^1.17.1",
-    "pg": "^8.13.3",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.0.0",
+    "googleapis": "^140.0.0",
+    "ioredis": "^5.11.1",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.0",
+    "pg": "^8.11.0",
     "sharp": "^0.34.5",
-    "web-push": "^3.6.6",
+    "uuid": "^9.0.0",
+    "web-push": "^3.6.7",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
     "zod": "^4.4.3"
   },
-  "devDependencies": {
-    "nodemon": "^3.1.9"
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
