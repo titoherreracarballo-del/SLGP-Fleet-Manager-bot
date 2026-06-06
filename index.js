@@ -3627,9 +3627,52 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
 
         console.log(`☁️  Starting Google Drive upload (${wasEnhanced ? 'enhanced' : 'original'}, ${finalSizeMB}MB)...`);
 
+        // ── Drive folder organization: /YYYY-MM-DD/Inspection-Type/ ──────────────
+        let uploadFolderId = VIDEO_DRIVE_ID;
+        try {
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const dayFolderName  = today;
+            const typeFolderName = inspectionType.replace(/[^a-zA-Z0-9 _-]/g, ''); // sanitize
+
+            // Find or create date folder
+            const daySearch = await driveClient.files.list({
+                q: `name='${dayFolderName}' and '${VIDEO_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
+            });
+            let dayFolderId;
+            if (daySearch.data.files.length) {
+                dayFolderId = daySearch.data.files[0].id;
+            } else {
+                const dayFolder = await driveClient.files.create({
+                    requestBody: { name: dayFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [VIDEO_DRIVE_ID] },
+                    fields: 'id', supportsAllDrives: true
+                });
+                dayFolderId = dayFolder.data.id;
+            }
+
+            // Find or create inspection type folder inside date folder
+            const typeSearch = await driveClient.files.list({
+                q: `name='${typeFolderName}' and '${dayFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
+            });
+            if (typeSearch.data.files.length) {
+                uploadFolderId = typeSearch.data.files[0].id;
+            } else {
+                const typeFolder = await driveClient.files.create({
+                    requestBody: { name: typeFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [dayFolderId] },
+                    fields: 'id', supportsAllDrives: true
+                });
+                uploadFolderId = typeFolder.data.id;
+            }
+            logger.info(`📁 Drive folder: ${dayFolderName}/${typeFolderName}`);
+        } catch(folderErr) {
+            logger.warn(`Drive folder creation failed — using root: ${folderErr.message}`);
+            uploadFolderId = VIDEO_DRIVE_ID;
+        }
+
         const fileMetadata = {
             name: fileName,
-            parents: [VIDEO_DRIVE_ID],
+            parents: [uploadFolderId],
             mimeType: 'video/mp4',
             properties: {
                 driver: driverName,
@@ -3711,10 +3754,53 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
                 tls: { rejectUnauthorized: false }
             });
 
+            // Annotate keyframes with damage bounding boxes if damage found
+            const emailAttachments = [];
+            if (damageReport && damageReport.damageFound && keyframes.length) {
+                try {
+                    const { execFileSync } = require('child_process');
+                    for (let ki = 0; ki < Math.min(keyframes.length, 3); ki++) {
+                        const kf = keyframes[ki];
+                        if (!fs.existsSync(kf)) continue;
+                        const outPath = kf.replace(/\.jpg$/, '_annotated.jpg');
+                        // Draw red boxes on keyframe using Python/OpenCV
+                        const items = JSON.stringify(damageReport.items || []);
+                        try {
+                            execFileSync('python3', [
+                                '/root/slgp-fleet/annotate_damage.py',
+                                kf, outPath, items
+                            ], { timeout: 15000 });
+                            if (fs.existsSync(outPath)) {
+                                emailAttachments.push({
+                                    filename: `damage_frame_${ki+1}.jpg`,
+                                    path:     outPath,
+                                    cid:      `damage_frame_${ki+1}`,
+                                });
+                            }
+                        } catch(annotErr) {
+                            logger.warn(`Annotation failed for frame ${ki}: ${annotErr.message}`);
+                            // Fall back to unannotated frame
+                            emailAttachments.push({
+                                filename: `frame_${ki+1}.jpg`,
+                                path:     kf,
+                                cid:      `damage_frame_${ki+1}`,
+                            });
+                        }
+                    }
+                } catch(e) {
+                    logger.warn('Keyframe annotation error:', e.message);
+                }
+            }
+
+            const emailSubject = damageReport && damageReport.damageFound
+                ? `⚠️ DAMAGE DETECTED: ${inspectionType} - ${driverName} (VIN: ${vin})`
+                : `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`;
+
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: ['slgpfleetmanager@gmail.com'],
-                subject: `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`,
+                subject: emailSubject,
+                attachments: emailAttachments,
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
                         <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
