@@ -518,6 +518,20 @@ const mailTransport = nodemailer.createTransport({
 });
 
 const app = express();
+
+// ── CORS for HR Dashboard ─────────────────────────────────────────────────────
+app.use((req, res, next) => {
+    const allowed = ['https://hr.slgpmeshserver.com', 'http://hr.slgpmeshserver.com'];
+    const origin  = req.headers.origin;
+    if (allowed.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+});
 app.use(compression()); // gzip all responses — saves ~70% bandwidth on JSON
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
