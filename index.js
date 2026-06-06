@@ -7,6 +7,7 @@ const { z }      = require('zod');
 const rateLimit  = require('express-rate-limit');
 const { Queue, Worker, QueueEvents } = require('bullmq');
 const IORedis    = require('ioredis');
+const webpush    = require('web-push');
 
 let _shuttingDown = false; // set to true on SIGTERM — blocks new uploads
 const winston    = require('winston');
@@ -195,8 +196,8 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 }
 
 // Push subscriptions + pending submissions stored in flat JSON files
-const PUSH_SUBS_FILE    = path.join(VOLUME_PATH, 'push_subscriptions.json');
-const PENDING_SUBS_FILE = path.join(VOLUME_PATH, 'pending_submissions.json');
+const PUSH_SUBS_FILE    = '/app/meshcentral-data/push_subscriptions.json';
+const PENDING_SUBS_FILE = '/app/meshcentral-data/pending_submissions.json';
 
 function readPushSubs()    { try { return JSON.parse(fs.readFileSync(PUSH_SUBS_FILE,  'utf8')); } catch(_) { return {}; } }
 function readPendingSubs() { try { return JSON.parse(fs.readFileSync(PENDING_SUBS_FILE,'utf8')); } catch(_) { return []; } }
@@ -439,7 +440,6 @@ const engine     = require('./engine');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
 const cron = require('node-cron');
-const webpush = require('web-push');
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 
 // Shared nodemailer transporter — created once at startup, reused for all sends.
