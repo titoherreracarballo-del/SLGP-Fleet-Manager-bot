@@ -199,6 +199,73 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 const PUSH_SUBS_FILE    = '/app/meshcentral-data/push_subscriptions.json';
 const PENDING_SUBS_FILE = '/app/meshcentral-data/pending_submissions.json';
 
+
+
+// ── Walk-around completeness check ──────────────────────────────────────────
+function checkWalkaroundCompleteness(durationSec, fileSizeMB, inspectionType) {
+    const issues = [];
+    const MIN_DURATION = inspectionType === 'Post-Trip' ? 20 : 25; // seconds
+    const MIN_SIZE_MB  = 3;
+
+    if (durationSec > 0 && durationSec < MIN_DURATION) {
+        issues.push(`Video too short (${Math.round(durationSec)}s — minimum ${MIN_DURATION}s for complete walk-around)`);
+    }
+    if (fileSizeMB > 0 && fileSizeMB < MIN_SIZE_MB) {
+        issues.push(`File too small (${fileSizeMB.toFixed(1)}MB — may be incomplete)`);
+    }
+    return {
+        complete: issues.length === 0,
+        issues,
+        score: Math.min(100, Math.round(
+            (Math.min(durationSec, 60) / 60) * 60 +
+            (Math.min(fileSizeMB, 30) / 30) * 40
+        ))
+    };
+}
+
+// ── Driver quality scoring ──────────────────────────────────────────────────
+const QUALITY_FILE = '/app/meshcentral-data/driver_quality.json';
+
+function readQualityData() {
+    try { return JSON.parse(fs.readFileSync(QUALITY_FILE, 'utf8')); }
+    catch(_) { return {}; }
+}
+
+function saveQualityData(d) {
+    try { fs.writeFileSync(QUALITY_FILE, JSON.stringify(d, null, 2)); }
+    catch(_) {}
+}
+
+function recordDriverSubmission(driverName, metrics) {
+    const data = readQualityData();
+    const key  = driverName.toLowerCase().trim();
+    if (!data[key]) {
+        data[key] = {
+            driverName,
+            submissions: 0,
+            totalDurationSec: 0,
+            blurryFrames: 0,
+            totalFrames: 0,
+            damageFound: 0,
+            lastSubmission: null,
+            avgFileSizeMB: 0,
+            uploadFailures: 0,
+        };
+    }
+    const d = data[key];
+    d.submissions       += 1;
+    d.totalDurationSec  += metrics.durationSec  || 0;
+    d.blurryFrames      += metrics.blurryFrames || 0;
+    d.totalFrames       += metrics.totalFrames  || 0;
+    d.damageFound       += metrics.damageFound  ? 1 : 0;
+    d.avgFileSizeMB      = ((d.avgFileSizeMB * (d.submissions-1)) + (metrics.fileSizeMB || 0)) / d.submissions;
+    d.lastSubmission     = new Date().toISOString();
+    data[key] = d;
+    saveQualityData(data);
+    logger.info(`📊 Quality recorded for ${driverName}: ${d.submissions} submissions, ${Math.round((d.blurryFrames/Math.max(d.totalFrames,1))*100)}% blur`);
+}
+
+
 function readPushSubs()    { try { return JSON.parse(fs.readFileSync(PUSH_SUBS_FILE,  'utf8')); } catch(_) { return {}; } }
 function readPendingSubs() { try { return JSON.parse(fs.readFileSync(PENDING_SUBS_FILE,'utf8')); } catch(_) { return []; } }
 function writePushSubs(d)  { try { fs.writeFileSync(PUSH_SUBS_FILE,   JSON.stringify(d, null, 2)); } catch(_) {} }
@@ -3792,9 +3859,19 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
                 }
             }
 
-            const emailSubject = damageReport && damageReport.damageFound
-                ? `⚠️ DAMAGE DETECTED: ${inspectionType} - ${driverName} (VIN: ${vin})`
-                : `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`;
+            // Check walk-around completeness
+            const durSec = videoMetadata && videoMetadata.durationMillis
+                ? videoMetadata.durationMillis / 1000 : 0;
+            const completeness = checkWalkaroundCompleteness(durSec, parseFloat(finalSizeMB), inspectionType);
+
+            let emailSubject;
+            if (damageReport && damageReport.damageFound) {
+                emailSubject = `⚠️ DAMAGE DETECTED: ${inspectionType} - ${driverName} (VIN: ${vin})`;
+            } else if (!completeness.complete) {
+                emailSubject = `⚠️ INCOMPLETE WALK-AROUND: ${inspectionType} - ${driverName} (VIN: ${vin})`;
+            } else {
+                emailSubject = `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`;
+            }
 
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
@@ -3868,6 +3945,21 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
                 source: 'upload-to-google-drive-email'
             });
         }
+
+        // Record driver quality metrics
+        try {
+            const blurCount  = keyframes.filter(f => f.isBlurred).length;
+            const totalKf    = keyframes.length;
+            const durSec     = videoMetadata && videoMetadata.durationMillis
+                ? videoMetadata.durationMillis / 1000 : 0;
+            recordDriverSubmission(driverName, {
+                durationSec:  durSec,
+                blurryFrames: blurCount,
+                totalFrames:  totalKf,
+                damageFound:  !!(damageReport && damageReport.damageFound),
+                fileSizeMB:   parseFloat(fileSizeMB) || 0,
+            });
+        } catch(qErr) { logger.warn('Quality record failed:', qErr.message); }
 
         // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
         syncInspectionToStreamlit({
@@ -4163,6 +4255,21 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
         } catch(emailErr) {
             console.warn('Retry email failed:', emailErr.message);
         }
+
+        // Record driver quality metrics
+        try {
+            const blurCount  = keyframes.filter(f => f.isBlurred).length;
+            const totalKf    = keyframes.length;
+            const durSec     = videoMetadata && videoMetadata.durationMillis
+                ? videoMetadata.durationMillis / 1000 : 0;
+            recordDriverSubmission(driverName, {
+                durationSec:  durSec,
+                blurryFrames: blurCount,
+                totalFrames:  totalKf,
+                damageFound:  !!(damageReport && damageReport.damageFound),
+                fileSizeMB:   parseFloat(fileSizeMB) || 0,
+            });
+        } catch(qErr) { logger.warn('Quality record failed:', qErr.message); }
 
         // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
         syncInspectionToStreamlit({
@@ -4986,6 +5093,102 @@ app.post('/upload-raw', uploadLimiter,
         }
     }
 );
+
+
+// ── Weekly fleet summary report ──────────────────────────────────────────────
+// Fires Monday at 6AM server time — comprehensive fleet health email
+async function sendWeeklyFleetReport() {
+    try {
+        const data    = readQualityData();
+        const drivers = Object.values(data);
+        if (!drivers.length) return;
+
+        // Sort by quality score (blur ratio, ascending = better)
+        const scored = drivers.map(d => ({
+            ...d,
+            blurPct:    d.totalFrames > 0 ? Math.round((d.blurryFrames / d.totalFrames) * 100) : 0,
+            avgDuration: d.submissions > 0 ? Math.round(d.totalDurationSec / d.submissions) : 0,
+        })).sort((a,b) => a.blurPct - b.blurPct);
+
+        const flagged = scored.filter(d => d.blurPct > 60 || d.avgDuration < 20);
+        const total   = scored.reduce((s,d) => s + d.submissions, 0);
+
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com', port: 587, secure: false,
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+            tls: { rejectUnauthorized: false }
+        });
+
+        const rows = scored.map(d => `
+            <tr>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb">${d.driverName}</td>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center">${d.submissions}</td>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;color:${d.blurPct>60?'#dc2626':'#059669'}">${d.blurPct}%</td>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center">${d.avgDuration}s</td>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center">${d.damageFound}</td>
+                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;color:${d.avgFileSizeMB<5?'#dc2626':'#059669'}">${d.avgFileSizeMB.toFixed(1)}MB</td>
+            </tr>`).join('');
+
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: ['slgpfleetmanager@gmail.com'],
+            subject: `📊 Weekly Fleet Report — ${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`,
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto">
+                    <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:30px;border-radius:12px 12px 0 0;text-align:center">
+                        <h1 style="color:white;margin:0;font-size:24px">📊 Weekly Fleet Health Report</h1>
+                        <p style="color:#e0e7ff;margin:8px 0 0">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</p>
+                    </div>
+                    <div style="background:white;padding:30px;border-radius:0 0 12px 12px">
+                        <div style="display:flex;gap:20px;margin-bottom:25px">
+                            <div style="flex:1;background:#f0f9ff;border-radius:8px;padding:16px;text-align:center">
+                                <div style="font-size:32px;font-weight:bold;color:#0284c7">${total}</div>
+                                <div style="color:#64748b;font-size:13px">Total Submissions</div>
+                            </div>
+                            <div style="flex:1;background:#fef2f2;border-radius:8px;padding:16px;text-align:center">
+                                <div style="font-size:32px;font-weight:bold;color:#dc2626">${flagged.length}</div>
+                                <div style="color:#64748b;font-size:13px">Drivers Flagged</div>
+                            </div>
+                            <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center">
+                                <div style="font-size:32px;font-weight:bold;color:#16a34a">${drivers.length}</div>
+                                <div style="color:#64748b;font-size:13px">Active Drivers</div>
+                            </div>
+                        </div>
+                        ${flagged.length ? `
+                        <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:15px;border-radius:4px;margin-bottom:20px">
+                            <strong style="color:#dc2626">⚠️ Drivers needing attention:</strong><br>
+                            ${flagged.map(d => `${d.driverName} — ${d.blurPct}% blur, ${d.avgDuration}s avg`).join('<br>')}
+                        </div>` : '<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:15px;border-radius:4px;margin-bottom:20px"><strong style="color:#16a34a">✅ All drivers performing well this week</strong></div>'}
+                        <h3 style="color:#1f2937;margin:0 0 12px">Driver Performance</h3>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px">
+                            <thead>
+                                <tr style="background:#f3f4f6">
+                                    <th style="padding:10px;text-align:left">Driver</th>
+                                    <th style="padding:10px;text-align:center">Submissions</th>
+                                    <th style="padding:10px;text-align:center">Blur %</th>
+                                    <th style="padding:10px;text-align:center">Avg Duration</th>
+                                    <th style="padding:10px;text-align:center">Damage Found</th>
+                                    <th style="padding:10px;text-align:center">Avg File Size</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>`
+        });
+        logger.info('📊 Weekly fleet report sent');
+    } catch(e) {
+        logger.error('Weekly report failed:', e.message);
+    }
+}
+
+// Check every hour — fire on Monday at 6AM
+setInterval(() => {
+    const now = new Date();
+    if (now.getDay() === 1 && now.getHours() === 6 && now.getMinutes() < 5) {
+        sendWeeklyFleetReport();
+    }
+}, 60 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRACEFUL SHUTDOWN
