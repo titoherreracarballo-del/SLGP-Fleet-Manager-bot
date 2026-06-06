@@ -4837,6 +4837,9 @@ app.post('/upload-raw', uploadLimiter,
     express.raw({ type: '*/*', limit: '500mb' }),
     async (req, res) => {
         try {
+            // Debug: log incoming request details
+            logger.info(`/upload-raw: body=${req.body ? req.body.length : 'null'} bytes, ct=${req.headers['content-type']}, driver=${req.headers['x-driver-name']}, vin=${req.headers['x-vin']}`);
+
             const driverName     = decodeURIComponent(req.headers['x-driver-name']     || 'Unknown');
             const vin            = decodeURIComponent(req.headers['x-vin']              || 'UNKNOWN');
             const inspectionType = decodeURIComponent(req.headers['x-inspection-type'] || 'Pre-Trip');
