@@ -3793,6 +3793,17 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
 
         console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
         console.log(`   File ID: ${fileId}`);
+
+        // Auto-clear pending submissions for this driver+VIN now that upload succeeded
+        try {
+            const _pend = readPendingSubs();
+            const _upd  = _pend.map(p =>
+                (p.driverName === driverName && p.vin === vin && p.status !== 'complete')
+                    ? { ...p, status: 'complete', completedAt: new Date().toISOString() }
+                    : p
+            );
+            writePendingSubs(_upd);
+        } catch(_) {}
         console.log(`   Size uploaded: ${finalSizeMB}MB (raw was ${fileSizeMB}MB)`);
 
         await appendLog(PERFORMANCE_LOG, {
