@@ -5216,7 +5216,40 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GRACEFUL SHUTDOWN
+
+app.post('/pending-submissions/delete', express.json(), (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.json({ ok: false, error: 'Missing id' });
+        const pending = readPendingSubs();
+        const filtered = pending.filter(p => p.id !== id);
+        writePendingSubs(filtered);
+        res.json({ ok: true, removed: pending.length - filtered.length });
+    } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+app.post('/pending-submissions/deduplicate', express.json(), (req, res) => {
+    try {
+        const pending = readPendingSubs();
+        const seen = new Map();
+        const sorted = [...pending].sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
+        const unique = sorted.filter(p => {
+            const key = p.driverName+'/'+p.vin+'jp'+p.inspectionType;
+            if (seen.has(key)) return false;
+            seen.set(key, true); return true;
+        });
+        writePendingSubs(unique);
+        res.json({ ok: true, before: pending.length, after: unique.length, removed: pending.length - unique.length });
+    } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+app.post('/pending-submissions/clear-complete', express.json(), (req, res) => {
+    try {
+        const pending = readPendingSubs();
+        const filtered = pending.filter(p => p.status !== 'complete');
+        writePendingSubs(filtered);
+        res.json({ ok: true, removed: pending.length - filtered.length });
+    } catch(e) { res.json({ ok: false, error: e.message }); }
+});
+  // GRACEFUL SHUTDOWN
 // On SIGTERM (systemctl stop/restart): stop accepting new jobs, wait for active
 // jobs to complete (up to 5min), then exit cleanly.
 // Prevents mid-encode FFmpeg kills and BullMQ stalled job markers.
