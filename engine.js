@@ -66,6 +66,8 @@ let _opencvOk    = false;
 let _bandwidth     = { samples: [], avgMBps: null, p25MBps: null };
 let _telemetry     = { jobs: [], profileStats: {}, lastUpdated: null };
 let _driverHistory = {};
+let _registerPid   = () => {};
+let _unregisterPid = () => {};
 
 // ═══════════════════════════════════════════════════════════════
 // INIT
@@ -75,6 +77,11 @@ function init(deps = {}) {
     _ffprobePath = deps.ffprobePath || null;
     _esrganPath  = deps.esrganPath  || null;
     _rifePath    = deps.rifePath    || null;
+    // PID hooks — let index.js register our FFmpeg children in the shared active
+    // set so the agent's orphan-killer NEVER kills a live enhancement encode.
+    // Falls back to no-ops if not provided (engine still works standalone).
+    _registerPid   = typeof deps.registerPid   === 'function' ? deps.registerPid   : () => {};
+    _unregisterPid = typeof deps.unregisterPid === 'function' ? deps.unregisterPid : () => {};
 
     try { fs.mkdirSync(ENGINE_DIR, { recursive: true }); } catch(_) {}
     _loadTelemetry();
@@ -648,6 +655,11 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
         let stderrBuf = '';
         const settle  = (fn, v) => { if (!settled) { settled = true; fn(v); } };
         const proc    = spawn(_ffmpegPath, args);
+        // Register this encode in the shared active-PID set so the agent's
+        // orphan-killer treats it as a protected live job, not a stuck orphan.
+        const _pid = proc.pid;
+        if (_pid) _registerPid(_pid);
+        const _done = () => { if (_pid) _unregisterPid(_pid); };
 
         proc.stdout.resume(); // stdout unused — writing to file
         proc.stderr.on('data', chunk => {
@@ -660,6 +672,7 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
         });
 
         const wd = setTimeout(() => {
+            _done();
             try { proc.kill('SIGKILL'); } catch(_) {}
             try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch(_) {}
             settle(reject, new Error('FFmpeg timeout (5min)'));
@@ -667,6 +680,7 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
 
         proc.on('close', code => {
             clearTimeout(wd);
+            _done();
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 10000)
                 settle(resolve);
             else {
@@ -674,7 +688,7 @@ async function _runFFmpeg(inputPath, outputPath, filters, jobId, updateJobFn) {
                 settle(reject, new Error(`FFmpeg exit ${code}: ${stderrBuf.slice(-300)}`));
             }
         });
-        proc.on('error', e => { clearTimeout(wd); settle(reject, e); });
+        proc.on('error', e => { clearTimeout(wd); _done(); settle(reject, e); });
     });
 }
 
