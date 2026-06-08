@@ -797,6 +797,8 @@ setTimeout(() => {
         ffprobePath,
         esrganPath,
         rifePath,
+        registerPid,    // let engine's FFmpeg encodes register as protected active jobs
+        unregisterPid,  // so the agent orphan-killer never kills a live enhancement
     });
 }, 2000); // slight delay so detectFFmpeg/ESRGAN finish
 
@@ -2685,35 +2687,117 @@ app.post('/upload/chunk', chunkLimiter, upload.single('chunk'), async (req, res)
     res.json({ success: true, received, total: session.totalChunks, sessionId });
 });
 
+// ── Shared: restore a chunk session from disk (used by complete + finish-on-server) ──
+function restoreChunkSession(sessionId) {
+    if (_chunkSessions.has(sessionId)) return _chunkSessions.get(sessionId);
+    const sessionDir = path.join(CHUNK_DIR, sessionId);
+    const metaPath   = path.join(sessionDir, 'session.json');
+    if (!fs.existsSync(metaPath)) return null;
+    try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        const existing = fs.readdirSync(sessionDir).filter(f => f.startsWith('chunk_')).map(f => parseInt(f.replace('chunk_','')));
+        meta.receivedChunks = new Set(existing);
+        meta.sessionDir = sessionDir;
+        _chunkSessions.set(sessionId, meta);
+        return meta;
+    } catch(e) {
+        return null;
+    }
+}
+
+// ── Shared: which chunks are missing for a session ───────────────────────────
+function missingChunks(session) {
+    const missing = [];
+    for (let i = 0; i < session.totalChunks; i++) {
+        if (!session.receivedChunks.has(i)) missing.push(i);
+    }
+    return missing;
+}
+
+// ── Shared: assemble a complete chunk session and hand to the pipeline ───────
+// Used by BOTH /upload/complete (phone-driven) and /upload/finish-on-server
+// (dashboard-driven, no phone). Assumes all chunks are present (caller checks).
+// Returns { jobId } on success; throws on assembly failure.
+async function assembleAndProcessSession(session, sessionId, source) {
+    const ext       = (session.mimeType || '').includes('webm') ? '.webm' : '.mp4';
+    const finalPath = path.join(UPLOAD_DIR, `${Date.now()}_${session.vin}${ext}`);
+
+    // Assemble chunks in order
+    const writeStream = fs.createWriteStream(finalPath);
+    await new Promise((resolve, reject) => {
+        const pipeNext = (idx) => {
+            if (idx >= session.totalChunks) { writeStream.end(); return; }
+            const chunkPath = path.join(session.sessionDir, `chunk_${idx}`);
+            const rs = fs.createReadStream(chunkPath);
+            rs.on('error', reject);
+            rs.on('end', () => pipeNext(idx + 1));
+            rs.pipe(writeStream, { end: false });
+        };
+        writeStream.on('error', reject);
+        writeStream.on('finish', resolve);
+        pipeNext(0);
+    });
+
+    const stat = fs.statSync(finalPath);
+    if (stat.size < 10000) {
+        try { fs.unlinkSync(finalPath); } catch(_) {}
+        throw new Error('Assembled file too small — upload corrupt');
+    }
+    const fileSizeMB = (stat.size / 1024 / 1024).toFixed(2);
+    logger.info(`✅ Chunks assembled (${source}): ${session.driverName} VIN:${session.vin} ${fileSizeMB}MB`);
+
+    // Chunk dir is consumed — remove it and drop the in-memory session
+    try { fs.rmSync(session.sessionDir, { recursive: true }); } catch(_) {}
+    _chunkSessions.delete(sessionId);
+
+    const jobId = require('crypto').randomUUID();
+    jobStore.set(jobId, {
+        status: 'queued', stage: 'Queued', progress: 0,
+        driverName: session.driverName, vin: session.vin,
+        inspectionType: session.inspectionType, fileSizeMB,
+        source, _createdAt: Date.now(),
+    });
+
+    // Manifest for recovery tracking
+    const manifestPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
+    fs.writeFileSync(manifestPath, JSON.stringify({
+        jobId, videoFile: path.basename(finalPath),
+        driverName: session.driverName, vin: session.vin,
+        vehicleType: session.vehicleType || '', inspectionType: session.inspectionType,
+        fileSizeMB, status: 'queued',
+        uploadedAt: new Date().toISOString(), submittedAt: new Date().toISOString(),
+        source,
+    }, null, 2));
+
+    updateJob(jobId, { status: 'queued', stage: 'Queued', progress: 0, message: 'Video received — queued for processing' });
+
+    const enqueued = enqueueJob(jobId, async (overrideVideoPath) => {
+        const videoPath = overrideVideoPath || finalPath;
+        await videoPipeline.process({
+            jobId, videoPath,
+            driverName:     session.driverName,
+            vin:            session.vin,
+            inspectionType: session.inspectionType,
+            fileSizeMB,
+            hostname:       'slgpmeshserver.com',
+            startTime:      Date.now(),
+            source,
+        });
+    });
+    if (!enqueued) logger.warn(`${source} job ${jobId} rejected — queue full`);
+    return { jobId, fileSizeMB };
+}
+
 // ── /upload/complete ──────────────────────────────────────────────────────────
 app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
     const { sessionId } = req.body;
     if (!sessionId) return res.status(400).json({ success: false, error: 'Missing sessionId' });
 
-    // Restore from disk if needed
-    if (!_chunkSessions.has(sessionId)) {
-        const sessionDir = path.join(CHUNK_DIR, sessionId);
-        const metaPath   = path.join(sessionDir, 'session.json');
-        if (!fs.existsSync(metaPath))
-            return res.status(404).json({ success: false, error: 'Session not found' });
-        try {
-            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-            const existing = fs.readdirSync(sessionDir).filter(f => f.startsWith('chunk_')).map(f => parseInt(f.replace('chunk_','')));
-            meta.receivedChunks = new Set(existing);
-            meta.sessionDir = sessionDir;
-            _chunkSessions.set(sessionId, meta);
-        } catch(e) {
-            return res.status(500).json({ success: false, error: 'Could not restore session' });
-        }
-    }
-
-    const session = _chunkSessions.get(sessionId);
+    const session = restoreChunkSession(sessionId);
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
 
     // Verify all chunks received
-    const missing = [];
-    for (let i = 0; i < session.totalChunks; i++) {
-        if (!session.receivedChunks.has(i)) missing.push(i);
-    }
+    const missing = missingChunks(session);
     if (missing.length > 0) {
         return res.status(400).json({
             success: false, error: 'Missing chunks',
@@ -2721,139 +2805,60 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
         });
     }
 
-    // Assemble chunks into final file
-    const ext       = session.mimeType.includes('webm') ? '.webm' : '.mp4';
-    const finalPath = path.join(UPLOAD_DIR, `${Date.now()}_${session.vin}${ext}`);
-
+    // Assemble + hand off via the shared helper (same path as finish-on-server)
+    let result;
     try {
-        const writeStream = fs.createWriteStream(finalPath);
-        await new Promise((resolve, reject) => {
-            const pipeNext = (idx) => {
-                if (idx >= session.totalChunks) { writeStream.end(); return; }
-                const chunkPath = path.join(session.sessionDir, `chunk_${idx}`);
-                const rs = fs.createReadStream(chunkPath);
-                rs.on('error', reject);
-                rs.on('end', () => pipeNext(idx + 1));
-                rs.pipe(writeStream, { end: false });
-            };
-            writeStream.on('error', reject);
-            writeStream.on('finish', resolve);
-            pipeNext(0);
-        });
+        result = await assembleAndProcessSession(session, sessionId, 'chunked');
     } catch(e) {
-        try { fs.unlinkSync(finalPath); } catch(_) {}
         return res.status(500).json({ success: false, error: `Assembly failed: ${e.message}` });
     }
-
-    // Verify assembled file
-    const stat = fs.statSync(finalPath);
-    if (stat.size < 10000) {
-        try { fs.unlinkSync(finalPath); } catch(_) {}
-        return res.status(500).json({ success: false, error: 'Assembled file too small — upload corrupt' });
-    }
-
-    logger.info(`✅ Chunks assembled: ${session.driverName} VIN:${session.vin} ${(stat.size/1024/1024).toFixed(1)}MB`);
-
-    // Clean up chunk directory
-    try { fs.rmSync(session.sessionDir, { recursive: true }); } catch(_) {}
-    _chunkSessions.delete(sessionId);
-
-    // Respond immediately — processing happens async
-    const jobId = require('crypto').randomUUID();
-    // ← CRITICAL: set jobStore BEFORE sending response so dedup check works
-    // updateJob() is a no-op if job not in store — must call set() first
-    jobStore.set(jobId, {
-        status:         'queued',
-        stage:          'Queued',
-        progress:       0,
-        driverName:     session.driverName,
-        vin:            session.vin,
-        inspectionType: session.inspectionType,
-        fileSizeMB:     (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2),
-        source:         'chunked',
-        _createdAt:     Date.now(),
-    });
-    res.json({ success: true, jobId, message: 'Upload complete — processing started' });
-
-    // Hand off to processing pipeline via the same enqueue mechanism as direct upload
-    // Build a fake req/res to reuse the existing upload handler logic
-    setImmediate(async () => {
-        try {
-            const stat = fs.statSync(finalPath);
-            const fileSizeMB = (stat.size / 1024 / 1024).toFixed(2);
-
-            // Write manifest so job is trackable
-            const manifestPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-            const manifestData = {
-                jobId,
-                videoFile:      path.basename(finalPath),
-                driverName:     session.driverName,
-                vin:            session.vin,
-                vehicleType:    session.vehicleType || '',
-                inspectionType: session.inspectionType,
-                fileSizeMB,
-                status:         'queued',
-                uploadedAt:     new Date().toISOString(),
-                submittedAt:    new Date().toISOString(),  // match direct-upload field so recovery/reaper read it
-                source:         'chunked',
-            };
-            fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2));
-
-            updateJob(jobId, { status: 'queued', stage: 'Queued', progress: 0, message: 'Video received — queued for processing' });
-
-            // Trigger processing via same path as direct upload
-            // The job function mimics what the direct upload handler does
-            logger.info(`✅ Chunk assembly complete for job ${jobId} — queuing for processing`);
-
-            const enqueued = enqueueJob(jobId, async (overrideVideoPath) => {
-                // Chunked uploads now run the SAME shared pipeline as direct uploads
-                // (engine → enhance → keyframes → damage → Drive folders → email →
-                // pending-clear → quality metrics → streamlit sync). Previously this
-                // path had a stripped-down copy that skipped quality metrics, damage
-                // emails, folder organization, and pending-clear.
-                const videoPath = overrideVideoPath || finalPath;
-                await videoPipeline.process({
-                    jobId,
-                    videoPath,
-                    driverName:     session.driverName,
-                    vin:            session.vin,
-                    inspectionType: session.inspectionType,
-                    fileSizeMB:     (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2),
-                    hostname:       'slgpmeshserver.com',
-                    startTime:      Date.now(),
-                    source:         'chunked',
-                });
-            });
-            if (!enqueued) logger.warn(`Chunk job ${jobId} rejected — queue full`);
-        } catch(e) {
-            logger.error('Chunk upload enqueue error', { error: e.message, jobId });
-        }
-    });
+    res.json({ success: true, jobId: result.jobId, message: 'Upload complete — processing started' });
 });
 
-// ── Chunk session cleanup — remove stale sessions older than 2 hours ──────────
+// ── Chunk session cleanup ─────────────────────────────────────────────────────
+// Two retention tiers:
+//   • Sessions that received ALL their chunks but were never finished (phone died
+//     right before/at /upload/complete) are RECOVERABLE — keep them 24h so they can
+//     be finished from the dashboard ("Finish on server"), no phone needed.
+//   • Sessions still missing chunks (genuinely abandoned mid-transfer) are swept at
+//     2h as before — they can't be finished server-side anyway.
+const PRESERVE_MS  = 24 * 60 * 60 * 1000; // recoverable (all chunks present)
+const ABANDON_MS   = 2  * 60 * 60 * 1000; // incomplete (missing chunks)
+function _sessionComplete(sess) {
+    if (!sess || !sess.totalChunks) return false;
+    const have = sess.receivedChunks ? sess.receivedChunks.size : 0;
+    return have >= sess.totalChunks;
+}
 setInterval(() => {
-    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    const now = Date.now();
     for (const [sid, sess] of _chunkSessions.entries()) {
-        if ((sess.lastActivity || sess.createdAt) < cutoff) {
-            logger.warn(`🗑 Removing stale chunk session: ${sess.driverName} VIN:${sess.vin}`);
+        const idle    = now - (sess.lastActivity || sess.createdAt);
+        const ttl     = _sessionComplete(sess) ? PRESERVE_MS : ABANDON_MS;
+        if (idle > ttl) {
+            const why = _sessionComplete(sess) ? 'recoverable expired (24h)' : 'incomplete abandoned (2h)';
+            logger.warn(`🗑 Removing chunk session (${why}): ${sess.driverName} VIN:${sess.vin}`);
             try { fs.rmSync(sess.sessionDir, { recursive: true }); } catch(_) {}
             _chunkSessions.delete(sid);
         }
     }
-    // Also scan disk for orphaned session dirs
+    // Disk-level orphan scan — same two-tier logic by reading session.json + chunk count
     try {
         const dirs = fs.readdirSync(CHUNK_DIR);
         for (const dir of dirs) {
             const dirPath  = path.join(CHUNK_DIR, dir);
             const metaPath = path.join(dirPath, 'session.json');
-            if (!_chunkSessions.has(dir) && fs.existsSync(metaPath)) {
-                const stat = fs.statSync(dirPath);
-                if (Date.now() - stat.mtimeMs > 4 * 60 * 60 * 1000) {
-                    logger.warn(`🗑 Removing orphaned chunk dir: ${dir}`);
+            if (_chunkSessions.has(dir) || !fs.existsSync(metaPath)) continue;
+            try {
+                const meta     = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+                const have     = fs.readdirSync(dirPath).filter(f => f.startsWith('chunk_')).length;
+                const complete = meta.totalChunks && have >= meta.totalChunks;
+                const ttl      = complete ? PRESERVE_MS : ABANDON_MS;
+                const stat     = fs.statSync(dirPath);
+                if (now - stat.mtimeMs > ttl) {
+                    logger.warn(`🗑 Removing orphaned chunk dir (${complete ? '24h' : '2h'}): ${dir}`);
                     try { fs.rmSync(dirPath, { recursive: true }); } catch(_) {}
                 }
-            }
+            } catch(_) {}
         }
     } catch(_) {}
 }, 30 * 60 * 1000); // every 30 minutes
@@ -3136,9 +3141,35 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
 
         const opsTag      = supervisorFiled && supervisorName ? '_OPS-' + supervisorName.replace(/[^a-zA-Z0-9]/g, '-').toUpperCase() : '';
         const fileName     = `${driverName.replace(/\s+/g,'-')}_${vin}_${inspectionType}_${new Date().toISOString().split('T')[0]}${opsTag}.mp4`;
+
+        // ── Drive folder organization: /YYYY-MM-DD/Inspection-Type/ ──────────────
+        // Mirror the main pipeline so RETRIED uploads also land in dated/type
+        // folders instead of the Drive root. (This path previously uploaded to
+        // VIDEO_DRIVE_ID directly, which dumped every recovered video at root.)
+        let retryFolderId = VIDEO_DRIVE_ID;
+        try {
+            const today          = new Date().toISOString().split('T')[0];
+            const typeFolderName = (inspectionType || 'Other').replace(/[^a-zA-Z0-9 _-]/g, '');
+            const daySearch = await driveClient.files.list({
+                q: `name='${today}' and '${VIDEO_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
+            });
+            let dayFolderId = daySearch.data.files.length ? daySearch.data.files[0].id
+                : (await driveClient.files.create({ requestBody: { name: today, mimeType: 'application/vnd.google-apps.folder', parents: [VIDEO_DRIVE_ID] }, fields: 'id', supportsAllDrives: true })).data.id;
+            const typeSearch = await driveClient.files.list({
+                q: `name='${typeFolderName}' and '${dayFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
+            });
+            retryFolderId = typeSearch.data.files.length ? typeSearch.data.files[0].id
+                : (await driveClient.files.create({ requestBody: { name: typeFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [dayFolderId] }, fields: 'id', supportsAllDrives: true })).data.id;
+        } catch(folderErr) {
+            console.warn(`Retry: Drive folder org failed, using root: ${folderErr.message}`);
+            retryFolderId = VIDEO_DRIVE_ID;
+        }
+
         const fileMetadata = {
             name:        fileName,
-            parents:     [VIDEO_DRIVE_ID], // uses same folder as main upload
+            parents:     [retryFolderId], // dated/type folder (was VIDEO_DRIVE_ID root)
             description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName} (retry)`
         };
         const media = { mimeType: 'video/mp4', body: fs.createReadStream(filePath) };
@@ -3785,6 +3816,122 @@ app.post('/push/subscribe', express.json(), (req, res) => {
         res.json({ ok: true });
     } catch(e) {
         res.json({ ok: false });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVER-SIDE RECOVERY — finish stuck uploads WITHOUT the phone
+// When a chunked upload received all its chunks but never completed (phone died at
+// the finish step), the bytes sit in CHUNK_DIR for 24h. These endpoints let the HR
+// Dashboard list those recoverable uploads and finish them server-side — assemble +
+// run the full pipeline + upload to Drive, no phone involvement.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Scan CHUNK_DIR for sessions and classify each as finishable / partial.
+function scanRecoverableSessions() {
+    const out = [];
+    let dirs = [];
+    try { dirs = fs.readdirSync(CHUNK_DIR); } catch(_) { return out; }
+    for (const dir of dirs) {
+        const dirPath  = path.join(CHUNK_DIR, dir);
+        const metaPath = path.join(dirPath, 'session.json');
+        if (!fs.existsSync(metaPath)) continue;
+        try {
+            const meta  = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            const have  = fs.readdirSync(dirPath).filter(f => f.startsWith('chunk_')).length;
+            const total = meta.totalChunks || 0;
+            const stat  = fs.statSync(dirPath);
+            out.push({
+                sessionId:      dir,
+                driverName:     meta.driverName || 'unknown',
+                vin:            meta.vin || 'unknown',
+                inspectionType: meta.inspectionType || 'unknown',
+                receivedChunks: have,
+                totalChunks:    total,
+                finishable:     total > 0 && have >= total,   // all bytes present → can finish server-side
+                pctReceived:    total > 0 ? Math.round((have / total) * 100) : 0,
+                ageMs:          Date.now() - stat.mtimeMs,
+                createdAt:      meta.createdAt || stat.mtimeMs,
+            });
+        } catch(_) {}
+    }
+    return out;
+}
+
+// HR Dashboard: list uploads the SERVER can finish (or that are partial).
+app.get('/upload/recoverable', (req, res) => {
+    try {
+        const all        = scanRecoverableSessions();
+        const finishable = all.filter(s => s.finishable);
+        const partial    = all.filter(s => !s.finishable);
+        res.json({ ok: true, finishable, partial, total: all.length });
+    } catch(e) {
+        res.json({ ok: false, error: e.message, finishable: [], partial: [] });
+    }
+});
+
+// HR Dashboard: finish one session server-side (no phone). Assembles its chunks
+// and runs the full pipeline → Drive. Returns the new jobId.
+app.post('/upload/finish-on-server', express.json(), async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        if (!sessionId) return res.json({ ok: false, error: 'Missing sessionId' });
+
+        const session = restoreChunkSession(sessionId);
+        if (!session) return res.json({ ok: false, error: 'Session not found or already finished' });
+
+        const missing = missingChunks(session);
+        if (missing.length > 0) {
+            return res.json({
+                ok: false,
+                error: `Cannot finish — ${missing.length} of ${session.totalChunks} chunks missing. This upload needs to be re-recorded.`,
+                received: session.receivedChunks.size, total: session.totalChunks
+            });
+        }
+
+        logger.info(`🛠 Finish-on-server requested: ${session.driverName} VIN:${session.vin} (${session.totalChunks} chunks)`);
+        const result = await assembleAndProcessSession(session, sessionId, 'server-finish');
+
+        // Clear any matching pending dashboard entry for this driver+VIN
+        try {
+            const pend = readPendingSubs();
+            const upd  = pend.map(p =>
+                (p.driverName === session.driverName && p.vin === session.vin && p.status !== 'complete')
+                    ? { ...p, status: 'retrying', lastRetryAt: new Date().toISOString() }
+                    : p
+            );
+            writePendingSubs(upd);
+        } catch(_) {}
+
+        res.json({ ok: true, jobId: result.jobId, fileSizeMB: result.fileSizeMB,
+                   message: 'Assembling and uploading on server — no phone needed.' });
+    } catch(e) {
+        logger.error(`Finish-on-server failed: ${e.message}`);
+        res.json({ ok: false, error: e.message });
+    }
+});
+
+// HR Dashboard: finish ALL finishable sessions at once.
+app.post('/upload/finish-all-on-server', express.json(), async (req, res) => {
+    try {
+        const finishable = scanRecoverableSessions().filter(s => s.finishable);
+        let started = 0; const jobs = []; const errors = [];
+        for (const s of finishable) {
+            const session = restoreChunkSession(s.sessionId);
+            if (!session) continue;
+            if (missingChunks(session).length > 0) continue;
+            try {
+                const result = await assembleAndProcessSession(session, s.sessionId, 'server-finish');
+                jobs.push({ sessionId: s.sessionId, jobId: result.jobId, driver: s.driverName });
+                started++;
+            } catch(e) {
+                errors.push({ sessionId: s.sessionId, error: e.message });
+            }
+        }
+        res.json({ ok: true, started, jobs, errors,
+                   message: `Started ${started} server-side upload(s).` });
+    } catch(e) {
+        res.json({ ok: false, error: e.message });
     }
 });
 
