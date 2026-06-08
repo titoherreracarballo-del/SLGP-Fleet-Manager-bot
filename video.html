@@ -953,9 +953,23 @@
     // ── Web Push subscription ─────────────────────────────────────────────────
     // Registers device for silent push notifications from HR Dashboard
     // Completely invisible to driver — no prompts, no notifications shown
-    async function registerPushSubscription() {
+    async function registerPushSubscription(explicitName) {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
         try {
+            // Resolve the best driver name we have. An explicit name (passed at
+            // upload time) wins and is persisted, so the subscription is filed
+            // under the REAL driver — not 'unknown' from the 3s-after-load call
+            // that fires before the driver types their name. This is what lets
+            // the dashboard's Retry find this phone by driver name later.
+            let driverName = explicitName
+                || window._driverName
+                || localStorage.getItem('lastDriverName')
+                || 'unknown';
+            if (explicitName) {
+                window._driverName = explicitName;
+                try { localStorage.setItem('lastDriverName', explicitName); } catch(_) {}
+            }
+
             // Get VAPID public key from server
             const keyRes = await fetch('/push/vapid-public-key');
             const { key } = await keyRes.json();
@@ -966,13 +980,14 @@
             // Check if already subscribed
             const existing = await reg.pushManager.getSubscription();
             if (existing) {
-                // Re-register with server in case it was lost
+                // Re-register with server — updates the driverName association even
+                // if the subscription itself is unchanged (fixes 'unknown' orphans).
                 await fetch('/push/subscribe', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         subscription: existing.toJSON(),
-                        driverName:   window._driverName || localStorage.getItem('lastDriverName') || 'unknown',
+                        driverName,
                     }),
                 });
                 return;
@@ -990,10 +1005,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     subscription: sub.toJSON(),
-                    driverName:   window._driverName || localStorage.getItem('lastDriverName') || 'unknown',
+                    driverName,
                 }),
             });
-            console.log('✅ Push subscription registered');
+            console.log('✅ Push subscription registered for', driverName);
         } catch(e) {
             console.log('Push subscription skipped:', e.message);
         }
@@ -2178,8 +2193,17 @@
         timerEl.style.color   = '#ffffff';
         timerEl.style.display = 'block';
         timerEl.innerText     = '00:00';
-        timerInterval = setInterval(() => {
-            seconds++;
+
+        // Anchor to a real start timestamp and compute elapsed time on each tick.
+        // FIX: setInterval's first callback doesn't fire until 1000ms in, which made
+        // the display sit frozen at 00:00 for a full second before counting — the
+        // "delay when recording starts." Driving the display off Date.now() removes
+        // that dead second AND prevents drift (setInterval ticks slip when the phone
+        // is busy encoding; elapsed-time never does). Tick every 250ms so the first
+        // second appears promptly and the seconds roll over crisply.
+        const startedAt = Date.now();
+        const render = () => {
+            seconds = Math.floor((Date.now() - startedAt) / 1000);
             const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
             const secs = (seconds % 60).toString().padStart(2, '0');
             timerEl.innerText = `${mins}:${secs}`;
@@ -2189,7 +2213,9 @@
                 stopRecording();
                 document.getElementById('status').innerText = '⚠️ Max 3-minute limit reached. Review and submit.';
             }
-        }, 1000);
+        };
+        render(); // paint 00:00 immediately, no dead first second
+        timerInterval = setInterval(render, 250);
     }
 
     function stopTimer() {
@@ -2403,21 +2429,38 @@
     // Server restart mid-upload? Driver resumes from last successful chunk.
     const CHUNK_SIZE = 512 * 1024;
 
+    let _slgpLastPct=0; function setProgress(pct,msg,force){var f=document.getElementById("progress-fill"),o=document.getElementById("progress-percentage"),s=document.getElementById("status");var p=force?pct:Math.max(_slgpLastPct,Math.max(0,Math.min(100,pct)));_slgpLastPct=force?pct:p;if(f)f.style.width=p+"%";if(o)o.innerText=p+"%";if(s&&msg)s.innerText=msg;} function resetProgress(){_slgpLastPct=0;} /*__SLGP_TOPLEVEL_PROGRESS__*/
     async function uploadChunked(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor) {
         const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
         const ext         = blob.type.includes('webm') ? 'webm' : 'mp4';
         setProgress(0, `Starting upload (${(blob.size/1024/1024).toFixed(1)}MB, ${totalChunks} parts)...`);
 
         // Init session
-        const initRes  = await fetch('/upload/init', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ driverName: driver, vin, vehicleType: vehicle,
-                inspectionType: inspType, totalSize: blob.size, totalChunks,
-                mimeType: blob.type || 'video/mp4',
-                supervisorFiled: isSupervisor, supervisorName: supervisor }),
-        });
-        const initData = await initRes.json();
-        if (!initData.success) throw new Error('Upload init failed: ' + initData.error);
+        let initRes;
+        try {
+            initRes = await fetch('/upload/init', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ driverName: driver, vin, vehicleType: vehicle,
+                    inspectionType: inspType, totalSize: blob.size, totalChunks,
+                    mimeType: blob.type || 'video/mp4',
+                    supervisorFiled: isSupervisor, supervisorName: supervisor }),
+            });
+        } catch(e) {
+            e.__slgpStep = 'INIT fetch threw (request never completed)';
+            throw e;
+        }
+        let initData;
+        try {
+            initData = await initRes.json();
+        } catch(e) {
+            e.__slgpStep = 'INIT response not JSON (status ' + initRes.status + ')';
+            throw e;
+        }
+        if (!initData.success) {
+            const e = new Error('Upload init failed: ' + initData.error);
+            e.__slgpStep = 'INIT returned success=false (status ' + initRes.status + ')';
+            throw e;
+        }
         const { sessionId } = initData;
 
         // Upload chunks — resilient to poor warehouse signal
@@ -2600,6 +2643,11 @@
         try {
             await savePendingUpload(_bgPendingId, videoBlob, { driverName: driver, vin, vehicleType: document.getElementById('vehicleType')?.value || '', inspectionType });
             await reportPendingToServer(_bgPendingId, { driverName: driver, vin, inspectionType, fileSizeMB: (videoBlob.size/1024/1024).toFixed(2) });
+            // Re-register the push subscription under the REAL driver name now that
+            // we know it. The on-load registration saved it as 'unknown' (fired
+            // before the name was typed); this re-files it so the dashboard's
+            // Retry can actually find this phone by driver name. Fire-and-forget.
+            registerPushSubscription(driver);
         } catch(_) {}
 
         // Show platform-appropriate message
@@ -2665,6 +2713,21 @@
                     break; // Success — exit retry loop
                 } catch(chunkErr) {
                     console.warn('⚠️ Chunked upload failed, falling back to direct upload:', chunkErr.message);
+                    // ── TEMP DIAGNOSTIC — remove after debugging ──────────────────────
+                    // Shows the EXACT chunked failure on-screen so we can see why
+                    // /upload/init never reaches the server from phones.
+                    try {
+                        alert(
+                            '🔍 CHUNKED UPLOAD FAILED (diagnostic)\n\n' +
+                            'Step: ' + (chunkErr.__slgpStep || 'unknown') + '\n' +
+                            'Name: ' + (chunkErr.name || 'n/a') + '\n' +
+                            'Message: ' + (chunkErr.message || 'n/a') + '\n\n' +
+                            'Online: ' + navigator.onLine + '\n' +
+                            'Origin: ' + location.origin + '\n' +
+                            'Falling back to direct upload now.'
+                        );
+                    } catch(_) {}
+                    // ── END TEMP DIAGNOSTIC ───────────────────────────────────────────
                     // Fall through to XHR below
                 }
 
