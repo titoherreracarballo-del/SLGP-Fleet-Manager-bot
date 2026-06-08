@@ -504,6 +504,7 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const engine     = require('./engine');
+const videoPipeline = require('./video_pipeline');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const stream = require('stream');
 const cron = require('node-cron');
@@ -2793,6 +2794,7 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
                 fileSizeMB,
                 status:         'queued',
                 uploadedAt:     new Date().toISOString(),
+                submittedAt:    new Date().toISOString(),  // match direct-upload field so recovery/reaper read it
                 source:         'chunked',
             };
             fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2));
@@ -2803,93 +2805,24 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
             // The job function mimics what the direct upload handler does
             logger.info(`✅ Chunk assembly complete for job ${jobId} — queuing for processing`);
 
-            // Build a mock req so the existing job function closure works unchanged
-            const _mockReq = {
-                file:     { path: finalPath },
-                body:     {
-                    driverName:      session.driverName,
-                    vin:             session.vin,
-                    vehicleType:     session.vehicleType || '',
-                    inspectionType:  session.inspectionType,
-                    supervisorFiled: 'false',
-                    supervisorName:  '',
-                },
-                hostname: 'slgpmeshserver.com',
-                ip:       '127.0.0.1',
-                get:      () => null,
-            };
-
             const enqueued = enqueueJob(jobId, async (overrideVideoPath) => {
-                // Shadow req with mock so existing job fn works without modification
-                const req = _mockReq;
-                let videoPath        = overrideVideoPath || req.file.path;
-                let enhancedVideoPath = null;
-                let wasEnhanced       = false;
-                const driverName     = req.body.driverName;
-                const vin            = req.body.vin;
-                const inspectionType = req.body.inspectionType;
-                const fileSizeMB     = (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2);
-                const supervisorFiled = false;
-                const supervisorName  = null;
-
-                // Re-use the full processing pipeline inline
-                // by duplicating the key steps: engine → enhance → Drive → email
-                try {
-                    logger.info(`📹 Background processing started (chunked) for job ${jobId}`);
-                    updateJob(jobId, { status: 'processing', stage: 'Starting', progress: 5, message: 'Processing video...' });
-
-                    let enginePlan;
-                    try {
-                        enginePlan = await engine.analyze(videoPath, fileSizeMB, jobId);
-                    } catch(_) {
-                        enginePlan = { analysis: {}, decision: { profile: 'RAW_UPLOAD' }, videoPath, fileSizeMB, jobId };
-                    }
-                    enginePlan.videoPath  = videoPath;
-                    enginePlan.fileSizeMB = fileSizeMB;
-                    enginePlan.jobId      = jobId;
-
-                    const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
-                    const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
-                    enginePlan.outputPath = path.join(outputDir, enhancedFileName + '.mp4');
-                    try { fs.mkdirSync(outputDir, { recursive: true }); } catch(_) {}
-
-                    const engineResult = await engine.execute(enginePlan, jobId, updateJob);
-                    let finalVideoPath = engineResult.wasEnhanced ? engineResult.finalPath : videoPath;
-                    wasEnhanced = !!engineResult.wasEnhanced;
-                    enhancedVideoPath = wasEnhanced ? engineResult.finalPath : null;
-
-                    // Keyframe + damage + chapters (non-blocking)
-                    try {
-                        const keyframes  = await extractKeyframes(finalVideoPath, jobId);
-                        const dmgReport  = keyframes.length ? await classifyDamage(keyframes, driverName, vin, inspectionType) : null;
-                        if (keyframes.length) await addVideoChapters(finalVideoPath, keyframes, jobId);
-                    } catch(_) {}
-
-                    // Drive upload
-                    updateJob(jobId, { status: 'uploading', stage: 'Uploading', progress: 70, message: 'Uploading to Google Drive...' });
-                    const finalStats  = fs.statSync(finalVideoPath);
-                    const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
-                    const fileName    = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
-
-                    const driveRes = await Promise.race([
-                        driveClient.files.create({
-                            requestBody: { name: fileName, parents: [VIDEO_DRIVE_ID], mimeType: 'video/mp4' },
-                            media:       { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) },
-                            fields:      'id,webViewLink',
-                        }),
-                        new Promise((_,rej) => setTimeout(() => rej(new Error('Drive timeout')), 8*60*1000))
-                    ]);
-
-                    const viewLink = driveRes.data.webViewLink;
-                    updateJob(jobId, { status: 'complete', stage: 'Complete', progress: 100,
-                        message: 'Upload complete', enhanced: wasEnhanced, viewLink });
-
-                    logger.info(`✅ Chunked job complete: ${driverName} VIN:${vin} → Drive`);
-                } catch(err) {
-                    logger.error(`❌ Chunked job failed: ${err.message}`, { jobId });
-                    updateJob(jobId, { status: 'failed', stage: 'Failed', progress: 0, error: err.message });
-                    throw err;
-                }
+                // Chunked uploads now run the SAME shared pipeline as direct uploads
+                // (engine → enhance → keyframes → damage → Drive folders → email →
+                // pending-clear → quality metrics → streamlit sync). Previously this
+                // path had a stripped-down copy that skipped quality metrics, damage
+                // emails, folder organization, and pending-clear.
+                const videoPath = overrideVideoPath || finalPath;
+                await videoPipeline.process({
+                    jobId,
+                    videoPath,
+                    driverName:     session.driverName,
+                    vin:            session.vin,
+                    inspectionType: session.inspectionType,
+                    fileSizeMB:     (fs.statSync(finalPath).size / 1024 / 1024).toFixed(2),
+                    hostname:       'slgpmeshserver.com',
+                    startTime:      Date.now(),
+                    source:         'chunked',
+                });
             });
             if (!enqueued) logger.warn(`Chunk job ${jobId} rejected — queue full`);
         } catch(e) {
@@ -3085,1035 +3018,23 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
 
     // Enqueue — if queue is full, enqueueJob() will mark the job failed and return false
     const queued = enqueueJob(jobId, async (overrideVideoPath) => {
-    let videoPath = overrideVideoPath || req.file.path;
-    let enhancedVideoPath = null;
-    let wasEnhanced = false;
-    try {
-        console.log(`📹 Background processing started for job ${jobId}`);
-        // Update manifest from 'queued' → 'processing' so reaper and recovery
-        // can distinguish actively-running jobs from waiting ones.
-        try {
-            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-            if (fs.existsSync(mPath)) {
-                const mData = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                mData.status = 'processing';
-                mData.processingStartedAt = new Date().toISOString();
-                fs.writeFileSync(mPath, JSON.stringify(mData, null, 2));
-            }
-        } catch (_) {}
-        // FFMPEG ENHANCEMENT (server-side)
-        // Records at 2.5Mbps for fast upload, enhances to 20Mbps H.264 here
-        // ========================================
-        let finalVideoPath = videoPath;
-        wasEnhanced = false;
-
-        // ── Engine: analyze video and select processing profile ────────────
-        // Wrap engine analysis in try/catch — if analysis fails, fall back to raw upload
-        let enginePlan;
-        try {
-            enginePlan = await engine.analyze(videoPath, fileSizeMB, jobId);
-        } catch (analyzeErr) {
-            console.warn('⚠️  Engine analysis failed, defaulting to RAW_UPLOAD:', analyzeErr.message);
-            enginePlan = {
-                analysis:  { brightness: 128, isDark: false, isPortrait: false, needsInterp: false, motionScore: 50, qualityScore: 50, fileBytes: 0 },
-                decision:  { profile: 'RAW_UPLOAD', reason: 'analysis error — safe fallback', score: 0 },
-                outputPath: null,
-            };
-        }
-        enginePlan.videoPath  = videoPath;
-        enginePlan.fileSizeMB = fileSizeMB;
-        enginePlan.jobId      = jobId;
-
-        // Build output path for enhanced file
-        const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
-        const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
-        enginePlan.outputPath = path.join(outputDir, enhancedFileName + '.mp4');
-        try { fs.mkdirSync(outputDir, { recursive: true }); } catch(_) {}
-
-        const engineResult = await engine.execute(enginePlan, jobId, updateJob);
-
-        // ── Lens obstruction alert ─────────────────────────────
-        if (enginePlan.decision.obstructed) {
-            console.warn(`🚫 Job ${jobId}: lens obstruction detected for ${driverName} VIN ${vin}`);
-            // Fire Discord alert immediately
-            try {
-                if (discordClient) {
-                    const ch = discordClient.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
-                    if (ch) ch.send(`🚫 **Lens Obstruction** — Driver **${driverName}** VIN \`${vin}\` submitted a blocked video. Ask them to clean the lens and resubmit.`);
-                }
-            } catch(_) {}
-        }
-
-        // ── Driver quality history ──────────────────────────────
-        // Track consecutive poor submissions — alerts at 3 in a row
-        try {
-            const isGoodQuality = enginePlan.analysis.qualityScore >= 30 && !enginePlan.decision.obstructed;
-            const driverAlert   = engine.recordDriverQuality(driverName, vin, isGoodQuality, enginePlan.decision.obstructed);
-            if (driverAlert) {
-                console.warn(`⚠️  Driver quality alert: ${driverAlert.message}`);
-                try {
-                    if (discordClient) {
-                        const ch = discordClient.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
-                        if (ch) ch.send(driverAlert.message);
-                    }
-                } catch(_) {}
-            }
-        } catch(_) {}
-
-        if (engineResult.wasEnhanced) {
-            finalVideoPath    = engineResult.finalPath;
-            enhancedVideoPath = engineResult.finalPath;
-            wasEnhanced       = true;
-            updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 68, message: 'Enhancement complete — uploading to Google Drive...' });
-        } else {
-            finalVideoPath = engineResult.finalPath || videoPath;
-            updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 30, message: 'Uploading to Google Drive...' });
-        }
-
-        if (false) { // legacy block replaced by engine — kept for diff readability
-        if (false) {
-            try {
-                console.log('🎨 Starting video enhancement...');
-                const enhanceStart = Date.now();
-
-                // Rename temp file to .mp4 so FFmpeg detects format.
-                // Wrapped in try/catch: Railway can throw EXDEV (cross-device link)
-                // on some volume configurations. If rename fails we fall through
-                // with the original path — FFmpeg handles format detection via probe.
-                const inputPath = videoPath + '.mp4';
-                try {
-                    fs.renameSync(videoPath, inputPath);
-                    videoPath = inputPath; // update ref for cleanup only if rename succeeded
-                } catch (renameErr) {
-                    console.warn('⚠️  Could not rename temp file to .mp4 (falling back to original):', renameErr.message);
-                    // videoPath stays as-is — FFmpeg will probe the actual format
-                }
-
-                // Write enhanced output to ENHANCED_DIR.
-                // mkdirSync here (not just at startup) guarantees the dir exists
-                // even if the volume mount was slow or ensureDirectories() raced.
-                try {
-                    fs.mkdirSync(ENHANCED_DIR, { recursive: true });
-                    console.log(`📁 ENHANCED_DIR ready: ${ENHANCED_DIR} (exists: ${fs.existsSync(ENHANCED_DIR)})`);
-                } catch (mkdirErr) {
-                    console.error('❌ Could not create ENHANCED_DIR:', mkdirErr.message);
-                    // Fall back to UPLOAD_DIR if enhanced dir fails
-                    console.warn('⚠️  Falling back to UPLOAD_DIR for enhanced output');
-                }
-                const enhancedFileName = `enhanced_${Date.now()}_${path.basename(videoPath)}`;
-                // Use UPLOAD_DIR as fallback if ENHANCED_DIR doesn't exist
-                const outputDir = fs.existsSync(ENHANCED_DIR) ? ENHANCED_DIR : UPLOAD_DIR;
-                enhancedVideoPath = path.join(outputDir, enhancedFileName);
-                console.log(`📁 Enhanced output: ${enhancedVideoPath}`);
-
-                // ── Enhancement via spawn + pipe → Node writeStream ──────────────────
-                // Railway restricts FFmpeg subprocesses from writing directly to volume paths.
-                // Node.js CAN write to the volume (proven by multer uploads).
-                // Fix: pipe FFmpeg stdout → Node.js writeStream → volume file.
-                const FFMPEG_TIMEOUT_MS = 4 * 60 * 1000;
-                const { spawn: spawnFfmpeg } = require('child_process');
-
-                // Hoist srcPortrait/srcBrightness above cropdetect so cropFilter can use srcPortrait.
-                // They were previously declared AFTER this block, causing srcPortrait=undefined there.
-                let srcBrightness = 128;
-                let srcPortrait   = false;  // true when source is taller than wide (9:16 phone video)
-
-                // ── Pre-pass: Auto-detect and crop baked black borders ────────────
-                // The JS canvas stabilizer sometimes bakes black borders into recordings.
-                // cropdetect finds them automatically so the enhancer can crop+rescale.
-                let cropFilter = null;
-                try {
-                    const { execFileSync: efCrop } = require('child_process');
-                    efCrop(ffmpegPath, [
-                        '-y', '-i', videoPath,
-                        '-vf', 'cropdetect=limit=16:round=16:skip=2',
-                        '-frames:v', '60', '-f', 'null', '-'
-                    ], { timeout: 30000, stdio: ['pipe','pipe','pipe'] });
-                } catch (cdErr) {
-                    const stderr = cdErr && cdErr.stderr ? cdErr.stderr.toString() : '';
-                    const cropMatches = [...stderr.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
-                    if (cropMatches.length > 0) {
-                        const last = cropMatches[cropMatches.length - 1];
-                        const cw = parseInt(last[1]), ch = parseInt(last[2]);
-                        const cx = parseInt(last[3]), cy = parseInt(last[4]);
-                        const blackPixels = (1920 - cw) + (1080 - ch);
-                        if (blackPixels > 50 && cw > 800 && ch > 400) {
-                            cropFilter = `crop=${cw}:${ch}:${cx}:${cy}`;
-                            console.log('🔲 Black border detected (' + blackPixels + 'px) — auto-cropping: ' + cw + 'x' + ch);
-                        }
-                    }
-                }
-
-                // vidstab removed — causes gelatin on walking footage.
-                // -vsync cfr in FFmpeg args fixes VFR jitter without any two-pass overhead.
-                // ── Pass 2: Enhancement + stabilization ──────────────────
-                const runFFmpeg = (filters) => new Promise((resolve, reject) => {
-                    let settled = false; // guard: close fires after error — only settle once
-                    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-
-                    const args = [
-                        '-y', '-i', videoPath,
-                        '-vf', filters.join(','),
-                        '-r', '30', '-vsync', 'cfr',  // enforce CFR — fixes VFR jitter from Android phones
-                        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
-                        '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
-                        '-c:a', 'aac', '-b:a', '128k',
-                        '-movflags', '+faststart',  // standard MP4, not fragmented
-                        enhancedVideoPath           // write directly to file — no pipe fragility
-                    ];
-
-                    const proc      = spawnFfmpeg(ffmpegPath, args);
-                    let   stderrBuf = '';
-                    const pid       = proc.pid;
-                    if (pid) registerPid(pid);
-                    console.log(`🎬 FFmpeg started (PID: ${pid || 'unknown'})`);
-
-                    // stdout is unused — FFmpeg writes directly to file
-                    proc.stdout.resume();
-
-                    const killTimer = setTimeout(() => {
-                        console.error('❌ FFmpeg 4-min timeout - killing');
-                        if (pid) unregisterPid(pid);
-                        try { proc.kill('SIGKILL'); } catch(e) {}
-                        try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                        settle(reject, new Error('FFmpeg timeout - exceeded 4 minutes'));
-                    }, FFMPEG_TIMEOUT_MS);
-
-                    // stdout unused — FFmpeg writes directly to file
-                    proc.stdout.resume();
-
-                    proc.stderr.on('data', d => {
-                        stderrBuf += d.toString();
-                        const m = stderrBuf.match(/frame=\s*(\d+)/g);
-                        if (m) {
-                            const f = parseInt(m[m.length-1].replace('frame=','').trim());
-                            updateJob(jobId, {
-                                status: 'enhancing', stage: 'Enhancing video',
-                                progress: Math.min(90, 10 + Math.round(f/9)), message: `Encoding frame ${f}...`
-                            });
-                        }
-                    });
-
-                    proc.on('close', code => {
-                        clearTimeout(killTimer);
-                        if (pid) unregisterPid(pid);
-                        if (settled) return;
-                        if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) {
-                            try {
-                                const enhancedStats = fs.statSync(enhancedVideoPath);
-                                const enhancedMB    = (enhancedStats.size / 1024 / 1024).toFixed(2);
-                                const enhanceTime   = ((Date.now() - enhanceStart) / 1000).toFixed(1);
-                                console.log(`✅ Enhancement done in ${enhanceTime}s: ${fileSizeMB}MB → ${enhancedMB}MB`);
-                                settle(resolve);
-                            } catch (statErr) {
-                                settle(reject, new Error(`Enhanced file not found after FFmpeg exit: ${statErr.message}`));
-                            }
-                        } else {
-                            try { if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath); } catch(e) {}
-                            const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error')).slice(-2).join(' ');
-                            settle(reject, new Error(`FFmpeg exit ${code}: ${errLine.substring(0, 120)}`));
-                        }
-                    });
-                    proc.on('error', err => {
-                        clearTimeout(killTimer);
-                        if (pid) unregisterPid(pid);
-                        settle(reject, err);
-                    });
-                });
-
-                // Full: hqdn3d temporal+spatial denoising (requires ffmpeg-full) + color + sharpen
-                // scale=1920:1080 forces true 1080p even if device recorded 720p
-                try {
-                    const { execFileSync: efProbe } = require('child_process');
-                    // ── Portrait detection: read actual stream dimensions via ffprobe ──
-                    // The old pixel-sniff (scale=160:90 + pillarbox check) was unreliable:
-                    // native portrait videos (1080x1920) have no pillarboxes to detect.
-                    const dimProbe = efProbe(ffprobePath, [
-                        '-v', 'quiet', '-select_streams', 'v:0',
-                        '-show_entries', 'stream=width,height',
-                        '-of', 'csv=p=0', videoPath
-                    ], { timeout: 10000 }).toString().trim();
-                    const [srcW, srcH] = dimProbe.split(',').map(Number);
-                    srcPortrait = srcH > srcW;
-
-                    // ── Brightness: sample a small frame for adaptive pipeline ──
-                    const probeRaw = efProbe(ffmpegPath, [
-                        '-y', '-i', videoPath, '-vframes', '1',
-                        '-vf', 'scale=160:90', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'
-                    ], { timeout: 15000, maxBuffer: 160*90*3 + 1024,
-                         stdio: ['pipe', 'pipe', 'ignore'] });
-                    if (probeRaw.length >= 160*90*3) {
-                        let total = 0, px = 160*90;
-                        for (let i = 0; i < px*3; i+=3)
-                            total += probeRaw[i]*0.299 + probeRaw[i+1]*0.587 + probeRaw[i+2]*0.114;
-                        srcBrightness = total / px;
-                    }
-                    console.log('📊 Scene: brightness=' + srcBrightness.toFixed(0) +
-                        ' portrait=' + srcPortrait + ' dims=' + srcW + 'x' + srcH);
-                } catch(e) { console.warn('Scene probe failed, using defaults:', e.message); }
-
-                const isDark = srcBrightness < 80;
-
-                // ── Scale filter: aspect-ratio safe pad to target resolution ─────
-                // force_original_aspect_ratio=decrease scales to fit within the target box,
-                // pad fills any remaining space with black — no stretch, no crop of content.
-                const scaleFilter = srcPortrait
-                    ? 'scale=1080:1920:flags=lanczos:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
-                    : 'scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black';
-                // vidstab transform file written by pass 1 (if available)
-                // stabilization removed — CFR handles timing
-
-                // ── Auto-detect input FPS and interpolate if below 25fps ──────────────
-                // Samsung XCover7 (and most Android phones via Chrome MediaRecorder)
-                // frequently drops frames under encoding load, recording at 14-16fps
-                // even when 30fps is requested. The framerate filter reconstructs
-                // smooth 30fps by blending adjacent frames — 62% smoother than raw.
-                let inputFps = 30;
-                try {
-                    const { execFileSync } = require('child_process');
-                    const probe = execFileSync(ffprobePath, [
-                        '-v', 'quiet', '-select_streams', 'v:0',
-                        '-show_entries', 'stream=avg_frame_rate',
-                        '-of', 'default=noprint_wrappers=1',
-                        videoPath
-                    ], { timeout: 10000 }).toString().trim();
-                    // avg_frame_rate is VFR-safe; r_frame_rate returns garbage on iPhone VFR
-                    const match = probe.match(/avg_frame_rate=(\d+)\/(\d+)/);
-                    if (match) {
-                        const num = parseInt(match[1]), den = parseInt(match[2]);
-                        inputFps = den > 0 ? Math.round(num / den) : 30;
-                    }
-                } catch(e) { console.warn('fps probe failed, assuming 30fps'); }
-
-                const needsInterpolation = inputFps < 25; // interpolate anything under 25fps for smooth 30fps output
-                // Always apply fps filter to normalize timing jitter even at 30fps
-                const fpsFilter = 'fps=30,settb=1/90000';
-                console.log('Input: ' + inputFps + 'fps → ' + (needsInterpolation ? 'needs interpolation' : 'no interpolation needed'));
-
-                // ── Server stabilization ─────────────────────────────────────────
-                // Light stabilization (shakiness=5, smoothing=5) removes hand shake
-                // without causing the gelatin/wobbly effect from over-stabilization.
-
-
-                console.log('🎨 Scene mode: ' + (isDark ? 'DARK/INDOOR' : 'OUTDOOR') + ' (brightness=' + srcBrightness.toFixed(0) + ')');
-                console.log('🤖 AI tools: ESRGAN=' + (esrganPath ? 'YES' : 'NO') + ' RIFE=' + (rifePath ? 'YES' : 'NO'));
-
-                // ── AI pipeline helper ──────────────────────────────────────────────
-                // Runs Real-ESRGAN on extracted frames then reassembles with FFmpeg.
-                // Pipeline: FFmpeg decode → PNG frames → ESRGAN → FFmpeg encode+grade
-                const runAIPipeline = async () => {
-                    const { execFileSync: efAI, spawn: spawnAI } = require('child_process');
-                    const os   = require('os');
-                    const framesDir  = path.join(os.tmpdir(), 'esrgan_in_'  + Date.now());
-                    const outDir     = path.join(os.tmpdir(), 'esrgan_out_' + Date.now());
-                    const rifeDir    = path.join(os.tmpdir(), 'rife_out_'   + Date.now());
-                    fs.mkdirSync(framesDir, { recursive: true });
-                    fs.mkdirSync(outDir,    { recursive: true });
-
-                    try {
-                        // ── Step A: RIFE frame interpolation (if needed + available) ──
-                        // RIFE generates intermediate frames using optical flow — far smoother
-                        // than FFmpeg's linear framerate filter. Only runs for low-fps clips.
-                        let interpSource = videoPath;
-                        if (needsInterpolation && rifePath) {
-                            console.log('🎞️  RIFE: interpolating ' + inputFps + 'fps → 30fps...');
-                            fs.mkdirSync(rifeDir, { recursive: true });
-
-                            // Extract input frames for RIFE
-                            const rifeInDir = path.join(os.tmpdir(), 'rife_in_' + Date.now());
-                            fs.mkdirSync(rifeInDir, { recursive: true });
-                            efAI(ffmpegPath, [
-                                '-y', '-i', videoPath,
-                                '-vf', scaleFilter,  // scale first so RIFE works on correct resolution
-                                path.join(rifeInDir, '%08d.png')
-                            ], { timeout: 120000, maxBuffer: 1024 * 1024 * 512 });
-
-                            // Run RIFE — -g -1 forces CPU mode (no Vulkan needed)
-                            const rifeModel = 'rife-v4.6';
-                            efAI(rifePath, [
-                                '-i', rifeInDir,
-                                '-o', rifeDir,
-                                '-m', rifeModel,
-                                '-g', '-1',   // use all available GPUs (or CPU fallback)
-                                '-s', '0.5',  // timestep 0.5 = 1 inserted frame per pair = 2x frame count
-                            ], { timeout: 300000, maxBuffer: 1024 * 1024 * 1024 });
-
-                            // Reassemble RIFE frames to temp video for ESRGAN input
-                            const rifeTmp = path.join(os.tmpdir(), 'rife_tmp_' + Date.now() + '.mp4');
-                            efAI(ffmpegPath, [
-                                '-y', '-r', '30', '-i', path.join(rifeDir, '%08d.png'),
-                                '-i', videoPath,   // audio source
-                                '-map', '0:v', '-map', '1:a',
-                                '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
-                                '-c:a', 'aac', '-b:a', '128k', rifeTmp
-                            ], { timeout: 120000, maxBuffer: 1024 * 1024 * 512 });
-
-                            interpSource = rifeTmp;
-                            console.log('✅ RIFE interpolation complete');
-
-                            // Cleanup rife frame dirs
-                            try { fs.rmSync(rifeInDir, { recursive: true, force: true }); } catch(_) {}
-                            try { fs.rmSync(rifeDir,   { recursive: true, force: true }); } catch(_) {}
-                        }
-
-                        // ── Step B: Extract frames for ESRGAN ────────────────────────
-                        // Apply scale + crop + basic stabilization before ESRGAN
-                        // ESRGAN works on PNG frames, so we extract here
-
-                        // Safety cap: 1080x1920 PNG ≈ 6MB each. 150 frames = ~900MB.
-                        // Beyond that we risk filling Railway's ephemeral /tmp and crashing.
-                        // At 20fps that's ~7.5s of video — longer clips fall back to FFmpeg.
-                        const MAX_ESRGAN_FRAMES = 150;
-                        let durationSec = 0;
-                        try {
-                            const durProbe = efAI(ffprobePath, [
-                                '-v', 'error', '-select_streams', 'v:0',
-                                '-show_entries', 'format=duration',
-                                '-of', 'default=noprint_wrappers=1',
-                                interpSource
-                            ], { timeout: 10000 }).toString().trim();
-                            const dm = durProbe.match(/duration=([\d.]+)/);
-                            if (dm) durationSec = parseFloat(dm[1]);
-                        } catch(_) {}
-                        const estimatedFrames = Math.ceil(durationSec * inputFps);
-                        if (estimatedFrames > MAX_ESRGAN_FRAMES) {
-                            console.warn(`⚠️  Video too long for ESRGAN (est. ${estimatedFrames} frames > ${MAX_ESRGAN_FRAMES} cap) — skipping AI pipeline`);
-                            throw new Error(`ESRGAN frame cap exceeded (${estimatedFrames} frames)`);
-                        }
-
-                        console.log('🖼️  Extracting frames for Real-ESRGAN...');
-                        const preFilters = [
-                            ...(interpSource === videoPath ? [scaleFilter] : []), // already scaled by RIFE
-                            ...(cropFilter   ? [cropFilter]   : []),
-                            fpsFilter,
-                            // Pre-denoise dark footage lightly before ESRGAN
-                            // ESRGAN handles noise, but very heavy grain confuses the model
-                            isDark ? 'nlmeans=s=4:p=3:r=5' : 'hqdn3d=1:0.7:1.5:1',
-                        ].filter(Boolean);
-
-                        efAI(ffmpegPath, [
-                            '-y', '-i', interpSource,
-                            '-vf', preFilters.join(','),
-                            path.join(framesDir, '%08d.png')
-                        ], { timeout: 180000, maxBuffer: 1024 * 1024 * 1024 });
-
-                        const frameCount = fs.readdirSync(framesDir).filter(f => f.endsWith('.png')).length;
-                        console.log('🖼️  Extracted ' + frameCount + ' frames — running Real-ESRGAN...');
-
-                        // ── Step C: Real-ESRGAN AI upscale/denoise ────────────────────
-                        // realesr-animevideov3 x2: upscales 1080p → 2160p then we downscale
-                        // This produces far cleaner 1080p than direct 1:1 processing
-                        // -g -1 = CPU mode, -t 0 = auto tile size for memory management
-                        const esrganModel = 'realesr-animevideov3';
-                        await new Promise((res, rej) => {
-                            const eProc = spawnAI(esrganPath, [
-                                '-i', framesDir,
-                                '-o', outDir,
-                                '-n', esrganModel,
-                                '-s', '2',        // 2x scale (→ 2160p)
-                                '-f', 'png',
-                                '-g', '-1',       // CPU mode
-                                '-t', '0',        // auto tile
-                            ]);
-                            let eLog = '';
-                            eProc.stderr.on('data', d => {
-                                eLog += d.toString();
-                                // Log progress every ~10 frames
-                                const m = eLog.match(/(\d+)\/(\d+)/);
-                                if (m && parseInt(m[1]) % 10 === 0)
-                                    updateJob(jobId, { status: 'enhancing', stage: 'AI Enhancement', progress: Math.round(parseInt(m[1])/parseInt(m[2])*60)+5, message: 'Real-ESRGAN: frame ' + m[1] + '/' + m[2] });
-                            });
-                            const killT = setTimeout(() => { eProc.kill(); rej(new Error('ESRGAN timeout')); }, 10 * 60 * 1000);
-                            eProc.on('close', code => {
-                                clearTimeout(killT);
-                                if (code === 0) {
-                                    res();
-                                } else {
-                                    if (code === 255) {
-                                        // Vulkan init failure — disable for entire session so future jobs skip immediately
-                                        console.warn('⚠️  Real-ESRGAN exit 255 (Vulkan unavailable) — disabling AI upscaling for this session');
-                                        esrganPath = null;
-                                    }
-                                    rej(new Error('ESRGAN exit ' + code));
-                                }
-                            });
-                            eProc.on('error', rej);
-                        });
-                        console.log('✅ Real-ESRGAN complete');
-                        updateJob(jobId, { status: 'enhancing', stage: 'Encoding', progress: 70, message: 'AI enhancement done — encoding...' });
-
-                        // ── Step D: Reassemble + color grade + final encode ───────────
-                        // ESRGAN output is 2x scale — downscale back to target res with lanczos
-                        // Apply color grade and sharpening after ESRGAN (better results than before)
-                        const targetRes = srcPortrait ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
-                        const colorFilters = isDark ? [
-                            targetRes,
-                            'eq=brightness=0.10:contrast=1.25:saturation=1.15:gamma=0.80',
-                            "curves=all='0/0 0.08/0.32 0.4/0.65 1/1'",
-                            'unsharp=3:3:1.0:3:3:0.0',   // lighter sharpen — ESRGAN already sharpened
-                        ] : [
-                            targetRes,
-                            "curves=r='0/0 0.5/0.54 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/0.93'",
-                            'exposure=exposure=0.15:black=0.01',
-                            'vibrance=intensity=0.25',
-                            'colorbalance=rs=0.02:gs=0.02:bs=-0.04',
-                            'unsharp=3:3:0.8:3:3:0.0',
-                        ];
-
-                        await new Promise((res, rej) => {
-                            const args = [
-                                '-y',
-                                '-r', '30', '-i', path.join(outDir, '%08d.png'),
-                                '-i', videoPath,   // original audio
-                                '-map', '0:v', '-map', '1:a',
-                                '-vf', colorFilters.join(','),
-                                '-r', '30',
-                                '-c:v', 'libx264', '-preset', 'medium', '-crf', '17',
-                                '-profile:v', 'high', '-level', '4.2', '-pix_fmt', 'yuv420p',
-                                '-c:a', 'aac', '-b:a', '128k',
-                                '-movflags', '+faststart',
-                                '-vsync', 'cfr',
-                                enhancedVideoPath
-                            ];
-                            const proc = spawnAI(ffmpegPath, args);
-                            proc.stdout.resume();
-                            proc.stderr.on('data', () => {});
-                            const killT = setTimeout(() => { proc.kill(); rej(new Error('Encode timeout')); }, 8 * 60 * 1000);
-                            proc.on('close', code => {
-                                clearTimeout(killT);
-                                if (code === 0 && fs.existsSync(enhancedVideoPath) && fs.statSync(enhancedVideoPath).size > 10000) res();
-                                else rej(new Error('Final encode exit ' + code));
-                            });
-                            proc.on('error', rej);
-                        });
-
-                    } finally {
-                        // Always clean up temp frame directories
-                        try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch(_) {}
-                        try { fs.rmSync(outDir,    { recursive: true, force: true }); } catch(_) {}
-                    }
-                };
-
-                // ── FFmpeg-only filter chains (fallback) ──────────────────────────
-                // Simplified per ChatGPT audit: fewer passes = less artificial look,
-                // less processing time, less chance of introducing motion artifacts.
-                const interpFilter = needsInterpolation
-                    ? 'framerate=fps=30:interp_start=0:interp_end=255:scene=100'
-                    : null;
-
-                // Clean filter chain — -vsync cfr handles VFR at encoder level
-                const fullFilters = [
-                    scaleFilter,
-                    ...(cropFilter ? [cropFilter] : []),
-                    'fps=30',
-                    isDark ? 'hqdn3d=2.0:1.5:2.5:2.0' : 'hqdn3d=1.5:1.2:2.0:1.5',
-                    isDark ? 'eq=brightness=0.10:contrast=1.15:saturation=1.05:gamma=0.95' : 'eq=brightness=0.03:contrast=1.05:saturation=1.03',
-                    'unsharp=5:5:0.6:3:3:0.0',
-                ].filter(Boolean);
-
-                // ── Execute: AI pipeline → FFmpeg full → FFmpeg basic ─────────────
-                if (esrganPath) {
-                    try {
-                        console.log('🤖 Running AI pipeline (Real-ESRGAN + RIFE)...');
-                        await runAIPipeline();
-                        console.log('✅ AI pipeline complete');
-                    } catch (aiErr) {
-                        console.warn('⚠️  AI pipeline failed, falling back to FFmpeg: ' + aiErr.message);
-                        if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                        await runFFmpeg(fullFilters);
-                        console.log('✅ FFmpeg enhancement applied (AI fallback)');
-                    }
-                } else {
-                    try {
-                        console.log('🎨 Running FFmpeg enhancement (no AI tools)...');
-                        await runFFmpeg(fullFilters);
-                        console.log('✅ FFmpeg enhancement applied');
-                    } catch (filterErr) {
-                        console.warn('⚠️  FFmpeg enhancement failed: ' + filterErr.message.substring(0,80));
-                        if (fs.existsSync(enhancedVideoPath)) fs.unlinkSync(enhancedVideoPath);
-                        throw filterErr; // let outer catch fall back to original
-                    }
-                }
-
-                finalVideoPath = enhancedVideoPath;
-                wasEnhanced = true;
-                // Record enhanced filename in manifest so startup recovery can find it
-                try {
-                    const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-                    if (fs.existsSync(mPath)) {
-                        const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                        m.enhancedVideoFile = path.basename(enhancedVideoPath);
-                        fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
-                    }
-                } catch (_) {}
-                updateJob(jobId, { status: 'uploading', stage: 'Uploading to Drive', progress: 68, message: 'Enhancement complete — uploading to Google Drive...' });
-            } catch (enhanceError) {
-                console.warn('⚠️  Enhancement failed, uploading original:', enhanceError.message);
-                finalVideoPath = videoPath; // fall back to original
-                enhancedVideoPath = null;
-            } finally {
-                // Clean up .trf transform file — not needed after enhancement
-                const trfPath = videoPath.replace(/\.[^.]+$/, '_transforms.trf');
-                try { if (fs.existsSync(trfPath)) fs.unlinkSync(trfPath); } catch(e) {}
-            }
-        } // end legacy block (never runs — engine handles above)
-        } // end engine section
-
-        const finalStats = fs.statSync(finalVideoPath);
-        const finalSizeMB = (finalStats.size / 1024 / 1024).toFixed(2);
-        const fileName = `${driverName}_${vin}_${inspectionType}_${wasEnhanced ? 'ENHANCED_' : ''}${Date.now()}.mp4`;
-
-        // ── Keyframe extraction + damage classification ────────────────────────
-        // Extract 5 sharpest frames from the final video, classify damage with Gemini.
-        // Non-blocking — failure here never affects the Drive upload.
-        let keyframes    = [];
-        let damageReport = null;
-        try {
-            updateJob(jobId, { status: 'uploading', stage: 'Analyzing frames', progress: 65, message: 'Extracting key frames for damage review...' });
-            keyframes    = await extractKeyframes(finalVideoPath, jobId);
-            if (keyframes.length > 0) {
-                damageReport = await classifyDamage(keyframes, driverName, vin, inspectionType);
-                if (damageReport) {
-                    // Save damage report to manifest
-                    try {
-                        const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-                        if (fs.existsSync(mPath)) {
-                            const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                            m.damageReport = damageReport;
-                            m.keyframeCount = keyframes.length;
-                            fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
-                        }
-                    } catch(_) {}
-                    logger.info(`🔍 Damage: ${damageReport.overallCondition} — ${damageReport.items?.length || 0} item(s) — confidence: ${damageReport.confidenceScore}%`);
-                }
-            }
-            // Add chapter markers to video for easy seeking in player
-            if (keyframes.length > 0) {
-                finalVideoPath = await addVideoChapters(finalVideoPath, keyframes, jobId);
-            }
-        } catch(e) {
-            logger.warn(`⚠️ Frame analysis failed (non-fatal): ${e.message}`);
-        }
-
-        // ── Pre-upload bandwidth probe ──────────────────────────
-        // Measure actual current bandwidth before committing to Drive upload.
-        // If probe shows < 0.8 MB/s and file is large, log a warning.
-        try {
-            const probeUrl  = `https://${req.hostname || 'slgpmeshserver.com'}/api/bandwidth-probe`;
-            const liveSpeed = await engine.probeBandwidth(probeUrl);
-            if (liveSpeed && liveSpeed < 0.8 && finalStats.size > 10 * 1024 * 1024) {
-                console.warn(`⚠️  Low bandwidth probe: ${liveSpeed.toFixed(2)} MB/s — ${finalSizeMB}MB upload may timeout`);
-            }
-        } catch(_) {}
-
-        console.log(`☁️  Starting Google Drive upload (${wasEnhanced ? 'enhanced' : 'original'}, ${finalSizeMB}MB)...`);
-
-        // ── Drive folder organization: /YYYY-MM-DD/Inspection-Type/ ──────────────
-        let uploadFolderId = VIDEO_DRIVE_ID;
-        try {
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            const dayFolderName  = today;
-            const typeFolderName = inspectionType.replace(/[^a-zA-Z0-9 _-]/g, ''); // sanitize
-
-            // Find or create date folder
-            const daySearch = await driveClient.files.list({
-                q: `name='${dayFolderName}' and '${VIDEO_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
-            });
-            let dayFolderId;
-            if (daySearch.data.files.length) {
-                dayFolderId = daySearch.data.files[0].id;
-            } else {
-                const dayFolder = await driveClient.files.create({
-                    requestBody: { name: dayFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [VIDEO_DRIVE_ID] },
-                    fields: 'id', supportsAllDrives: true
-                });
-                dayFolderId = dayFolder.data.id;
-            }
-
-            // Find or create inspection type folder inside date folder
-            const typeSearch = await driveClient.files.list({
-                q: `name='${typeFolderName}' and '${dayFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-                fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true
-            });
-            if (typeSearch.data.files.length) {
-                uploadFolderId = typeSearch.data.files[0].id;
-            } else {
-                const typeFolder = await driveClient.files.create({
-                    requestBody: { name: typeFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [dayFolderId] },
-                    fields: 'id', supportsAllDrives: true
-                });
-                uploadFolderId = typeFolder.data.id;
-            }
-            logger.info(`📁 Drive folder: ${dayFolderName}/${typeFolderName}`);
-        } catch(folderErr) {
-            logger.warn(`Drive folder creation failed — using root: ${folderErr.message}`);
-            uploadFolderId = VIDEO_DRIVE_ID;
-        }
-
-        const fileMetadata = {
-            name: fileName,
-            parents: [uploadFolderId],
-            mimeType: 'video/mp4',
-            properties: {
-                driver: driverName,
-                vin: vin,
-                inspectionType: inspectionType,
-                uploadDate: new Date().toISOString(),
-                codec: wasEnhanced ? 'H.264 Enhanced (20Mbps)' : 'Original',
-                resolution: '1920x1080',
-                enhanced: String(wasEnhanced),
-                downloadPreferred: 'true'
-            },
-            description: `Fleet Video Inspection - ${inspectionType} for VIN ${vin} by ${driverName}`
-        };
-
-        const media = { mimeType: 'video/mp4', body: fs.createReadStream(finalVideoPath) };
-
-        const uploadType = finalStats.size > 5 * 1024 * 1024 ? 'resumable' : 'multipart';
-        console.log(`📤 Using ${uploadType} upload method`);
-
-        const driveResponse = await Promise.race([
-            driveClient.files.create({
-                requestBody: fileMetadata,
-                media: media,
-                fields: 'id, name, webViewLink, webContentLink, size, videoMediaMetadata, createdTime',
-                supportsAllDrives: true
-            }),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('Google Drive upload timeout after 8 minutes')),8*60*1000))
-        ]);
-
-        updateJob(jobId, { status: 'uploading', stage: 'Finalizing', progress: 90, message: 'Drive upload complete — sending notifications...' });
-
-        const uploadTime = ((Date.now() - startTime) / 1000).toFixed(1);
-        const fileId = driveResponse.data.id;
-
-        const videoMetadata = driveResponse.data.videoMediaMetadata || {};
-        const videoDuration = videoMetadata.durationMillis ? `${(videoMetadata.durationMillis / 1000 / 60).toFixed(1)} minutes` : 'Unknown';
-
-        console.log(`✅ Google Drive upload complete in ${uploadTime}s`);
-        console.log(`   File ID: ${fileId}`);
-
-        // Auto-clear pending submissions for this driver+VIN now that upload succeeded
-        try {
-            const _pend = readPendingSubs();
-            const _upd  = _pend.map(p =>
-                (p.driverName === driverName && p.vin === vin && p.status !== 'complete')
-                    ? { ...p, status: 'complete', completedAt: new Date().toISOString() }
-                    : p
-            );
-            writePendingSubs(_upd);
-        } catch(_) {}
-        console.log(`   Size uploaded: ${finalSizeMB}MB (raw was ${fileSizeMB}MB)`);
-
-        await appendLog(PERFORMANCE_LOG, {
-            type: 'performance',
-            action: 'video_upload',
-            duration: Date.now() - startTime,
-            success: true,
-            fileSize: fileStats.size,
-            details: `${driverName} - ${vin} - ${inspectionType}`,
-            userAgent: req.get('user-agent'),
-            ip: req.ip
-        });
-
-        try {
-            await driveClient.permissions.create({
-                fileId: fileId,
-                requestBody: { role: 'reader', type: 'anyone' },
-                supportsAllDrives: true
-            });
-            console.log('✅ File permissions set (viewable via link)');
-        } catch (permError) {
-            console.warn('⚠️  Could not set permissions:', permError.message);
-        }
-
-        const viewLink = driveResponse.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
-        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        const embedLink = `https://drive.google.com/file/d/${fileId}/preview`;
-        const thumbnailLink = `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
-
-        console.log('📥 Generated access links:');
-        console.log(`   View Link: ${viewLink}`);
-
-        try {
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com', port: 587, secure: false,
-                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-                connectionTimeout: 10000,
-                greetingTimeout:   10000,
-                socketTimeout:     30000,
-                tls: { rejectUnauthorized: false }
-            });
-
-            // Annotate keyframes with damage bounding boxes if damage found
-            const emailAttachments = [];
-            if (damageReport && damageReport.damageFound && keyframes.length) {
-                try {
-                    const { execFileSync } = require('child_process');
-                    for (let ki = 0; ki < Math.min(keyframes.length, 3); ki++) {
-                        const kf = keyframes[ki];
-                        if (!fs.existsSync(kf)) continue;
-                        const outPath = kf.replace(/\.jpg$/, '_annotated.jpg');
-                        // Draw red boxes on keyframe using Python/OpenCV
-                        const items = JSON.stringify(damageReport.items || []);
-                        try {
-                            execFileSync('python3', [
-                                '/root/slgp-fleet/annotate_damage.py',
-                                kf, outPath, items
-                            ], { timeout: 15000 });
-                            if (fs.existsSync(outPath)) {
-                                emailAttachments.push({
-                                    filename: `damage_frame_${ki+1}.jpg`,
-                                    path:     outPath,
-                                    cid:      `damage_frame_${ki+1}`,
-                                });
-                            }
-                        } catch(annotErr) {
-                            logger.warn(`Annotation failed for frame ${ki}: ${annotErr.message}`);
-                            // Fall back to unannotated frame
-                            emailAttachments.push({
-                                filename: `frame_${ki+1}.jpg`,
-                                path:     kf,
-                                cid:      `damage_frame_${ki+1}`,
-                            });
-                        }
-                    }
-                } catch(e) {
-                    logger.warn('Keyframe annotation error:', e.message);
-                }
-            }
-
-            // Check walk-around completeness
-            const durSec = videoMetadata && videoMetadata.durationMillis
-                ? videoMetadata.durationMillis / 1000 : 0;
-            const completeness = checkWalkaroundCompleteness(durSec, parseFloat(finalSizeMB), inspectionType);
-
-            let emailSubject;
-            if (damageReport && damageReport.damageFound) {
-                emailSubject = `⚠️ DAMAGE DETECTED: ${inspectionType} - ${driverName} (VIN: ${vin})`;
-            } else if (!completeness.complete) {
-                emailSubject = `⚠️ INCOMPLETE WALK-AROUND: ${inspectionType} - ${driverName} (VIN: ${vin})`;
-            } else {
-                emailSubject = `📹 Video Inspection Ready: ${inspectionType} - ${driverName} (VIN: ${vin})`;
-            }
-
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: ['slgpfleetmanager@gmail.com'],
-                subject: emailSubject,
-                attachments: emailAttachments,
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 20px;">
-                        <div style="background: linear-gradient(135deg, #2563EB 0%, #1d4ed8 100%); padding: 30px 20px; border-radius: 12px 12px 0 0; text-align: center;">
-                            <h1 style="color: white; margin: 0; font-size: 28px;">✅ Video Inspection Ready</h1>
-                            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 14px;">Full quality video available for immediate viewing</p>
-                        </div>
-                        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                            <h2 style="color: #1f2937; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">📋 Inspection Details</h2>
-                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563; width: 40%;">Driver:</td><td style="padding: 12px; color: #1f2937;">${driverName}</td></tr>
-                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">VIN:</td><td style="padding: 12px; color: #1f2937;">${vin}</td></tr>
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Type:</td><td style="padding: 12px; color: #1f2937;">${inspectionType}</td></tr>
-                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">File Size:</td><td style="padding: 12px; color: #1f2937;">${finalSizeMB} MB${wasEnhanced ? " (raw: " + fileSizeMB + " MB)" : ""}</td></tr>
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Duration:</td><td style="padding: 12px; color: #1f2937;">${videoDuration}</td></tr>
-                                <tr style="background: white;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Upload Time:</td><td style="padding: 12px; color: #1f2937;">${uploadTime}s</td></tr>
-                                <tr style="background: #f3f4f6;"><td style="padding: 12px; font-weight: bold; color: #4b5563;">Quality:</td><td style="padding: 12px; color: #1f2937;">${wasEnhanced ? '1920x1080 H.264 Enhanced + denoising' : '1920x1080 Original'}</td></tr>
-                                ${(() => {
-                                    if (!damageReport) return '';
-                                    const cond = damageReport.overallCondition || 'unknown';
-                                    const color = cond==='good'?'#059669':cond==='fair'?'#d97706':'#dc2626';
-                                    let html = '<tr style="background:white"><td style="padding:12px;font-weight:bold;color:#4b5563">Condition:</td><td style="padding:12px;color:'+color+';font-weight:bold">'+cond.toUpperCase()+'</td></tr>';
-                                    if (damageReport.damageFound && damageReport.items && damageReport.items.length) {
-                                        html += '<tr style="background:#fef3c7"><td style="padding:12px;font-weight:bold;color:#92400e">⚠️ Damage:</td><td style="padding:12px;color:#92400e">';
-                                        html += damageReport.items.map(x => x.severity+' '+x.type+' — '+x.location).join('<br>');
-                                        html += '</td></tr>';
-                                    }
-                                    html += '<tr style="background:#f3f4f6"><td style="padding:12px;font-weight:bold;color:#4b5563">Action:</td><td style="padding:12px;color:#1f2937">'+(damageReport.recommendedAction||'none').replace(/_/g,' ')+'</td></tr>';
-                                    return html;
-                                })()}
-                            </table>
-                            <div style="background: #eff6ff; border-left: 4px solid #2563EB; padding: 20px; margin-bottom: 25px; border-radius: 4px;">
-                                <h3 style="color: #1e40af; margin: 0 0 12px 0; font-size: 16px;">📹 FULL QUALITY 1080p VIDEO</h3>
-                                <p style="color: #1e3a8a; margin: 0; font-size: 13px; line-height: 1.6;">
-                                    <strong>✅ Video uploaded successfully!</strong><br>
-                                    H.264 codec — enhanced to 20Mbps for maximum clarity.<br>
-                                    Choose your preferred viewing method below:
-                                </p>
-                            </div>
-                            <div style="text-align: center; margin: 25px 0;">
-                                <a href="${viewLink}" style="display: inline-block; background: #10b981; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);">
-                                    📱 OPEN IN DRIVE
-                                </a>
-                                <a href="${directDownloadLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);">
-                                    ⬇️ DOWNLOAD 1080p
-                                </a>
-                            </div>
-                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                                <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.6;">
-                                    <strong>💡 BEST VIEWING:</strong> Click <strong>"OPEN IN DRIVE"</strong> to watch in the Google Drive app or browser. 
-                                    For offline viewing or archiving, click <strong>"DOWNLOAD 1080p"</strong> to save the full quality file.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                `
-            });
-            console.log('✅ Email notification sent to slgpfleetmanager@gmail.com');
-        } catch (emailError) {
-            console.error('⚠️  Email notification failed:', emailError.message);
-            await appendLog(ERROR_LOG, {
-                type: 'server_error',
-                severity: 'warning',
-                message: 'Video notification email failed',
-                stack: emailError.stack,
-                source: 'upload-to-google-drive-email'
-            });
-        }
-
-        // Record driver quality metrics
-        try {
-            const blurCount  = keyframes.filter(f => f.isBlurred).length;
-            const totalKf    = keyframes.length;
-            const durSec     = videoMetadata && videoMetadata.durationMillis
-                ? videoMetadata.durationMillis / 1000 : 0;
-            recordDriverSubmission(driverName, {
-                durationSec:  durSec,
-                blurryFrames: blurCount,
-                totalFrames:  totalKf,
-                damageFound:  !!(damageReport && damageReport.damageFound),
-                fileSizeMB:   parseFloat(fileSizeMB) || 0,
-            });
-        } catch(qErr) { logger.warn('Quality record failed:', qErr.message); }
-
-        // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
-        syncInspectionToStreamlit({
+        // Direct uploads run the shared pipeline (same as chunked uploads now).
+        // The full engine/enhance/keyframe/damage/Drive/email/quality logic lives
+        // in video_pipeline.js so the two upload paths can never diverge again.
+        const videoPath = overrideVideoPath || req.file.path;
+        await videoPipeline.process({
+            jobId,
+            videoPath,
             driverName,
             vin,
             inspectionType,
-            fileName,
-            fileId,
-            viewLink,
-            directDownloadLink
-        });
-
-        // Clean up all temp files
-        for (const p of [videoPath, enhancedVideoPath]) {
-            if (p && fs.existsSync(p)) {
-                try { fs.unlinkSync(p); } catch (e) {}
-            }
-        }
-        console.log('✅ Temporary files cleaned up');
-
-        updateJob(jobId, {
-            status: 'complete',
-            stage: 'Done',
-            progress: 100,
-            message: `✅ Complete! ${wasEnhanced ? 'Enhanced to 20Mbps' : 'Uploaded'} in ${uploadTime}s`,
-            result: {
-                success: true,
-                fileId, fileName, fileSize: finalSizeMB, rawSize: fileSizeMB,
-                enhanced: wasEnhanced, uploadTime, viewLink,
-                downloadLink: directDownloadLink, embedLink, thumbnailLink,
-                metadata: videoMetadata, createdTime: driveResponse.data.createdTime
-            }
-        });
-        // Persist completion to disk so startup scan doesn't misclassify as orphaned
-        try {
-            const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-            if (fs.existsSync(mPath)) {
-                const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                m.status = 'complete';
-                m.completedAt = new Date().toISOString();
-                m.fileId = fileId;
-                fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
-            }
-        } catch (_) {}
-        // Record outcome in engine telemetry for future decisions
-        try { engine.recordUploadComplete(enginePlan, finalStats.size, parseFloat(uploadTime) * 1000, true, null); } catch(_) {}
-
-        console.log(`✅ Job ${jobId} complete in ${uploadTime}s`);
-    } catch (error) {
-        // Record failure in engine telemetry
-        try { engine.recordUploadComplete(enginePlan, 0, 0, false, error.message); } catch(_) {}
-        console.error('❌ Video upload error:', error);
-
-        await appendLog(ERROR_LOG, {
-            type: 'server_error',
-            severity: 'error',
-            message: 'Video upload failed',
-            stack: error.stack,
-            source: 'upload-to-google-drive'
-        });
-
-        await appendLog(PERFORMANCE_LOG, {
-            type: 'performance',
-            action: 'video_upload',
-            duration: Date.now() - startTime,
-            success: false,
-            fileSize: req.file ? req.file.size : 0,
-            details: error.message,
+            fileSizeMB,
+            hostname:  req.hostname || 'slgpmeshserver.com',
             userAgent: req.get('user-agent'),
-            ip: req.ip
+            ip:        req.ip,
+            startTime,
+            source:    'direct',
         });
-
-        // ── Retry logic ─────────────────────────────────────────
-        // If error is network/timeout and the video file still exists,
-        // save to retry queue BEFORE cleanup so agent can re-attempt Drive upload
-        const survivingFile = [enhancedVideoPath, videoPath].find(p => p && fs.existsSync(p));
-        if (isRetriable(error.message) && survivingFile) {
-            console.log(`🔁 Retriable error — preserving file for agent retry: ${survivingFile}`);
-            saveToRetryQueue({
-                jobId,
-                filePath:       survivingFile,
-                driverName,
-                vin,
-                inspectionType,
-                fileSizeMB,
-                wasEnhanced,
-                failedAt:       Date.now(),
-                attemptCount:   1,
-                lastError:      error.message
-            });
-            // Manifest stays status:'pending' — agent will requeue on next startup
-            // (already in retry_queue.json — agent handles it)
-            updateJob(jobId, {
-                status:   'failed',
-                stage:    'Queued for retry',
-                progress: 0,
-                message:  'Upload failed — retrying automatically...',
-                error:    error.message
-            });
-            console.log(`🔁 Job ${jobId} queued for retry by agent`);
-        } else {
-            // Non-retriable (corrupt file, auth error, etc) — clean up and mark permanent failure
-            for (const p of [videoPath, enhancedVideoPath]) {
-                if (p && fs.existsSync(p)) {
-                    try { fs.unlinkSync(p); } catch (e) {}
-                }
-            }
-            console.log('✅ Cleaned up temp files after non-retriable error');
-            // Mark manifest as permanently failed — agent will not requeue
-            try {
-                const mPath = path.join(UPLOAD_DIR, `${jobId}.manifest.json`);
-                if (fs.existsSync(mPath)) {
-                    const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-                    m.status = 'failed_permanent';
-                    m.failedAt = new Date().toISOString();
-                    m.error = error.message;
-                    fs.writeFileSync(mPath, JSON.stringify(m, null, 2));
-                }
-            } catch (_) {}
-            updateJob(jobId, {
-                status:   'failed',
-                stage:    'Error',
-                progress: 0,
-                message:  `Upload failed: ${error.message}`,
-                error:    error.message
-            });
-            console.log(`❌ Job ${jobId} permanently failed: ${error.message}`);
-        }
-    }
     }); // end enqueueJob
     if (!queued) {
         // Queue was full — clean up the uploaded file immediately
@@ -4723,7 +3644,10 @@ cron.schedule('*/5 * * * *', () => {
                     const mp = path.join(UPLOAD_DIR, mf);
                     const m = JSON.parse(fs.readFileSync(mp, 'utf8'));
                     if (m.status !== 'complete' && m.status !== 'failed_permanent') continue;
-                    const age = now - new Date(m.completedAt || m.failedAt || m.submittedAt).getTime();
+                    // Include uploadedAt (chunked uploads) + queuedAt so chunked
+                    // manifests get a real age and don't leak un-reaped forever.
+                    const _rDate = m.completedAt || m.failedAt || m.submittedAt || m.uploadedAt || m.queuedAt;
+                    const age = now - new Date(_rDate).getTime();
                     if (age > OLD_MANIFEST_MS) {
                         fs.unlinkSync(mp);
                         reaped++;
@@ -4801,26 +3725,14 @@ app.get('/health', (req, res) => {
     });
 });
 
-// ── GitHub webhook — auto-deploy on push ─────────────────────────────────────
-app.post('/hooks/deploy-fleet', express.raw({ type: '*/*' }), (req, res) => {
-    const secret = process.env.WEBHOOK_SECRET || '';
-    const sig    = req.headers['x-hub-signature-256'] || '';
-    const body   = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-    const hmacSig = 'sha256=' + require('crypto')
-        .createHmac('sha256', secret)
-        .update(body)
-        .digest('hex');
-    if (secret && sig !== hmacSig) {
-        return res.status(401).send('Unauthorized');
-    }
-    res.status(200).send('Deploy triggered');
-    const { spawn } = require('child_process');
-    const proc = spawn('/bin/bash', ['/root/deploy-fleet.sh'], {
-        detached: true, stdio: 'ignore'
-    });
-    proc.unref();
-    console.log('[WEBHOOK] Deploy triggered via GitHub push');
-});
+// ── GitHub auto-deploy ────────────────────────────────────────────────────────
+// NOTE: deploy is handled by the standalone `webhook` service on port 9000
+// (adnanh/webhook → /root/deploy-fleet.sh), NOT by this app. A duplicate in-app
+// /hooks/deploy-fleet route was removed: it used a different signature scheme
+// (HMAC-SHA256) than the port-9000 hook (HMAC-SHA1), never received traffic once
+// GitHub pointed only at port 9000, and was a redundant code path that could spawn
+// the deploy script. Single source of truth = the port-9000 webhook service.
+
 
 
 const PORT = process.env.PORT || 8080;
@@ -5233,7 +4145,7 @@ app.post('/pending-submissions/deduplicate', express.json(), (req, res) => {
         const seen = new Map();
         const sorted = [...pending].sort((a,b) => new Date(b.reportedAt) - new Date(a.reportedAt));
         const unique = sorted.filter(p => {
-            const key = p.driverName+'/'+p.vin+'jp'+p.inspectionType;
+            const key = (p.driverName||'')+'|'+(p.vin||'')+'|'+(p.inspectionType||'');
             if (seen.has(key)) return false;
             seen.set(key, true); return true;
         });
@@ -5305,6 +4217,24 @@ app.use((req, res, next) => {
     next();
 });
 
+// ── Initialize shared video pipeline with module-level dependencies ──────────
+// Both /upload-to-google-drive and /upload/complete call videoPipeline.process()
+// so the engine→enhance→keyframe→damage→Drive→email→quality flow lives in ONE
+// place and can never diverge between the direct and chunked upload paths again.
+videoPipeline.init({
+    fs, path, engine, nodemailer, logger,
+    UPLOAD_DIR, ENHANCED_DIR, VIDEO_DRIVE_ID,
+    PERFORMANCE_LOG, ERROR_LOG,
+    getDriveClient:   () => driveClient,
+    getDiscordClient: () => client,   // real Discord client (was referenced as undefined `discordClient` before)
+    extractKeyframes, classifyDamage, addVideoChapters,
+    checkWalkaroundCompleteness, recordDriverSubmission,
+    readPendingSubs, writePendingSubs,
+    appendLog, syncInspectionToStreamlit,
+    updateJob, isRetriable, saveToRetryQueue,
+    ANNOTATE_SCRIPT: '/root/slgp-fleet/annotate_damage.py',
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════╗
@@ -5363,7 +4293,17 @@ ${DISCORD_BOT_TOKEN ? '✅ Discord bot online' : '⚠️  Discord bot offline'}
 
                     // Skip if manifest is less than 2 minutes old (might still be processing
                     // from a parallel instance — conservative guard)
-                    const age = Date.now() - new Date(m.submittedAt).getTime();
+                    // Date field varies by upload path: direct writes submittedAt,
+                    // chunked writes uploadedAt. Fall back across both (+queuedAt) so
+                    // chunked uploads orphaned by a restart get a valid age, not NaN.
+                    const _mDate = m.submittedAt || m.uploadedAt || m.queuedAt || m.completedAt;
+                    let age = Date.now() - new Date(_mDate).getTime();
+                    if (isNaN(age)) {
+                        // No usable date — treat as old (definitely past the 2-min young-guard)
+                        // so a genuinely orphaned job still gets recovered rather than skipped.
+                        console.warn(`⚠️  Startup recovery: manifest ${m.jobId} has no usable date field — treating as orphaned`);
+                        age = Infinity;
+                    }
                     if (age < 2 * 60 * 1000) continue;
 
                     // Find the video file — check manifest's stored enhanced filename first,
