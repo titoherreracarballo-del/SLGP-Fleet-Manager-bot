@@ -2767,6 +2767,16 @@
 
                 setProgress(100, '✅ File received — processing...');
 
+                // ── Clear the up-front safety-net pending entry ─────────────────
+                // _bgPendingId was created BEFORE the upload (line ~2599) as a crash
+                // safety net. On success we MUST clear it from both the phone's
+                // IndexedDB and the dashboard, or it lingers forever as a ghost
+                // "pending"/"failed" entry for a video that actually uploaded fine.
+                // (This was the cause of stuck entries like "Driver must open app"
+                // on videos that were already in Google Drive.)
+                try { await removePendingUpload(_bgPendingId); } catch(_) {}
+                try { await reportCompleteToServer(_bgPendingId); } catch(_) {}
+
                 if (wakeLock) { wakeLock.release(); wakeLock = null; }
                 progressFill.style.transition = 'width 0.6s ease';
                 setProgress(100, '✅ Submitted! You\'re done.');
@@ -2780,23 +2790,25 @@
             } catch (uploadErr) {
                 console.error(`Upload attempt failed:`, uploadErr.message);
 
-                // Save to IndexedDB for background retry when signal returns
+                // The video is ALREADY saved under _bgPendingId (line ~2599, before
+                // the upload started) and already reported to the dashboard. Do NOT
+                // mint a second pendingId here — that produced TWO pending entries for
+                // one video. The IndexedDB entry under _bgPendingId persists, so the
+                // background retry loop will pick it up automatically. We just refresh
+                // its status/timestamp so the dashboard reflects the latest attempt.
                 if (!uploadErr.message.includes('too large') &&
                     !uploadErr.message.includes('Missing required')) {
                     try {
-                        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-                        await savePendingUpload(pendingId, recordedBlob, {
-                            driverName, vin, vehicleType, inspectionType
-                        });
-                        // Report to server so HR Dashboard can see it
-                        await reportPendingToServer(pendingId, {
+                        // Re-report under the SAME id so the dashboard entry updates
+                        // in place rather than duplicating.
+                        await reportPendingToServer(_bgPendingId, {
                             driverName, vin, inspectionType,
                             fileSizeMB: (recordedBlob.size / 1024 / 1024).toFixed(2)
                         });
                         setStatus(`📶 No signal — video saved. Will auto-upload when connection returns.`);
-                        console.log(`📦 Video saved to offline queue as ${pendingId}`);
+                        console.log(`📦 Video retained in offline queue as ${_bgPendingId}`);
                     } catch(idbErr) {
-                        console.warn('Could not save to offline queue:', idbErr);
+                        console.warn('Could not update offline queue entry:', idbErr);
                     }
                 }
 
