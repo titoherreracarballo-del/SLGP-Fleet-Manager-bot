@@ -141,7 +141,11 @@ const jobStore = new Map(); // jobId -> { status, stage, progress, message, resu
 // Key: normalized "driverName|vin|inspectionType"
 // Value: { jobId, receivedAt } — TTL 5 minutes
 const uploadDedup = new Map();
-const UPLOAD_DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const UPLOAD_DEDUP_TTL_MS = 15 * 60 * 1000; // 15 minutes — long enough to catch a quick
+// re-submit / background-fetch reopen, short enough not to collide with legitimate
+// re-inspections of the same shared van later in the shift. The closed-app case where
+// a Background Fetch completed but the app reopens much later is handled separately by
+// the service worker re-notifying the page of completed fetches on activation.
 
 function getDedupKey(driverName, vin, inspectionType) {
     return `${(driverName||'').toLowerCase().trim()}|${(vin||'').toUpperCase().trim()}|${(inspectionType||'').toLowerCase().trim()}`;
@@ -2606,6 +2610,51 @@ app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
         return res.status(400).json({ success: false, error: 'File too large (max 200MB)' });
     }
 
+    // ── RESUME: reuse an existing session for this exact upload ──────────────────
+    // If the driver's upload was interrupted (page backgrounded/closed mid-upload —
+    // iOS suspends JS, freezing the chunk loop), the already-received chunks are
+    // still on the server. Rather than start a brand-new session and re-send
+    // everything from chunk 0 (which, if the page keeps getting backgrounded, may
+    // NEVER complete), find the existing session by driver+VIN+size+chunkCount and
+    // resume it — returning which chunks we already have so the client skips them.
+    let existing = null;
+    for (const [sid, s] of _chunkSessions.entries()) {
+        if (s.driverName === driverName && s.vin === vin &&
+            s.totalChunks === totalChunks && s.totalSize === totalSize) {
+            existing = { sid, s };
+            break;
+        }
+    }
+    // Also check disk in case the in-memory map was cleared (restart) but chunks persist
+    if (!existing) {
+        try {
+            for (const dir of fs.readdirSync(CHUNK_DIR)) {
+                const metaPath = path.join(CHUNK_DIR, dir, 'session.json');
+                if (!fs.existsSync(metaPath)) continue;
+                const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+                if (meta.driverName === driverName && meta.vin === vin &&
+                    meta.totalChunks === totalChunks && meta.totalSize === totalSize) {
+                    const restored = restoreChunkSession(dir);
+                    if (restored) existing = { sid: dir, s: restored };
+                    break;
+                }
+            }
+        } catch(_) {}
+    }
+
+    if (existing) {
+        existing.s.lastActivity = Date.now();
+        const have = [...(existing.s.receivedChunks || [])].sort((a,b)=>a-b);
+        logger.info(`🔄 Chunk upload RESUME: ${driverName} VIN:${vin} — ${have.length}/${totalChunks} chunks already received`);
+        return res.json({
+            success: true,
+            sessionId: existing.sid,
+            chunkSize: 512 * 1024,
+            resumed: true,
+            receivedChunks: have,   // client skips these
+        });
+    }
+
     const sessionId  = require('crypto').randomBytes(16).toString('hex');
     const sessionDir = path.join(CHUNK_DIR, sessionId);
     try { fs.mkdirSync(sessionDir, { recursive: true }); } catch(e) {
@@ -2628,7 +2677,7 @@ app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
     } catch(_) {}
 
     logger.info(`📤 Chunk upload init: ${driverName} VIN:${vin} ${(totalSize/1024/1024).toFixed(1)}MB ${totalChunks} chunks`);
-    res.json({ success: true, sessionId, chunkSize: 512 * 1024 }); // 512KB chunks
+    res.json({ success: true, sessionId, chunkSize: 512 * 1024, resumed: false, receivedChunks: [] });
 });
 
 // ── /upload/chunk ─────────────────────────────────────────────────────────────
@@ -3060,6 +3109,37 @@ app.post('/upload-to-google-drive', uploadLimiter, (req, res, next) => {
 // JOB STATUS POLLING ENDPOINT
 // Client polls this every 2s after upload
 // ============================================
+// Reconciliation: did a given driver+VIN+type upload already complete recently?
+// The phone calls this on load for each queued pending entry BEFORE re-uploading,
+// so a Background Fetch that finished while the app was closed (and whose in-page
+// completion message was therefore never delivered) doesn't get re-uploaded as a
+// duplicate. Checks recent manifests for a completed match.
+app.post('/upload/already-completed', express.json(), (req, res) => {
+    try {
+        const { driverName, vin, inspectionType } = req.body;
+        if (!driverName || !vin) return res.json({ completed: false });
+        const cutoff = Date.now() - 12 * 60 * 60 * 1000; // look back 12h
+        let files = [];
+        try { files = fs.readdirSync(UPLOAD_DIR).filter(f => f.endsWith('.manifest.json')); } catch(_) {}
+        for (const f of files) {
+            try {
+                const m = JSON.parse(fs.readFileSync(path.join(UPLOAD_DIR, f), 'utf8'));
+                const when = Date.parse(m.completedAt || m.submittedAt || 0) || 0;
+                if (m.status === 'complete' &&
+                    (m.driverName||'').toLowerCase() === driverName.toLowerCase() &&
+                    String(m.vin) === String(vin) &&
+                    (!inspectionType || (m.inspectionType||'') === inspectionType) &&
+                    when >= cutoff) {
+                    return res.json({ completed: true, jobId: m.jobId, fileId: m.fileId || null });
+                }
+            } catch(_) {}
+        }
+        res.json({ completed: false });
+    } catch(e) {
+        res.json({ completed: false, error: e.message });
+    }
+});
+
 app.get('/api/job-status/:jobId', (req, res) => {
     const job = jobStore.get(req.params.jobId);
     if (!job) {
