@@ -2620,6 +2620,7 @@ app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
     let existing = null;
     for (const [sid, s] of _chunkSessions.entries()) {
         if (s.driverName === driverName && s.vin === vin &&
+            s.inspectionType === inspectionType &&
             s.totalChunks === totalChunks && s.totalSize === totalSize) {
             existing = { sid, s };
             break;
@@ -2633,6 +2634,7 @@ app.post('/upload/init', chunkLimiter, express.json(), (req, res) => {
                 if (!fs.existsSync(metaPath)) continue;
                 const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
                 if (meta.driverName === driverName && meta.vin === vin &&
+                    meta.inspectionType === inspectionType &&
                     meta.totalChunks === totalChunks && meta.totalSize === totalSize) {
                     const restored = restoreChunkSession(dir);
                     if (restored) existing = { sid: dir, s: restored };
@@ -2768,6 +2770,17 @@ function missingChunks(session) {
 // (dashboard-driven, no phone). Assumes all chunks are present (caller checks).
 // Returns { jobId } on success; throws on assembly failure.
 async function assembleAndProcessSession(session, sessionId, source) {
+    // Defense-in-depth: never assemble a session that's missing chunks, even if a
+    // caller forgot to check. Assembling a partial would produce a truncated video
+    // that could still pass the size check and reach Drive as a corrupt file.
+    const _missing = [];
+    for (let i = 0; i < session.totalChunks; i++) {
+        if (!session.receivedChunks.has(i)) _missing.push(i);
+    }
+    if (_missing.length > 0) {
+        throw new Error(`Refusing to assemble — ${_missing.length}/${session.totalChunks} chunks missing`);
+    }
+
     const ext       = (session.mimeType || '').includes('webm') ? '.webm' : '.mp4';
     const finalPath = path.join(UPLOAD_DIR, `${Date.now()}_${session.vin}${ext}`);
 
@@ -2777,6 +2790,7 @@ async function assembleAndProcessSession(session, sessionId, source) {
         const pipeNext = (idx) => {
             if (idx >= session.totalChunks) { writeStream.end(); return; }
             const chunkPath = path.join(session.sessionDir, `chunk_${idx}`);
+            if (!fs.existsSync(chunkPath)) { reject(new Error(`Missing chunk file ${idx} during assembly`)); return; }
             const rs = fs.createReadStream(chunkPath);
             rs.on('error', reject);
             rs.on('end', () => pipeNext(idx + 1));
