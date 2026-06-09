@@ -2503,7 +2503,15 @@
     // the app, locks the phone, or walks away — and the service worker's
     // backgroundfetchsuccess handler clears the pending entry when it finishes.
     // This is the "no driver action needed" path. Returns true if handed off.
-    async function tryBackgroundFetch(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor, pendingId) { return false; /* __BGFETCH_DISABLED__ drops body on Android, silent data loss */
+    async function tryBackgroundFetch(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor, pendingId) {
+        // __BGFETCH_DISABLED__ Background Fetch is unreliable for UPLOADS on Android:
+        // it does not consistently transmit the request body, so it sends an empty
+        // POST (server returns 400) while the OS still fires backgroundfetchsuccess —
+        // the driver sees "uploaded successfully" but the video is silently lost.
+        // Confirmed in production (nginx: 400, empty referer, no "Upload received").
+        // Disabled until/unless replaced with Background Sync (which drives the
+        // chunked upload from the SW). Chunked + resume is the reliable path.
+        return false;
         try {
             const reg = await navigator.serviceWorker.ready;
             if (!reg.backgroundFetch) return false; // not supported (older browser)
