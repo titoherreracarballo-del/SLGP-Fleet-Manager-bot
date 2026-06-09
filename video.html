@@ -863,19 +863,55 @@
         if (!navigator.onLine) return;
         const pending = await getPendingUploads();
         const now     = Date.now();
-        const due     = pending.filter(p =>
-            p.status === 'pending' && p.attempts < 10 && p.nextRetryAt <= now
+
+        // Don't re-upload anything the OS is still handling (or just finished) via
+        // Background Fetch — that would create a duplicate. Collect the pending ids
+        // that still have a live background fetch and skip them here; the
+        // BG_FETCH_COMPLETE handler clears them when the OS is done.
+        let bgInFlight = new Set();
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg.backgroundFetch && reg.backgroundFetch.getIds) {
+                const ids = await reg.backgroundFetch.getIds();
+                for (const id of ids) {
+                    if (id.startsWith('slgpupload__')) bgInFlight.add(id.slice('slgpupload__'.length));
+                }
+            }
+        } catch(_) {}
+
+        const due = pending.filter(p =>
+            p.status === 'pending' && p.attempts < 10 && p.nextRetryAt <= now && !bgInFlight.has(p.id)
         );
         if (!due.length) return;
 
         console.log(`📤 Retrying ${due.length} pending upload(s)...`);
+        // Make the resume visible so the driver knows their recorded video is being
+        // recovered in the background — not lost — even though the camera reset.
+        const _statusEl = document.getElementById('status');
+        if (_statusEl) _statusEl.innerText = `📤 Resuming ${due.length} pending upload(s)…`;
+
+        // Reconcile against the server first: if any of these already completed (e.g. a
+        // Background Fetch finished while the app was closed), clear them instead of
+        // re-uploading a duplicate.
+        for (let k = due.length - 1; k >= 0; k--) {
+            const e = due[k];
+            try {
+                const r = await fetch('/upload/already-completed', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ driverName: e.meta.driverName, vin: e.meta.vin, inspectionType: e.meta.inspectionType }),
+                });
+                const d = await r.json();
+                if (d.completed) {
+                    console.log(`✅ ${e.meta.driverName}/${e.meta.vin} already completed on server — clearing, not re-uploading`);
+                    await removePendingUpload(e.id).catch(()=>{});
+                    await reportCompleteToServer(e.id).catch(()=>{});
+                    due.splice(k, 1);
+                }
+            } catch(_) {}
+        }
+        if (!due.length) { updatePendingBadge && updatePendingBadge(); return; }
         for (const entry of due) {
             try {
-                const file = new File([entry.blob],
-                    `${entry.meta.driverName}_${entry.meta.vin}_pending.mp4`,
-                    { type: 'video/mp4' }
-                );
-
                 // Update status to uploading
                 const db = await openPendingDB();
                 await new Promise(res => {
@@ -893,8 +929,20 @@
                     };
                 });
 
-                // Use existing uploadChunked function
-                await uploadChunked(file, entry.meta);
+                // uploadChunked takes positional args (blob, driver, vin, inspType,
+                // vehicle, isSupervisor, supervisor) — NOT (file, meta). Passing the
+                // meta object as `driver` sent driverName="[object Object]" with no
+                // VIN, so every background retry failed silently and the video could
+                // never resume. Unpack meta into the correct positional arguments.
+                await uploadChunked(
+                    entry.blob,
+                    entry.meta.driverName,
+                    entry.meta.vin,
+                    entry.meta.inspectionType,
+                    entry.meta.vehicleType || '',
+                    !!entry.meta.supervisorFiled,
+                    entry.meta.supervisorName || ''
+                );
                 await removePendingUpload(entry.id);
                 await reportCompleteToServer(entry.id);
                 console.log(`✅ Pending upload ${entry.id} complete`);
@@ -1025,6 +1073,25 @@
             if (event.data?.type === 'RETRY_UPLOADS') {
                 console.log('📲 Push retry triggered by HR Dashboard');
                 retryPendingUploads();
+            }
+            // Background Fetch finished (OS completed the upload, possibly while the
+            // app was closed). The bgId encodes the pending id as slgpupload__<id>.
+            // On success, clear that IndexedDB entry so it isn't re-uploaded; on
+            // failure, leave it queued for retry/push-resume.
+            if (event.data?.type === 'BG_FETCH_COMPLETE') {
+                const bgId = event.data.id || '';
+                const pendingId = bgId.startsWith('slgpupload__') ? bgId.slice('slgpupload__'.length) : null;
+                if (event.data.success) {
+                    console.log(`✅ Background upload complete (${bgId}) — clearing pending entry`);
+                    if (pendingId) {
+                        removePendingUpload(pendingId).catch(()=>{});
+                        reportCompleteToServer(pendingId).catch(()=>{});
+                    }
+                    updatePendingBadge && updatePendingBadge();
+                } else {
+                    console.warn(`⚠️ Background upload failed (${bgId}) — left queued for retry: ${event.data.error || ''}`);
+                    // Entry stays in IndexedDB; retryPendingUploads / push-resume will handle it.
+                }
             }
         });
     }
@@ -2430,6 +2497,54 @@
     const CHUNK_SIZE = 512 * 1024;
 
     let _slgpLastPct=0; function setProgress(pct,msg,force){var f=document.getElementById("progress-fill"),o=document.getElementById("progress-percentage"),s=document.getElementById("status");var p=force?pct:Math.max(_slgpLastPct,Math.max(0,Math.min(100,pct)));_slgpLastPct=force?pct:p;if(f)f.style.width=p+"%";if(o)o.innerText=p+"%";if(s&&msg)s.innerText=msg;} function resetProgress(){_slgpLastPct=0;} /*__SLGP_TOPLEVEL_PROGRESS__*/
+    // ── Background Fetch: OS-managed upload that survives the app closing ────────
+    // On Android Chrome, navigator.serviceWorker.ready.backgroundFetch hands the
+    // upload to the Android download manager. It continues even if the driver closes
+    // the app, locks the phone, or walks away — and the service worker's
+    // backgroundfetchsuccess handler clears the pending entry when it finishes.
+    // This is the "no driver action needed" path. Returns true if handed off.
+    async function tryBackgroundFetch(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor, pendingId) {
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            if (!reg.backgroundFetch) return false; // not supported (older browser)
+
+            const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+            const fd  = new FormData();
+            fd.append('video', blob, `inspection.${ext}`);
+            fd.append('driverName', driver);
+            fd.append('vin', vin);
+            fd.append('inspectionType', inspType);
+            fd.append('vehicleType', vehicle || '');
+            if (isSupervisor) {
+                fd.append('supervisorFiled', 'true');
+                fd.append('supervisorName', supervisor || '');
+            }
+
+            // Embed the IndexedDB pending id IN the bgId so that when the OS finishes,
+            // the service worker can tell the page exactly which pending entry to clear
+            // (otherwise a successful background upload stays queued and re-uploads).
+            const bgId = `slgpupload__${pendingId || ('p_'+Date.now())}`;
+            const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+
+            // Hand the whole upload to the OS. Single POST to the existing direct
+            // endpoint (it already accepts 'video' multipart and runs the pipeline).
+            await reg.backgroundFetch.fetch(
+                bgId,
+                [ new Request('/upload-to-google-drive', { method: 'POST', body: fd }) ],
+                {
+                    title: `Uploading walk-around (${driver} · ${vin})`,
+                    icons: [{ src: '/Final-01.jpg', sizes: '192x192', type: 'image/jpeg' }],
+                    downloadTotal: blob.size,   // lets Android show an accurate progress bar
+                }
+            );
+            console.log(`📲 Background Fetch started (${bgId}, ${sizeMB}MB) — OS will finish even if app closes`);
+            return true;
+        } catch(e) {
+            console.warn('Background Fetch handoff failed, will use foreground upload:', e.message);
+            return false;
+        }
+    }
+
     async function uploadChunked(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor) {
         const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
         const ext         = blob.type.includes('webm') ? 'webm' : 'mp4';
@@ -2462,6 +2577,14 @@
             throw e;
         }
         const { sessionId } = initData;
+        // Resume support: server tells us which chunks it already has so we skip them.
+        // This is what lets an upload that died mid-way (page backgrounded on iOS,
+        // freezing the JS) CONTINUE from where it stopped instead of restarting at 0.
+        const alreadyHave = new Set(initData.receivedChunks || []);
+        if (initData.resumed && alreadyHave.size > 0) {
+            console.log(`🔄 Resuming upload — ${alreadyHave.size}/${totalChunks} chunks already on server`);
+            setProgress(Math.round((alreadyHave.size / totalChunks) * 85), `Resuming — ${alreadyHave.size}/${totalChunks} parts already uploaded...`);
+        }
 
         // Upload chunks — resilient to poor warehouse signal
         // Uses 120s per chunk (covers very slow LTE in concrete buildings)
@@ -2469,6 +2592,8 @@
         // NEVER gives up on a chunk — keeps retrying until success or timeout
         const MAX_CHUNK_RETRIES = 10; // much more resilient than 3
         for (let i = 0; i < totalChunks; i++) {
+            // Resume: skip chunks the server already received (from a prior interrupted attempt)
+            if (alreadyHave.has(i)) continue;
             const chunk = blob.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
             const pct   = Math.round((i / totalChunks) * 85);
             setProgress(pct, `Uploading ${pct}% — part ${i+1} of ${totalChunks}...`);
@@ -2653,6 +2778,29 @@
         // Show platform-appropriate message
         if (_isIOS) {
             setProgress(2, '📱 iOS detected — keep screen on while uploading...', true);
+        }
+
+        // ── PRIMARY PATH: hand the upload to the OS via Background Fetch ──────────
+        // On Android this lets the upload finish even if the driver closes the app
+        // or locks the phone — no action needed from them. The service worker's
+        // backgroundfetchsuccess handler clears the pending entry on completion.
+        // The video is already saved in IndexedDB above, so if Background Fetch
+        // fails the foreground retry loop still recovers it.
+        const _bgStarted = await tryBackgroundFetch(
+            videoBlob, driver, vin, inspectionType,
+            document.getElementById('vehicleType')?.value || '',
+            isOpsMode, opsSupervisor, _bgPendingId
+        );
+        if (_bgStarted) {
+            setProgress(100, '✅ Submitted! Upload continues in the background — you can close the app.', true);
+            const _pf = document.getElementById('progress-fill');
+            if (_pf) _pf.style.backgroundColor = '#4ade80';
+            isUploading = false;
+            videoBlob = null;
+            chunks = [];
+            // Brief pause so the driver sees the confirmation, then reset for next van
+            setTimeout(() => { try { window.location.href = '/success'; } catch(_) {} }, 2200);
+            return;
         }
 
         try { // outer try/finally so isUploading always resets
