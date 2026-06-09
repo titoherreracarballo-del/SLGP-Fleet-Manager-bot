@@ -2503,7 +2503,7 @@
     // the app, locks the phone, or walks away — and the service worker's
     // backgroundfetchsuccess handler clears the pending entry when it finishes.
     // This is the "no driver action needed" path. Returns true if handed off.
-    async function tryBackgroundFetch(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor, pendingId) {
+    async function tryBackgroundFetch(blob, driver, vin, inspType, vehicle, isSupervisor, supervisor, pendingId) { return false; /* __BGFETCH_DISABLED__ drops body on Android, silent data loss */
         try {
             const reg = await navigator.serviceWorker.ready;
             if (!reg.backgroundFetch) return false; // not supported (older browser)
