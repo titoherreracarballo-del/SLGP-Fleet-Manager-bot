@@ -1,7 +1,7 @@
-// SLGP Fleet Bot Service Worker v2
+// SLGP Fleet Bot Service Worker v3 — push-to-resume + background fetch
 // Handles Background Fetch, push notifications, and offline retry
 
-const CACHE_NAME = 'slgp-v2';
+const CACHE_NAME = 'slgp-v3';
 
 // ── Background Fetch success ──────────────────────────────────────────────────
 // Fires when OS completes the upload — even if app was closed or phone restarted
@@ -86,15 +86,36 @@ self.addEventListener('push', event => {
     const data = event.data ? event.data.json() : {};
 
     if (data.type === 'RETRY_UPLOAD') {
-        event.waitUntil(
-            self.registration.sync.register('retry-pending-uploads')
-                .catch(() => {
-                    return self.clients.matchAll({ type: 'window' })
-                        .then(clients => clients.forEach(c =>
-                            c.postMessage({ type: 'RETRY_UPLOADS' })
-                        ));
-                })
-        );
+        event.waitUntil((async () => {
+            // 1) If a window is open (app open or backgrounded), tell it to resume now.
+            //    retryPendingUploads() reads the saved video from IndexedDB and, with
+            //    resume support, uploads only the chunks the server doesn't already have.
+            const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            if (windows.length > 0) {
+                windows.forEach(c => c.postMessage({ type: 'RETRY_UPLOADS' }));
+                // Also nudge Background Sync as a belt-and-suspenders retry
+                try { await self.registration.sync.register('retry-pending-uploads'); } catch(_) {}
+                return;
+            }
+
+            // 2) No window open — try Background Sync (Android wakes the SW on connectivity).
+            let syncRegistered = false;
+            try { await self.registration.sync.register('retry-pending-uploads'); syncRegistered = true; } catch(_) {}
+
+            // 3) App fully closed: a silent push can't run the in-page upload and can't
+            //    force the app open. Show a tappable notification so the driver's tap
+            //    opens the app, which then auto-resumes from where it stopped. One tap,
+            //    no other steps — and it resumes, not restarts.
+            await self.registration.showNotification('SLGP Fleet — finish upload', {
+                body:    'Tap to finish uploading your walk-around video.',
+                icon:    '/Final-01.jpg',
+                badge:   '/Final-01.jpg',
+                tag:     'slgp-resume',
+                silent:  false,
+                requireInteraction: true,           // stays until tapped
+                data:    { type: 'RESUME_ON_OPEN', submissionId: data.submissionId || null },
+            });
+        })());
     }
 
     if (data.showNotification) {
@@ -127,10 +148,20 @@ self.addEventListener('sync', event => {
 // ── Notification click ─────────────────────────────────────────────────────────
 self.addEventListener('notificationclick', event => {
     event.notification.close();
+    const isResume = event.notification.data?.type === 'RESUME_ON_OPEN';
     event.waitUntil(
-        self.clients.matchAll({ type: 'window' }).then(clients => {
-            if (clients.length > 0) return clients[0].focus();
-            return self.clients.openWindow('/');
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+            // If a window exists, focus it and tell it to resume
+            for (const c of clients) {
+                if ('focus' in c) {
+                    c.postMessage({ type: 'RETRY_UPLOADS' });
+                    return c.focus();
+                }
+            }
+            // Otherwise open the app; it auto-checks IndexedDB for pending uploads on
+            // load (visibilitychange + load both call retryPendingUploads), so opening
+            // is enough to resume. Land on the camera page so resume runs there.
+            return self.clients.openWindow(isResume ? '/video.html' : '/');
         })
     );
 });
