@@ -2879,32 +2879,47 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
 });
 
 // ── Chunk session cleanup ─────────────────────────────────────────────────────
-// Two retention tiers:
-//   • Sessions that received ALL their chunks but were never finished (phone died
-//     right before/at /upload/complete) are RECOVERABLE — keep them 24h so they can
-//     be finished from the dashboard ("Finish on server"), no phone needed.
-//   • Sessions still missing chunks (genuinely abandoned mid-transfer) are swept at
-//     2h as before — they can't be finished server-side anyway.
-const PRESERVE_MS  = 24 * 60 * 60 * 1000; // recoverable (all chunks present)
-const ABANDON_MS   = 2  * 60 * 60 * 1000; // incomplete (missing chunks)
+// THREE retention tiers (the old 2-tier version deleted near-complete uploads after
+// just 2h — but drivers do Pre-Trip in the morning and don't reopen the app until
+// end of shift 8-10h later, so a 90/92-chunk upload was being thrown away long
+// before the driver could reopen to finish it):
+//   • All chunks present (recoverable, finishable server-side)      → keep 24h
+//   • Substantial progress (≥25% of chunks received)                → keep 12h
+//     (survives a full shift so the driver can reopen and resume the rest)
+//   • Barely started (<25%)                                         → keep 2h
+//     (genuinely abandoned; low value; swept to save disk)
+const PRESERVE_MS  = 24 * 60 * 60 * 1000; // all chunks present
+const PARTIAL_MS   = 12 * 60 * 60 * 1000; // substantial progress — survive a shift
+const ABANDON_MS   = 2  * 60 * 60 * 1000; // barely started
+const PARTIAL_MIN_FRACTION = 0.25;        // ≥25% received = worth keeping for the shift
 function _sessionComplete(sess) {
     if (!sess || !sess.totalChunks) return false;
     const have = sess.receivedChunks ? sess.receivedChunks.size : 0;
     return have >= sess.totalChunks;
 }
+function _sessionTTL(have, total) {
+    if (!total) return ABANDON_MS;
+    if (have >= total) return PRESERVE_MS;
+    if (have / total >= PARTIAL_MIN_FRACTION) return PARTIAL_MS;
+    return ABANDON_MS;
+}
 setInterval(() => {
     const now = Date.now();
     for (const [sid, sess] of _chunkSessions.entries()) {
-        const idle    = now - (sess.lastActivity || sess.createdAt);
-        const ttl     = _sessionComplete(sess) ? PRESERVE_MS : ABANDON_MS;
+        const idle  = now - (sess.lastActivity || sess.createdAt);
+        const have  = sess.receivedChunks ? sess.receivedChunks.size : 0;
+        const ttl   = _sessionTTL(have, sess.totalChunks);
         if (idle > ttl) {
-            const why = _sessionComplete(sess) ? 'recoverable expired (24h)' : 'incomplete abandoned (2h)';
+            const why = have >= sess.totalChunks ? 'recoverable expired (24h)'
+                      : (have / (sess.totalChunks||1) >= PARTIAL_MIN_FRACTION
+                            ? `partial expired (12h, ${have}/${sess.totalChunks})`
+                            : `incomplete abandoned (2h, ${have}/${sess.totalChunks})`);
             logger.warn(`🗑 Removing chunk session (${why}): ${sess.driverName} VIN:${sess.vin}`);
             try { fs.rmSync(sess.sessionDir, { recursive: true }); } catch(_) {}
             _chunkSessions.delete(sid);
         }
     }
-    // Disk-level orphan scan — same two-tier logic by reading session.json + chunk count
+    // Disk-level orphan scan — same three-tier logic by reading session.json + chunk count
     try {
         const dirs = fs.readdirSync(CHUNK_DIR);
         for (const dir of dirs) {
@@ -2914,11 +2929,12 @@ setInterval(() => {
             try {
                 const meta     = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
                 const have     = fs.readdirSync(dirPath).filter(f => f.startsWith('chunk_')).length;
-                const complete = meta.totalChunks && have >= meta.totalChunks;
-                const ttl      = complete ? PRESERVE_MS : ABANDON_MS;
+                const ttl      = _sessionTTL(have, meta.totalChunks);
+                const tier     = (meta.totalChunks && have >= meta.totalChunks) ? '24h'
+                               : (meta.totalChunks && have / meta.totalChunks >= PARTIAL_MIN_FRACTION) ? '12h' : '2h';
                 const stat     = fs.statSync(dirPath);
                 if (now - stat.mtimeMs > ttl) {
-                    logger.warn(`🗑 Removing orphaned chunk dir (${complete ? '24h' : '2h'}): ${dir}`);
+                    logger.warn(`🗑 Removing orphaned chunk dir (${tier}): ${dir}`);
                     try { fs.rmSync(dirPath, { recursive: true }); } catch(_) {}
                 }
             } catch(_) {}
