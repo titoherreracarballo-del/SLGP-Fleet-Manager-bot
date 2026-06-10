@@ -977,26 +977,73 @@
         updatePendingBadge();
     }
 
-    // Auto-retry when signal returns
-    window.addEventListener('online', () => {
-        console.log('📶 Signal restored — retrying pending uploads...');
-        setTimeout(retryPendingUploads, 3000); // 3s delay for signal to stabilize
-    });
-
-    // Retry on page load (catches crashes/tab-reopens)
-    window.addEventListener('load', () => setTimeout(retryPendingUploads, 5000));
-
-    // Fire retry when driver unlocks phone or switches back to app
-    // This is the fastest path after phone restart — no manual open needed
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            console.log('👀 App visible — checking for pending uploads...');
-            setTimeout(retryPendingUploads, 2000); // 2s delay for network to stabilize
+    // ── Aggressive auto-resume ───────────────────────────────────────────────────
+    // Drivers do Pre-Trip in the morning and won't tap notifications during their
+    // route. The reliable moment is end-of-shift: they return to the depot, connect
+    // to WiFi, and open the app. So we fire resume IMMEDIATELY and on every signal
+    // that the app/connection is live — no delays, no gating — and show a clear
+    // banner so the driver leaves the app open the few seconds it takes. The server
+    // keeps their chunks for 12h, so resume only sends the missing pieces.
+    let _resumeRunning = false;
+    async function autoResume(reason) {
+        // Claim the guard SYNCHRONOUSLY before any await — otherwise multiple triggers
+        // firing together (online+focus+load+visible all fire on app open) each clear
+        // the check before any sets the flag, and all run at once (duplicate uploads).
+        if (_resumeRunning) return;
+        if (!navigator.onLine) return;
+        if (typeof isUploading !== 'undefined' && isUploading) return;
+        if (typeof isRecording !== 'undefined' && isRecording) return;
+        _resumeRunning = true;   // claim immediately, before the first await below
+        try {
+            const pending = await getPendingUploads().catch(() => []);
+            const due = (pending || []).filter(p => p.status === 'pending');
+            if (!due.length) { _resumeRunning = false; return; }
+            console.log(`🔄 Auto-resume (${reason}) — ${due.length} pending`);
+            showResumeBanner(due.length);
+            await retryPendingUploads();
+        } finally {
+            _resumeRunning = false;
+            // Re-check shortly after in case more chunks are now sendable or a new
+            // pending entry appeared (e.g. a fresh upload that just got backgrounded)
+            setTimeout(() => { hideResumeBanner(); autoResume('recheck'); }, 1500);
         }
+    }
+
+    // Visible, friendly banner so the driver knows to keep the app open a moment
+    function showResumeBanner(n) {
+        let b = document.getElementById('slgp-resume-banner');
+        if (!b) {
+            b = document.createElement('div');
+            b.id = 'slgp-resume-banner';
+            b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
+                'background:linear-gradient(90deg,#2563eb,#1d4ed8);color:#fff;' +
+                'font:600 14px/1.3 system-ui,sans-serif;padding:.7rem 1rem;text-align:center;' +
+                'box-shadow:0 2px 12px rgba(0,0,0,.3);';
+            document.body.appendChild(b);
+        }
+        b.innerHTML = '📤 Finishing ' + n + ' pending upload' + (n === 1 ? '' : 's') +
+                      ' — keep this app open a moment…';
+        b.style.display = 'block';
+    }
+    function hideResumeBanner() {
+        const b = document.getElementById('slgp-resume-banner');
+        if (b) b.style.display = 'none';
+    }
+
+    // Fire on EVERY signal the app/connection is live — immediately, no delay:
+    window.addEventListener('online',  () => autoResume('online'));        // depot WiFi connects
+    window.addEventListener('focus',   () => autoResume('focus'));         // app brought to front
+    window.addEventListener('load',    () => autoResume('load'));          // page (re)opened
+    window.addEventListener('pageshow', () => autoResume('pageshow'));     // bfcache restore
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') autoResume('visible'); // unlock / app switch
     });
 
-    // Check every 5 minutes while app is open
-    setInterval(retryPendingUploads, 5 * 60 * 1000);
+    // Safety net while the app stays open (e.g. left on the depot counter)
+    setInterval(() => autoResume('interval'), 60 * 1000); // every minute
+
+    // Kick once right now in case the app is already open with pending uploads
+    autoResume('init');
 
     // ── Web Push subscription ─────────────────────────────────────────────────
     // Registers device for silent push notifications from HR Dashboard
