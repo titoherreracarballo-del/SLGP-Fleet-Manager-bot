@@ -3944,21 +3944,28 @@ function scanRecoverableSessions() {
     try { dirs = fs.readdirSync(CHUNK_DIR); } catch(_) { return out; }
     for (const dir of dirs) {
         const dirPath  = path.join(CHUNK_DIR, dir);
-        const metaPath = path.join(dirPath, 'session.json');
+        const metaPath = path.join(dirPath, "session.json");
         if (!fs.existsSync(metaPath)) continue;
         try {
-            const meta  = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-            const have  = fs.readdirSync(dirPath).filter(f => f.startsWith('chunk_')).length;
+            const meta  = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+            const chunkFiles = fs.readdirSync(dirPath).filter(f => f.startsWith("chunk_"));
+            const have  = chunkFiles.length;
             const total = meta.totalChunks || 0;
             const stat  = fs.statSync(dirPath);
+            let totalBytes = 0;
+            for (const cf of chunkFiles) { try { totalBytes += fs.statSync(path.join(dirPath, cf)).size; } catch(_) {} }
+            const hasAllChunks = total > 0 && have >= total;
+            const bigEnough    = totalBytes >= 10000;
             out.push({
                 sessionId:      dir,
-                driverName:     meta.driverName || 'unknown',
-                vin:            meta.vin || 'unknown',
-                inspectionType: meta.inspectionType || 'unknown',
+                driverName:     meta.driverName || "unknown",
+                vin:            meta.vin || "unknown",
+                inspectionType: meta.inspectionType || "unknown",
                 receivedChunks: have,
                 totalChunks:    total,
-                finishable:     total > 0 && have >= total,   // all bytes present → can finish server-side
+                totalBytes:     totalBytes,
+                finishable:     hasAllChunks && bigEnough,
+                corrupt:        hasAllChunks && !bigEnough,
                 pctReceived:    total > 0 ? Math.round((have / total) * 100) : 0,
                 ageMs:          Date.now() - stat.mtimeMs,
                 createdAt:      meta.createdAt || stat.mtimeMs,
