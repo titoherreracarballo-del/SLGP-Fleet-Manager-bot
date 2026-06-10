@@ -2769,7 +2769,7 @@ function missingChunks(session) {
 // Used by BOTH /upload/complete (phone-driven) and /upload/finish-on-server
 // (dashboard-driven, no phone). Assumes all chunks are present (caller checks).
 // Returns { jobId } on success; throws on assembly failure.
-async function assembleAndProcessSession(session, sessionId, source) {
+async function assembleAndProcessSession(session, sessionId, source, providedJobId) {
     // Defense-in-depth: never assemble a session that's missing chunks, even if a
     // caller forgot to check. Assembling a partial would produce a truncated video
     // that could still pass the size check and reach Drive as a corrupt file.
@@ -2813,7 +2813,7 @@ async function assembleAndProcessSession(session, sessionId, source) {
     try { fs.rmSync(session.sessionDir, { recursive: true }); } catch(_) {}
     _chunkSessions.delete(sessionId);
 
-    const jobId = require('crypto').randomUUID();
+    const jobId = providedJobId || require('crypto').randomUUID();
     jobStore.set(jobId, {
         status: 'queued', stage: 'Queued', progress: 0,
         driverName: session.driverName, vin: session.vin,
@@ -2871,7 +2871,7 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
     // Assemble + hand off via the shared helper (same path as finish-on-server)
     let result;
     try {
-        result = await assembleAndProcessSession(session, sessionId, 'chunked');
+        const _jid = require('crypto').randomUUID(); res.json({ success: true, jobId: _jid, message: 'Upload received' }); setImmediate(() => assembleAndProcessSession(session, sessionId, 'chunked', _jid).catch(e => logger.error('bg assembly failed: ' + e.message))); return;
     } catch(e) {
         return res.status(500).json({ success: false, error: `Assembly failed: ${e.message}` });
     }
