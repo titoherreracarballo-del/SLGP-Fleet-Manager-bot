@@ -4164,6 +4164,60 @@ app.post('/push/trigger-retry', express.json(), async (req, res) => {
     }
 });
 
+// ── AUTO-RETRY: periodically re-push drivers with stuck-but-recoverable uploads ──
+// The dashboard showed uploads pushed once then never again — drivers who missed
+// that single push stayed stuck forever. This re-sends the SAME silent RETRY_UPLOAD
+// push every 30 min so the app auto-resumes next time the phone has connectivity.
+// Guards: only incomplete uploads, only drivers WITH a subscription, throttled to
+// once per 30 min, capped at 10 attempts, abandoned after 48h.
+setInterval(async () => {
+    try {
+        const pending = readPendingSubs();
+        const now = Date.now();
+        let pushSubsCache = null;
+        let pushed = 0;
+        const updated = [];
+        for (const entry of pending) {
+            let e = entry;
+            const status = e.status || "pending";
+            const ageMs  = now - new Date(e.reportedAt || 0).getTime();
+            const sinceLast = now - new Date(e.lastRetryAt || 0).getTime();
+            const attempts  = e.autoRetryCount || 0;
+            const eligible = status !== "complete"
+                && ageMs <= 48 * 60 * 60 * 1000
+                && attempts < 10
+                && sinceLast >= 30 * 60 * 1000;
+            if (eligible) {
+                let subscription = e.subscription;
+                if (!subscription) {
+                    if (!pushSubsCache) { try { pushSubsCache = readPushSubs(); } catch(_) { pushSubsCache = {}; } }
+                    const match = Object.values(pushSubsCache).find(s =>
+                        s.driverName && e.driverName &&
+                        s.driverName.toLowerCase() === e.driverName.toLowerCase());
+                    if (match) subscription = match.subscription;
+                }
+                if (subscription) {
+                    try {
+                        await webpush.sendNotification(subscription, JSON.stringify({
+                            type: "RETRY_UPLOAD", submissionId: e.id, showNotification: false,
+                        }));
+                        e = { ...e, lastRetryAt: new Date().toISOString(),
+                              status: "retrying", autoRetryCount: attempts + 1 };
+                        pushed++;
+                    } catch(err) {}
+                }
+            }
+            updated.push(e);
+        }
+        if (pushed > 0) {
+            writePendingSubs(updated);
+            logger.info(`🔁 Auto-retry: re-pushed ${pushed} stuck upload(s) to drivers`);
+        }
+    } catch(e) {
+        logger.error(`Auto-retry sweep failed: ${e.message}`);
+    }
+}, 30 * 60 * 1000); // every 30 minutes
+
 // Expose VAPID public key to client
 app.get('/push/vapid-public-key', (req, res) => {
     res.json({ key: VAPID_PUBLIC });
