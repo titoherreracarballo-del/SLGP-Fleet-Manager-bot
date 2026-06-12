@@ -2810,7 +2810,7 @@
             if (status) status.innerText = msg;
             console.log(`📊 ${safePct}% - ${msg}`);
         }
-        function resetProgress() { _lastPct = 0; } // call explicitly when starting fresh
+        function resetProgress() { _lastPct = 0; try { _slgpLastPct = 0; } catch(e){} } // reset BOTH progress trackers
         function backoffDelay(attempt) {
             return Math.min(1000 * Math.pow(2, attempt - 1), 10000);
         }
