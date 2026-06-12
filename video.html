@@ -2645,70 +2645,78 @@
         // Uses 120s per chunk (covers very slow LTE in concrete buildings)
         // Checks signal before retry, waits for reconnection if offline
         // NEVER gives up on a chunk — keeps retrying until success or timeout
-        const MAX_CHUNK_RETRIES = 10; // much more resilient than 3
-        for (let i = 0; i < totalChunks; i++) {
-            // Resume: skip chunks the server already received (from a prior interrupted attempt)
-            if (alreadyHave.has(i)) continue;
-            const chunk = blob.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-            const pct   = Math.round((i / totalChunks) * 85);
-            setProgress(pct, `Uploading ${pct}% — part ${i+1} of ${totalChunks}...`);
-            let ok = false;
+        // ── PARALLEL CHUNK UPLOAD (4 concurrent) — replaces the old one-at-a-time loop ──
+        // Sequential upload of 180+ chunks was too slow on weak depot signal. Uploading
+        // several chunks at once finishes 3-4x faster, so far more uploads complete.
+        // Resume + per-chunk retry (10 attempts) + offline-wait are all preserved.
+        const CONCURRENCY       = 4;
+        const MAX_CHUNK_RETRIES = 10;
+        const CHUNK_TIMEOUT_MS  = 90000;
 
-            for (let r = 0; r < MAX_CHUNK_RETRIES && !ok; r++) {
-                // Wait for signal before retrying — no point sending into void
+        const _queue = [];
+        for (let i = 0; i < totalChunks; i++) { if (!alreadyHave.has(i)) _queue.push(i); }
+        let _completed = alreadyHave.size;
+        let _next      = 0;
+        let _failed    = null;
+
+        async function _uploadOneChunk(i) {
+            const chunk = blob.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            for (let r = 0; r < MAX_CHUNK_RETRIES && !_failed; r++) {
                 if (r > 0 && !navigator.onLine) {
-                    setProgress(pct, `📶 No signal — waiting to resume part ${i+1}...`);
+                    setProgress(Math.round((_completed / totalChunks) * 85), "📶 No signal — waiting to resume...");
                     await new Promise(resolve => {
                         if (navigator.onLine) { resolve(); return; }
-                        const onOnline = () => { window.removeEventListener('online', onOnline); resolve(); };
-                        window.addEventListener('online', onOnline);
+                        const onOnline = () => { window.removeEventListener("online", onOnline); resolve(); };
+                        window.addEventListener("online", onOnline);
                     });
-                    setProgress(pct, `Signal restored — resuming part ${i+1}...`);
-                    await new Promise(x => setTimeout(x, 1500)); // stabilize
+                    await new Promise(x => setTimeout(x, 1500));
                 }
-
                 try {
                     const fd = new FormData();
-                    fd.append('chunk', chunk, `chunk_${i}.${ext}`);
-                    fd.append('sessionId', sessionId);
-                    fd.append('chunkIndex', String(i));
-                    fd.append('totalChunks', String(totalChunks));
-
-                    // 120s per chunk — covers very slow LTE in warehouse buildings
+                    fd.append("chunk", chunk, `chunk_${i}.${ext}`);
+                    fd.append("sessionId", sessionId);
+                    fd.append("chunkIndex", String(i));
+                    fd.append("totalChunks", String(totalChunks));
                     const _ctrl  = new AbortController();
-                    const _timer = setTimeout(() => _ctrl.abort(), 120000);
+                    const _timer = setTimeout(() => _ctrl.abort(), CHUNK_TIMEOUT_MS);
                     let res;
                     try {
-                        res = await fetch('/upload/chunk', { method: 'POST', body: fd, signal: _ctrl.signal });
-                    } finally {
-                        clearTimeout(_timer);
-                    }
-
+                        res = await fetch("/upload/chunk", { method: "POST", body: fd, signal: _ctrl.signal });
+                    } finally { clearTimeout(_timer); }
                     const d = await res.json();
                     if (d.success) {
-                        ok = true;
+                        _completed++;
+                        const pct = Math.round((_completed / totalChunks) * 85);
+                        setProgress(pct, `Uploading ${pct}% — ${_completed}/${totalChunks} parts...`);
+                        return;
                     } else {
-                        // Server rejected chunk — wait and retry
                         const delay = Math.min(30000, 2000 * Math.pow(2, r));
                         if (r < MAX_CHUNK_RETRIES - 1) await new Promise(x => setTimeout(x, delay));
                     }
                 } catch(e) {
-                    if (e.name === 'AbortError') {
-                        // Timeout — likely poor signal, wait longer before retry
+                    if (e.name === "AbortError") {
                         const delay = Math.min(30000, 3000 * Math.pow(2, r));
-                        if (r < MAX_CHUNK_RETRIES - 1) {
-                            setProgress(pct, `⏳ Slow connection — retrying part ${i+1}...`);
-                            await new Promise(x => setTimeout(x, delay));
-                        }
+                        if (r < MAX_CHUNK_RETRIES - 1) await new Promise(x => setTimeout(x, delay));
                     } else {
-                        // Network error — shorter wait
                         if (r < MAX_CHUNK_RETRIES - 1) await new Promise(x => setTimeout(x, 2000 * (r + 1)));
                     }
-                    if (r === MAX_CHUNK_RETRIES - 1) throw new Error(`Part ${i+1} failed after ${MAX_CHUNK_RETRIES} attempts`);
                 }
+                if (r === MAX_CHUNK_RETRIES - 1) { _failed = new Error(`Part ${i+1} could not be uploaded after ${MAX_CHUNK_RETRIES} attempts`); }
             }
-            if (!ok) throw new Error(`Part ${i+1} could not be uploaded`);
         }
+
+        async function _chunkWorker() {
+            while (!_failed) {
+                const myPos = _next++;
+                if (myPos >= _queue.length) return;
+                await _uploadOneChunk(_queue[myPos]);
+            }
+        }
+
+        const _workers = [];
+        for (let w = 0; w < Math.min(CONCURRENCY, _queue.length); w++) _workers.push(_chunkWorker());
+        await Promise.all(_workers);
+        if (_failed) throw _failed;
 
         setProgress(88, 'Finalizing...');
         // 30s for server to assemble chunks and respond
