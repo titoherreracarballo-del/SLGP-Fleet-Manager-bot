@@ -1,17 +1,485 @@
-node_modules/
-*.log
-nohup.out
+# ========================================
+# COMPREHENSIVE .GITIGNORE
+# For Discord Bots & Node.js Applications
+# ========================================
+
+# ========================================
+# SENSITIVE CREDENTIALS - CRITICAL!
+# ========================================
+
+# Environment files
 .env
 .env.*
-*.save
+*.env
+env.json
+src/env.json
+config/env.json
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+
+# Discord Bot Credentials
+discord-token.txt
+bot-token.txt
+discord-config.json
+
+# API Keys & Secrets
+secrets.json
+secrets/
+credentials.json
+service-account.json
+google-credentials.json
+*-credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# Database credentials
+database.json
+db-config.json
+connection-string.txt
+
+# OAuth & Authentication
+oauth-tokens.json
+refresh-token.json
+access-token.json
+session-secret.txt
+
+# ========================================
+# DISCORD BOT SPECIFIC
+# ========================================
+
+# Discord logs
+discord-logs/
+bot-logs/
+message-logs/
+
+# Discord data
+discord-cache/
+discord-temp/
+guild-data/
+user-data/
+
+# Command registration cache
+command-cache/
+interaction-cache/
+
+# ========================================
+# NODE.JS / NPM
+# ========================================
+
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnpm-debug.log
+.yarn/
+.yarn-integrity
+
+# NPM
+npm-debug.log*
+npm-error.log*
+.npm/
+.node_repl_history
+
+# Yarn
+yarn-debug.log*
+yarn-error.log*
+
+# PNPM
+.pnpm-store/
+
+# ========================================
+# LOGS & DATABASES
+# ========================================
+
+# Log files
+logs/
+*.log
+log/
+*.log.*
+combined.log
+error.log
+access.log
+debug.log
+info.log
+warn.log
+
+# Daily logs
+daily_log_*.json
+*_log_*.json
+*.log.json
+
+# JSON databases
+*-database.json
+*-db.json
+*-cache.json
+*-tracking.json
+*-storage.json
+learning-database.json
+speed-limit-cache.json
+api-usage-tracking.json
+user-database.json
+guild-database.json
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# Other databases
+*.mdb
+*.accdb
+*.sql
+
+# ========================================
+# UPLOADS & MEDIA
+# ========================================
+
+# User uploads
+uploads/
+upload/
+temp-uploads/
+attachments/
+
+# Media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+
+# Images (except assets)
+uploads/*.jpg
+uploads/*.jpeg
+uploads/*.png
+uploads/*.gif
+uploads/*.webp
+uploads/*.svg
+uploads/*.ico
+uploads/*.bmp
+uploads/*.tiff
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.wma
+*.m4a
+
+# ========================================
+# TEMPORARY & CACHE FILES
+# ========================================
+
+# Temporary directories
+temp/
+tmp/
+temporary/
+.cache/
+cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
 *.bak
-*.bak_*
+*.backup
+*~
+~*
+
+# OS temporary files
+.Spotlight-V100
+.Trashes
+Temporary Items
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+
+# ========================================
+# BUILD & COMPILED FILES
+# ========================================
+
+# Build output
+dist/
+build/
+out/
+output/
+compiled/
+.next/
+.nuxt/
+.vuepress/dist
+.serverless/
+
+# TypeScript
+*.tsbuildinfo
+*.js.map
+*.d.ts.map
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output/
+lib-cov/
+
+# ========================================
+# IDE & EDITOR FILES
+# ========================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# WebStorm / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+
+# Atom
+.atom/
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ========================================
+# OPERATING SYSTEM FILES
+# ========================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ========================================
+# DEVELOPMENT & TESTING
+# ========================================
+
+# Test files
+test-output/
+*.test.js.snap
+test-results/
+__snapshots__/
+
+# Debug files
+debug/
+*.debug
+.vscode-test/
+
+# Benchmark results
+benchmarks/
+*.bench
+
+# ========================================
+# DEPLOYMENT & DEVOPS
+# ========================================
+
+# PM2
+.pm2/
+ecosystem.config.js
+pm2.config.js
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Environment-specific
+.env.production.local
+.env.development.local
+.env.test.local
+
+# ========================================
+# DOCUMENTATION (Generated)
+# ========================================
+
+# Auto-generated docs
+docs/api/
+docs/build/
+.docusaurus/
+
+# JSDoc
+jsdoc/
+out/
+
+# ========================================
+# DEPENDENCIES & PACKAGES
+# ========================================
+
+# Bower
+bower_components/
+
+# JSPM
+jspm_packages/
+
+# ========================================
+# BACKUP FILES
+# ========================================
+
+# Backup files
+*.backup
+*.bak
+*.old
+*-backup.*
+*-old.*
+*.orig
+backup/
+backups/
+
+# ========================================
+# SECURITY & COMPLIANCE
+# ========================================
+
+# Security audit reports
+npm-audit.json
+yarn-audit.json
+security-report.json
+
+# GDPR / Privacy
+user-exports/
+data-exports/
+privacy-data/
+
+# ========================================
+# ALLOW SPECIFIC FILES
+# ========================================
+
+# Package manager configs
+!package.json
+
+# Config templates
+!.env.example
+!.env.template
+!config.example.json
+!settings.example.json
+
+# Documentation
+!README.md
+!CONTRIBUTING.md
+!LICENSE
+!CHANGELOG.md
+
+# CI/CD configs
+!.github/
+!.gitlab-ci.yml
+!.travis.yml
+!.circleci/
+
+# Essential configs
+!.eslintrc.*
+!.prettierrc.*
+!.editorconfig
+!tsconfig.json
+!jest.config.*
+!babel.config.*
+!webpack.config.*
+!rollup.config.*
+!vite.config.*
+
+# ========================================
+# PROJECT SPECIFIC IGNORES
+# ========================================
+
+# Fleet Management specific
+speed-limit-cache.json
+api-usage-tracking.json
+learning-database.json
+fleet-knowledge-base.json
+
+# Discord Bot specific
+guild-settings/
+user-preferences/
+command-cooldowns.json
+
+# === Added: specific keys + session backups ===
 gcp-sa-key.json
 *-sa-key.json
-*.pem
-fix_*.py
-patch_*.py
+*.save
+*.bak_*
 *.preupload.bak
 *.parallel.bak
 *.autoretry.bak
 *.scanfix.bak
+fix_*.py
+patch_*.py
