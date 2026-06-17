@@ -2923,15 +2923,23 @@
                     );
                     break; // Success — exit retry loop
                 } catch(chunkErr) {
-                    // A chunk exhausted its retries (usually congested depot wifi at
-                    // shift start). Do NOT restart the whole file as one monolithic
-                    // upload - the chunks already on the server are retained (12-24h)
-                    // and the blob is in IndexedDB. Re-throw into catch(uploadErr),
-                    // which saves it for auto-resume and tells the driver it will
-                    // finish automatically. When the phone hits strong signal on route,
-                    // resume sends ONLY the missing chunks instead of starting over,
-                    // and the server's auto-finish sweep assembles it once complete.
-                    throw chunkErr;
+                    console.warn('⚠️ Chunked upload failed, falling back to direct upload:', chunkErr.message);
+                    // ── TEMP DIAGNOSTIC — remove after debugging ──────────────────────
+                    // Shows the EXACT chunked failure on-screen so we can see why
+                    // /upload/init never reaches the server from phones.
+                    try {
+                        alert(
+                            '🔍 CHUNKED UPLOAD FAILED (diagnostic)\n\n' +
+                            'Step: ' + (chunkErr.__slgpStep || 'unknown') + '\n' +
+                            'Name: ' + (chunkErr.name || 'n/a') + '\n' +
+                            'Message: ' + (chunkErr.message || 'n/a') + '\n\n' +
+                            'Online: ' + navigator.onLine + '\n' +
+                            'Origin: ' + location.origin + '\n' +
+                            'Falling back to direct upload now.'
+                        );
+                    } catch(_) {}
+                    // ── END TEMP DIAGNOSTIC ───────────────────────────────────────────
+                    // Fall through to XHR below
                 }
 
                 // ── Direct XHR upload (fallback) ──────────────────────────────────────
