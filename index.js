@@ -3386,20 +3386,6 @@ app.post('/api/internal/retry-job/:jobId', async (req, res) => {
             console.warn('Retry email failed:', emailErr.message);
         }
 
-        // Record driver quality metrics
-        try {
-            const blurCount  = keyframes.filter(f => f.isBlurred).length;
-            const totalKf    = keyframes.length;
-            const durSec     = videoMetadata && videoMetadata.durationMillis
-                ? videoMetadata.durationMillis / 1000 : 0;
-            recordDriverSubmission(driverName, {
-                durationSec:  durSec,
-                blurryFrames: blurCount,
-                totalFrames:  totalKf,
-                damageFound:  !!(damageReport && damageReport.damageFound),
-                fileSizeMB:   parseFloat(fileSizeMB) || 0,
-            });
-        } catch(qErr) { logger.warn('Quality record failed:', qErr.message); }
 
         // Sync inspection metadata to Streamlit DB (fire-and-forget, non-blocking)
         syncInspectionToStreamlit({
