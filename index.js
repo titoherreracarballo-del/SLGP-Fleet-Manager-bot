@@ -2769,7 +2769,11 @@ function missingChunks(session) {
 // Used by BOTH /upload/complete (phone-driven) and /upload/finish-on-server
 // (dashboard-driven, no phone). Assumes all chunks are present (caller checks).
 // Returns { jobId } on success; throws on assembly failure.
+const _assemblingNow = new Set();
 async function assembleAndProcessSession(session, sessionId, source, providedJobId) {
+    if (_assemblingNow.has(sessionId)) throw new Error('Assembly already in progress for this session');
+    _assemblingNow.add(sessionId);
+    try {
     // Defense-in-depth: never assemble a session that's missing chunks, even if a
     // caller forgot to check. Assembling a partial would produce a truncated video
     // that could still pass the size check and reach Drive as a corrupt file.
@@ -2849,6 +2853,7 @@ async function assembleAndProcessSession(session, sessionId, source, providedJob
     });
     if (!enqueued) logger.warn(`${source} job ${jobId} rejected — queue full`);
     return { jobId, fileSizeMB };
+    } finally { _assemblingNow.delete(sessionId); }
 }
 
 // ── /upload/complete ──────────────────────────────────────────────────────────
@@ -2877,6 +2882,27 @@ app.post('/upload/complete', chunkLimiter, express.json(), async (req, res) => {
     }
     res.json({ success: true, jobId: result.jobId, message: 'Upload complete — processing started' });
 });
+
+let _autoFinishBusy = false;
+setInterval(async () => {
+    if (_autoFinishBusy) return;
+    _autoFinishBusy = true;
+    try {
+        const finishable = scanRecoverableSessions().filter(x => x.finishable);
+        for (const item of finishable) {
+            const sess = restoreChunkSession(item.sessionId);
+            if (!sess || missingChunks(sess).length > 0) continue;
+            try {
+                logger.info('AutoFinish: ' + item.driverName + ' VIN:' + item.vin + ' (' + item.totalChunks + ' chunks)');
+                await assembleAndProcessSession(sess, item.sessionId, 'auto-finish');
+            } catch (e) {
+                if (!/already in progress/.test(e.message)) logger.error('Auto-finish failed ' + item.sessionId + ': ' + e.message);
+            }
+            await new Promise(r => setTimeout(r, 15000));
+        }
+    } catch (e) { logger.error('Auto-finish sweep error: ' + e.message); }
+    finally { _autoFinishBusy = false; }
+}, 2 * 60 * 1000);
 
 // ── Chunk session cleanup ─────────────────────────────────────────────────────
 // THREE retention tiers (the old 2-tier version deleted near-complete uploads after
