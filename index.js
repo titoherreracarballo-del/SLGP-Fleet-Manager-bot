@@ -2817,6 +2817,23 @@ async function assembleAndProcessSession(session, sessionId, source, providedJob
     try { fs.rmSync(session.sessionDir, { recursive: true }); } catch(_) {}
     _chunkSessions.delete(sessionId);
 
+    // Mark the dashboard "pending/Needs-Retry" entry for this upload as complete,
+    // so the Pending-Uploads tab reflects reality once the video is assembled.
+    // Without this, an auto-finished (or manually finished) upload lands in Drive
+    // but lingers forever as a ghost "stuck" row. Match by driver+VIN+type; only
+    // flip entries not already complete. (Fixes the manual path too, which
+    // previously set 'retrying' here and never cleared.)
+    try {
+        const _pend = readPendingSubs();
+        const _upd = _pend.map(p =>
+            (p.driverName === session.driverName && p.vin === session.vin &&
+             p.inspectionType === session.inspectionType && p.status !== 'complete')
+                ? { ...p, status: 'complete', completedAt: new Date().toISOString() }
+                : p
+        );
+        writePendingSubs(_upd);
+    } catch(_) {}
+
     const jobId = providedJobId || require('crypto').randomUUID();
     jobStore.set(jobId, {
         status: 'queued', stage: 'Queued', progress: 0,
